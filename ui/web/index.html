@@ -1,25 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
-
-  <head>
-    <meta charset="UTF-8">
-    <title>Three.js – Particle Sphere</title>
-    <link rel="stylesheet" href="./style.css">
-
-  </head>
-    
-  <body>
-  <html lang="en">
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Particle Sphere</title>
-</head>
-<body>
-    <div id="canvas-container"></div>
-</body>
-</html>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r119/three.min.js'></script><script  src="./script.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dyxten Model</title>
 
-  </body>
-  
+  <!-- Feuille de style locale -->
+  <link rel="stylesheet" href="./style.css" />
+
+  <!-- QWebChannel pour le pont Python ↔ JavaScript -->
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+  <!-- Script principal -->
+  <script defer src="./script.js"></script>
+</head>
+
+<body>
+  <main>
+    <header>
+      <h1>Dyxten Model Controller</h1>
+    </header>
+
+    <!-- Contrôles HTML de base -->
+    <section id="controls">
+      <label for="rotationSpeed">Rotation Speed</label>
+      <input type="range" id="rotationSpeed" min="0" max="5" step="0.01" value="0" />
+      <span id="rotationValue">0.00</span>
+
+      <br />
+
+      <label for="pulse">Pulse</label>
+      <input type="range" id="pulse" min="0" max="1" step="0.01" value="0" />
+      <span id="pulseValue">0.00</span>
+
+      <br />
+      <button id="reset">Reset</button>
+    </section>
+
+    <!-- Espace pour ton modèle (Three.js, DOM, Canvas, etc.) -->
+    <section id="scene-container">
+      <div id="scene"></div>
+    </section>
+  </main>
+</body>
 </html>
