@@ -1,83 +1,76 @@
-(function(){
+// Sphere fixe, couleur unie, axes alignés (aucune rotation ni pulsation).
+(function () {
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d", { alpha: true });
 
-  // --- sizing fiable: couvre la fenêtre, gère DPR, centré dès le 1er frame
-  function sizeToContainer() {
-    const rect = canvas.getBoundingClientRect();
+  // Plein écran + DPI
+  function resize() {
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
-    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const cssW = window.innerWidth, cssH = window.innerHeight;
+    canvas.width  = Math.max(1, Math.floor(cssW * dpr));
+    canvas.height = Math.max(1, Math.floor(cssH * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  const ro = new ResizeObserver(sizeToContainer);
-  ro.observe(document.getElementById("canvas-wrap"));
-  sizeToContainer(); // important: avant premier dessin
+  window.addEventListener("resize", resize);
+  resize();
 
-  // --- config sphère
+  // Paramètres fixes
   const cfg = {
-    latSteps: 64, lonSteps: 64, R: 1.0,
-    pointPx: 2.0, fov: 600, camZ: 3.2,
-    rotX: 0.15, rotY: 0.25, rotZ: 0.35,
-    phaseX: 0.0020, phaseY: 0.0015, phaseZ: 0.0025,
-    colorSpeed: 0.0075, pulseAmp: 0.06, pulseSpeed: 1.4
+    lat: 64,            // densité verticale
+    lon: 64,            // densité horizontale
+    R: 1.0,             // rayon unité
+    px: 2.0,            // taille point
+    camZ: 3.0,          // caméra sur l’axe Z
+    fov: 600,           // projection
+    color: "#20D0FF"    // COULEUR UNIE
   };
 
-  // points sphère
+  // Maillage sphère (aucun déphasage, alignement vertical garanti)
   const pts = [];
-  for (let i=0;i<cfg.latSteps;i++){
-    const v = i/(cfg.latSteps-1), th = v*Math.PI;
-    for (let j=0;j<cfg.lonSteps;j++){
-      const u = j/cfg.lonSteps, ph = u*Math.PI*2;
-      const x = cfg.R*Math.sin(th)*Math.cos(ph);
-      const y = cfg.R*Math.cos(th);
-      const z = cfg.R*Math.sin(th)*Math.sin(ph);
-      pts.push({x,y,z,slice:i,idx:i*cfg.lonSteps+j});
+  for (let i = 0; i < cfg.lat; i++) {
+    const v = i / (cfg.lat - 1);          // 0..1
+    const theta = v * Math.PI;            // 0..π  (pôles sur l’axe vertical Y)
+    for (let j = 0; j < cfg.lon; j++) {
+      const u = j / cfg.lon;              // 0..1
+      const phi = u * Math.PI * 2;        // 0..2π
+      const x = cfg.R * Math.sin(theta) * Math.cos(phi);
+      const y = cfg.R * Math.cos(theta);
+      const z = cfg.R * Math.sin(theta) * Math.sin(phi);
+      pts.push({ x, y, z, zsort: 0 });
     }
   }
 
-  // rotations
-  const rx=(p,a)=>({x:p.x, y:p.y*Math.cos(a)-p.z*Math.sin(a), z:p.y*Math.sin(a)+p.z*Math.cos(a)});
-  const ry=(p,a)=>({x:p.x*Math.cos(a)+p.z*Math.sin(a), y:p.y, z:-p.x*Math.sin(a)+p.z*Math.cos(a)});
-  const rz=(p,a)=>({x:p.x*Math.cos(a)-p.y*Math.sin(a), y:p.x*Math.sin(a)+p.y*Math.cos(a), z:p.z});
+  // AUCUNE rotation ni pulsation
+  function frame() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const cx = w * 0.5, cy = h * 0.5;
+    ctx.clearRect(0, 0, w, h);
 
-  let t0 = performance.now();
+    // Échelle auto pour remplir sans couper
+    const SCALE = 0.45 * Math.min(w, h);
 
-  function frame(t){
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    const cx = w*0.5, cy = h*0.5;
-    // fond transparent: pas de fillRect noir/blanc
-    ctx.clearRect(0,0,w,h);
-
-    const ax = t*0.001*cfg.rotX, ay = t*0.001*cfg.rotY, az = t*0.001*cfg.rotZ;
-    const pulse = 1.0 + cfg.pulseAmp*Math.sin(t*0.001*(Math.PI*cfg.pulseSpeed));
-
-    const P = [];
-    for (let k=0;k<pts.length;k++){
-      const p0 = pts[k];
-      let p = {x:p0.x*pulse, y:p0.y*pulse, z:p0.z*pulse};
-      p = rx(p, ax + p0.slice*cfg.phaseX);
-      p = ry(p, ay + p0.slice*cfg.phaseY);
-      p = rz(p, az + p0.slice*cfg.phaseZ);
-
+    // Projection simple sur Z
+    const list = pts;
+    for (let k = 0; k < list.length; k++) {
+      const p = list[k];
       const zc = p.z + cfg.camZ;
-      const scale = cfg.fov / (cfg.fov + zc*300);
-      const x2 = cx + p.x*300*scale;
-      const y2 = cy - p.y*300*scale;
-
-      const hue = (Math.sin(t*0.75*0.01 + p0.idx*0.001)*0.5+0.5)*360;
-      const r = Math.max(0.5, 1.4*scale)*cfg.pointPx;
-      P.push({x:x2,y:y2,z:zc,r,hue});
+      const s = cfg.fov / (cfg.fov + zc * SCALE);
+      const X = cx + p.x * SCALE * s;
+      const Y = cy - p.y * SCALE * s;
+      p.px = X; p.py = Y; p.r = Math.max(0.5, 1.2 * s) * cfg.px; p.zsort = zc;
     }
-    P.sort((a,b)=>b.z-a.z);
 
-    for (let i=0;i<P.length;i++){
-      const q=P[i];
+    // Peinture dos→face
+    list.sort((a, b) => b.zsort - a.zsort);
+
+    ctx.fillStyle = cfg.color;  // couleur unie
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i];
       ctx.beginPath();
-      ctx.fillStyle=`hsl(${q.hue.toFixed(1)},75%,75%)`;
-      ctx.arc(q.x,q.y,q.r,0,Math.PI*2);
+      ctx.arc(q.px, q.py, q.r, 0, Math.PI * 2);
       ctx.fill();
     }
+
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

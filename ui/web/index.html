@@ -5,16 +5,15 @@
   <title>ViewWindow</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    html,body{height:100%;margin:0;background:transparent!important}
-    #canvas-wrap{position:fixed;inset:0;overflow:hidden;background:transparent!important}
-    #c{display:block;width:100%;height:100%}
+    html,body{margin:0;height:100%;background:transparent!important}
+    /* Conteneur plein écran */
+    #wrap{position:fixed;inset:0;overflow:hidden;background:transparent!important}
+    /* Canvas doit prendre 100% en CSS, sinon clientWidth/Height=0 */
+    #c{display:block;width:100vw;height:100vh;background:transparent!important}
   </style>
-  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <div id="canvas-wrap">
-    <canvas id="c"></canvas>
-  </div>
+  <div id="wrap"><canvas id="c"></canvas></div>
   <script src="./script.js"></script>
 </body>
 </html>
