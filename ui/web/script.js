@@ -1,159 +1,84 @@
-var container;
-var camera, scene, renderer;
-var framesCount = 0;
+(function(){
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d", { alpha: true });
 
-var localGroup;
-var particles = [],
-    particlesSlice = [],
-    particle, geometry, material;
+  // --- sizing fiable: couvre la fenêtre, gère DPR, centré dès le 1er frame
+  function sizeToContainer() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const ro = new ResizeObserver(sizeToContainer);
+  ro.observe(document.getElementById("canvas-wrap"));
+  sizeToContainer(); // important: avant premier dessin
 
-// Math variables
-const deg = Math.PI / 180; // one degree
+  // --- config sphère
+  const cfg = {
+    latSteps: 64, lonSteps: 64, R: 1.0,
+    pointPx: 2.0, fov: 600, camZ: 3.2,
+    rotX: 0.15, rotY: 0.25, rotZ: 0.35,
+    phaseX: 0.0020, phaseY: 0.0015, phaseZ: 0.0025,
+    colorSpeed: 0.0075, pulseAmp: 0.06, pulseSpeed: 1.4
+  };
 
-init();
-sceneAnimation();
-
-// Initiating Scene
-function init() {
-
-    // INIT Scene
-    // --------------------------------------
-
-    scene = new THREE.Scene();
-
-    // INIT Camera
-    // --------------------------------------
-
-    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 5);
-
-    // INIT Renderer
-    // --------------------------------------
-
-    renderer = new THREE.WebGLRenderer( { antialias: true } );
-    renderer.setPixelRatio( window.devicePixelRatio );
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor('#0f0f1f');
-
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    container = document.getElementById('canvas-container');
-    container.appendChild( renderer.domElement );
-
-    // INIT Options
-    // --------------------------------------
-
-    // Create particles
-    sceneParticles(0.005, 64);
-  
-    // Create slices of particles
-    groupSlices(64);
-
-    // Create fog
-    scene.fog = new THREE.FogExp2(0x0f0f1f, 0.065);
-
-    // Create group
-    sceneGroup(localGroup, particlesSlice);
-
-    // Update renderer and camera when resizing
-    window.addEventListener('resize', onWindowResize, false);
-}
-
-
-// Rendering the scene
-function sceneAnimation() {
-    requestAnimationFrame(sceneAnimation);
-
-    framesCount++;
-
-    // Slice Animation
-    for (let i = 0; i < particlesSlice.length; ++i) {
-        particlesSlice[i].rotation.x += (0.0010 + 0.0002 * i); // each slice animation
-        particlesSlice[i].rotation.y += (0.0015 + 0.0001 * i); // each slice animation
-        particlesSlice[i].rotation.z += (0.0020 + 0.0002 * i); // each slice animation
+  // points sphère
+  const pts = [];
+  for (let i=0;i<cfg.latSteps;i++){
+    const v = i/(cfg.latSteps-1), th = v*Math.PI;
+    for (let j=0;j<cfg.lonSteps;j++){
+      const u = j/cfg.lonSteps, ph = u*Math.PI*2;
+      const x = cfg.R*Math.sin(th)*Math.cos(ph);
+      const y = cfg.R*Math.cos(th);
+      const z = cfg.R*Math.sin(th)*Math.sin(ph);
+      pts.push({x,y,z,slice:i,idx:i*cfg.lonSteps+j});
     }
+  }
 
-    // Single Particles Animation
-    for (let i = 0; i < particles.length; ++i) {
+  // rotations
+  const rx=(p,a)=>({x:p.x, y:p.y*Math.cos(a)-p.z*Math.sin(a), z:p.y*Math.sin(a)+p.z*Math.cos(a)});
+  const ry=(p,a)=>({x:p.x*Math.cos(a)+p.z*Math.sin(a), y:p.y, z:-p.x*Math.sin(a)+p.z*Math.cos(a)});
+  const rz=(p,a)=>({x:p.x*Math.cos(a)-p.y*Math.sin(a), y:p.x*Math.sin(a)+p.y*Math.cos(a), z:p.z});
 
-        // Scaling
-        particles[i].scale.set(
-            Math.sin(framesCount * 0.00001 * i),
-            Math.sin(framesCount * 0.00001 * i),
-            Math.sin(framesCount * 0.00001 * i)
-        );
+  let t0 = performance.now();
 
-        // Color
-        // Each dot will have the same color as they use the same material in the creation process!
-        particles[i].material.color.setHSL((Math.sin((framesCount * 0.0075) + (i * 0.001)) * 0.5) + 0.5, 0.75, 0.75);
+  function frame(t){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const cx = w*0.5, cy = h*0.5;
+    // fond transparent: pas de fillRect noir/blanc
+    ctx.clearRect(0,0,w,h);
+
+    const ax = t*0.001*cfg.rotX, ay = t*0.001*cfg.rotY, az = t*0.001*cfg.rotZ;
+    const pulse = 1.0 + cfg.pulseAmp*Math.sin(t*0.001*(Math.PI*cfg.pulseSpeed));
+
+    const P = [];
+    for (let k=0;k<pts.length;k++){
+      const p0 = pts[k];
+      let p = {x:p0.x*pulse, y:p0.y*pulse, z:p0.z*pulse};
+      p = rx(p, ax + p0.slice*cfg.phaseX);
+      p = ry(p, ay + p0.slice*cfg.phaseY);
+      p = rz(p, az + p0.slice*cfg.phaseZ);
+
+      const zc = p.z + cfg.camZ;
+      const scale = cfg.fov / (cfg.fov + zc*300);
+      const x2 = cx + p.x*300*scale;
+      const y2 = cy - p.y*300*scale;
+
+      const hue = (Math.sin(t*0.75*0.01 + p0.idx*0.001)*0.5+0.5)*360;
+      const r = Math.max(0.5, 1.4*scale)*cfg.pointPx;
+      P.push({x:x2,y:y2,z:zc,r,hue});
     }
+    P.sort((a,b)=>b.z-a.z);
 
-    // Sphere Animation
-    localGroup.rotation.y = Math.cos(framesCount * 0.01);
-    localGroup.rotation.z = Math.sin(framesCount * 0.01);
-
-    renderer.render(scene, camera);
-}
-
-function sceneParticles(size, length) {
-    geometry = new THREE.SphereBufferGeometry(size, 16, 16);
-    material = new THREE.MeshBasicMaterial( { color: "hsl(21, 100%, 64%)" } );
-
-    let i = 0, ix, iy;
-
-    // Two Dimensions (x & y)
-    for (let ix = 0; ix < length; ++ix) {
-
-        // Third Dimension (z)
-        for (let iy = 0; iy < length; ++iy) {
-
-            particle = particles[i++] = new THREE.Mesh(geometry, material);
-
-            particle.position.x = Math.sin((iy * (2 / length)) * Math.PI);
-            particle.position.y = Math.cos((iy * (2 / length)) * Math.PI);
-
-            scene.add(particle);
-        }
+    for (let i=0;i<P.length;i++){
+      const q=P[i];
+      ctx.beginPath();
+      ctx.fillStyle=`hsl(${q.hue.toFixed(1)},75%,75%)`;
+      ctx.arc(q.x,q.y,q.r,0,Math.PI*2);
+      ctx.fill();
     }
-}
-
-function groupSlices(length) {
-    let i = 0, ix, iy;
-
-    // Two Dimensions (x & y)
-    for (let ix = 0; ix < length; ++ix) {
-
-        particlesSlice[ix] = new THREE.Group();
-
-        // Third Dimension (z)
-        for (let iy = 0; iy < length; ++iy) {
-            i++;
-            particlesSlice[ix].add(particles[i-1]);
-        }
-
-        scene.add(particlesSlice[ix]);
-
-        // Initial positioning
-        particlesSlice[ix].rotation.x = deg * (ix / length * 180);
-        particlesSlice[ix].rotation.y = deg * (ix / length * 180) * 3;
-        particlesSlice[ix].rotation.z = deg * (ix / length * 180) * 6;
-    }
-}
-
-function sceneGroup(group, objs) {
-    group = localGroup = new THREE.Group();
-
-    objs.forEach(function(obj) {
-        group.add(obj);
-    });
-
-    scene.add(group);
-}
-
-// Resizing
-function onWindowResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-}
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
