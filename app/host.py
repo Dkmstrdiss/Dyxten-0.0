@@ -1,7 +1,8 @@
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 
 class Host(QObject):
-    stateChanged = pyqtSignal(dict)
+    # Utiliser QVariant côté QtWebChannel
+    stateChanged = pyqtSignal('QVariant')
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -10,8 +11,9 @@ class Host(QObject):
             "pulse": 0.0,
         }
 
-    @pyqtSlot(result=dict)
+    @pyqtSlot(result='QVariant')
     def getState(self):
+        # Retourner un dict Python -> QVariant automatiquement
         return dict(self._state)
 
     @pyqtSlot(str, float)

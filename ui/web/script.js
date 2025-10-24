@@ -1,79 +1,159 @@
-// === Dyxten JS Controller ===
-// Gère la communication QWebChannel ↔ Host.py et la synchronisation des sliders
+var container;
+var camera, scene, renderer;
+var framesCount = 0;
 
-let Host = null;
-let state = { rotationSpeed: 0, pulse: 0 };
+var localGroup;
+var particles = [],
+    particlesSlice = [],
+    particle, geometry, material;
 
-function updateUI() {
-  const rot = document.getElementById("rotationSpeed");
-  const rotv = document.getElementById("rotationValue");
-  const pulse = document.getElementById("pulse");
-  const pulsev = document.getElementById("pulseValue");
+// Math variables
+const deg = Math.PI / 180; // one degree
 
-  rot.value = state.rotationSpeed;
-  rotv.textContent = state.rotationSpeed.toFixed(2);
+init();
+sceneAnimation();
 
-  pulse.value = state.pulse;
-  pulsev.textContent = state.pulse.toFixed(2);
+// Initiating Scene
+function init() {
+
+    // INIT Scene
+    // --------------------------------------
+
+    scene = new THREE.Scene();
+
+    // INIT Camera
+    // --------------------------------------
+
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 5);
+
+    // INIT Renderer
+    // --------------------------------------
+
+    renderer = new THREE.WebGLRenderer( { antialias: true } );
+    renderer.setPixelRatio( window.devicePixelRatio );
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor('#0f0f1f');
+
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    container = document.getElementById('canvas-container');
+    container.appendChild( renderer.domElement );
+
+    // INIT Options
+    // --------------------------------------
+
+    // Create particles
+    sceneParticles(0.005, 64);
+  
+    // Create slices of particles
+    groupSlices(64);
+
+    // Create fog
+    scene.fog = new THREE.FogExp2(0x0f0f1f, 0.065);
+
+    // Create group
+    sceneGroup(localGroup, particlesSlice);
+
+    // Update renderer and camera when resizing
+    window.addEventListener('resize', onWindowResize, false);
 }
 
-// Appliquer l'état au modèle visuel (à compléter selon ton code Three.js)
-function applyToModel() {
-  // Exemple si tu as une variable globale "sphere" dans ton modèle Three.js :
-  // sphere.material.uniforms.uRotationSpeed.value = state.rotationSpeed;
-  // sphere.material.uniforms.uPulse.value = state.pulse;
-  // Ici, on se contente de logguer :
-  console.log("Apply to model:", state);
+
+// Rendering the scene
+function sceneAnimation() {
+    requestAnimationFrame(sceneAnimation);
+
+    framesCount++;
+
+    // Slice Animation
+    for (let i = 0; i < particlesSlice.length; ++i) {
+        particlesSlice[i].rotation.x += (0.0010 + 0.0002 * i); // each slice animation
+        particlesSlice[i].rotation.y += (0.0015 + 0.0001 * i); // each slice animation
+        particlesSlice[i].rotation.z += (0.0020 + 0.0002 * i); // each slice animation
+    }
+
+    // Single Particles Animation
+    for (let i = 0; i < particles.length; ++i) {
+
+        // Scaling
+        particles[i].scale.set(
+            Math.sin(framesCount * 0.00001 * i),
+            Math.sin(framesCount * 0.00001 * i),
+            Math.sin(framesCount * 0.00001 * i)
+        );
+
+        // Color
+        // Each dot will have the same color as they use the same material in the creation process!
+        particles[i].material.color.setHSL((Math.sin((framesCount * 0.0075) + (i * 0.001)) * 0.5) + 0.5, 0.75, 0.75);
+    }
+
+    // Sphere Animation
+    localGroup.rotation.y = Math.cos(framesCount * 0.01);
+    localGroup.rotation.z = Math.sin(framesCount * 0.01);
+
+    renderer.render(scene, camera);
 }
 
-function applyState(s) {
-  state = s;
-  updateUI();
-  applyToModel();
+function sceneParticles(size, length) {
+    geometry = new THREE.SphereBufferGeometry(size, 16, 16);
+    material = new THREE.MeshBasicMaterial( { color: "hsl(21, 100%, 64%)" } );
+
+    let i = 0, ix, iy;
+
+    // Two Dimensions (x & y)
+    for (let ix = 0; ix < length; ++ix) {
+
+        // Third Dimension (z)
+        for (let iy = 0; iy < length; ++iy) {
+
+            particle = particles[i++] = new THREE.Mesh(geometry, material);
+
+            particle.position.x = Math.sin((iy * (2 / length)) * Math.PI);
+            particle.position.y = Math.cos((iy * (2 / length)) * Math.PI);
+
+            scene.add(particle);
+        }
+    }
 }
 
-function initUI() {
-  const rot = document.getElementById("rotationSpeed");
-  const pulse = document.getElementById("pulse");
-  const reset = document.getElementById("reset");
+function groupSlices(length) {
+    let i = 0, ix, iy;
 
-  rot.addEventListener("input", () => {
-    state.rotationSpeed = parseFloat(rot.value);
-    document.getElementById("rotationValue").textContent = rot.value;
-    if (Host) Host.setParam("rotationSpeed", state.rotationSpeed);
-    applyToModel();
-  });
+    // Two Dimensions (x & y)
+    for (let ix = 0; ix < length; ++ix) {
 
-  pulse.addEventListener("input", () => {
-    state.pulse = parseFloat(pulse.value);
-    document.getElementById("pulseValue").textContent = pulse.value;
-    if (Host) Host.setParam("pulse", state.pulse);
-    applyToModel();
-  });
+        particlesSlice[ix] = new THREE.Group();
 
-  reset.addEventListener("click", () => {
-    if (Host) Host.reset();
-  });
+        // Third Dimension (z)
+        for (let iy = 0; iy < length; ++iy) {
+            i++;
+            particlesSlice[ix].add(particles[i-1]);
+        }
+
+        scene.add(particlesSlice[ix]);
+
+        // Initial positioning
+        particlesSlice[ix].rotation.x = deg * (ix / length * 180);
+        particlesSlice[ix].rotation.y = deg * (ix / length * 180) * 3;
+        particlesSlice[ix].rotation.z = deg * (ix / length * 180) * 6;
+    }
 }
 
-function initChannel() {
-  if (!window.qt || !qt.webChannelTransport) {
-    console.warn("Qt WebChannel non initialisé");
-    return;
-  }
+function sceneGroup(group, objs) {
+    group = localGroup = new THREE.Group();
 
-  new QWebChannel(qt.webChannelTransport, (channel) => {
-    Host = channel.objects.Host;
+    objs.forEach(function(obj) {
+        group.add(obj);
+    });
 
-    // Récupère l’état initial depuis Python
-    Host.getState().then(applyState);
-
-    // Écoute les changements pushés depuis Python
-    Host.stateChanged.connect(applyState);
-  });
+    scene.add(group);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  initUI();
-  initChannel();
-});
+// Resizing
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
