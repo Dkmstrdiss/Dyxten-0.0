@@ -1,0 +1,31 @@
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS, TOOLTIPS
+
+class SystemTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    shutdownRequested = QtCore.pyqtSignal()
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["system"]
+        fl = QtWidgets.QFormLayout(self)
+        self.sp_Nmax = QtWidgets.QSpinBox(); self.sp_Nmax.setRange(100,500000); self.sp_Nmax.setValue(d["Nmax"])
+        self.sp_dpr  = QtWidgets.QDoubleSpinBox(); self.sp_dpr.setRange(1.0,2.0); self.sp_dpr.setSingleStep(0.1); self.sp_dpr.setValue(d["dprClamp"])
+        self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
+        self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
+        self.bt_shutdown = QtWidgets.QPushButton("Shutdown"); self.bt_shutdown.clicked.connect(lambda: self.shutdownRequested.emit())
+        row(fl, "N max", self.sp_Nmax, TOOLTIPS["system.Nmax"], lambda: self.sp_Nmax.setValue(d["Nmax"]))
+        row(fl, "DPR clamp", self.sp_dpr, TOOLTIPS["system.dprClamp"], lambda: self.sp_dpr.setValue(d["dprClamp"]))
+        row(fl, "Tri profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
+        row(fl, "Transparence", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
+        fl.addRow(self.bt_shutdown)
+        for w in [self.sp_Nmax,self.sp_dpr,self.chk_depthSort,self.chk_transparent]:
+            if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
+            else: w.valueChanged.connect(self.emit_delta)
+    def collect(self):
+        return dict(Nmax=self.sp_Nmax.value(), dprClamp=self.sp_dpr.value(),
+                    depthSort=self.chk_depthSort.isChecked(), transparent=self.chk_transparent.isChecked())
+    def set_defaults(self, cfg): pass
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"system": self.collect()})

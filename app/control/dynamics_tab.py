@@ -1,0 +1,38 @@
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS, TOOLTIPS
+
+class DynamicsTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["dynamics"]
+        fl = QtWidgets.QFormLayout(self)
+        self.sp_rotX = QtWidgets.QDoubleSpinBox(); self.sp_rotX.setRange(-360,360); self.sp_rotX.setValue(d["rotX"])
+        self.sp_rotY = QtWidgets.QDoubleSpinBox(); self.sp_rotY.setRange(-360,360); self.sp_rotY.setValue(d["rotY"])
+        self.sp_rotZ = QtWidgets.QDoubleSpinBox(); self.sp_rotZ.setRange(-360,360); self.sp_rotZ.setValue(d["rotZ"])
+        self.sp_pulseA = QtWidgets.QDoubleSpinBox(); self.sp_pulseA.setRange(0.0,1.0); self.sp_pulseA.setSingleStep(0.01); self.sp_pulseA.setValue(d["pulseA"])
+        self.sp_pulseW = QtWidgets.QDoubleSpinBox(); self.sp_pulseW.setRange(0.0,20.0); self.sp_pulseW.setValue(d["pulseW"])
+        self.sp_pulsePhase = QtWidgets.QDoubleSpinBox(); self.sp_pulsePhase.setRange(0.0,360.0); self.sp_pulsePhase.setValue(d["pulsePhaseDeg"])
+        self.cb_rotPhaseMode = QtWidgets.QComboBox(); self.cb_rotPhaseMode.addItems(["none","by_index","by_radius"]); self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"])
+        self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox(); self.sp_rotPhaseDeg.setRange(0.0,360.0); self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"])
+        row(fl, "rotX (°/s)", self.sp_rotX, TOOLTIPS["dynamics.rotX"], lambda: self.sp_rotX.setValue(d["rotX"]))
+        row(fl, "rotY (°/s)", self.sp_rotY, TOOLTIPS["dynamics.rotY"], lambda: self.sp_rotY.setValue(d["rotY"]))
+        row(fl, "rotZ (°/s)", self.sp_rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self.sp_rotZ.setValue(d["rotZ"]))
+        row(fl, "pulse A", self.sp_pulseA, TOOLTIPS["dynamics.pulseA"], lambda: self.sp_pulseA.setValue(d["pulseA"]))
+        row(fl, "pulse ω", self.sp_pulseW, TOOLTIPS["dynamics.pulseW"], lambda: self.sp_pulseW.setValue(d["pulseW"]))
+        row(fl, "pulse phase (°)", self.sp_pulsePhase, TOOLTIPS["dynamics.pulsePhaseDeg"], lambda: self.sp_pulsePhase.setValue(d["pulsePhaseDeg"]))
+        row(fl, "rot phase mode", self.cb_rotPhaseMode, TOOLTIPS["dynamics.rotPhaseMode"], lambda: self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"]))
+        row(fl, "rot phase (°)", self.sp_rotPhaseDeg, TOOLTIPS["dynamics.rotPhaseDeg"], lambda: self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"]))
+        for w in [self.sp_rotX,self.sp_rotY,self.sp_rotZ,self.sp_pulseA,self.sp_pulseW,self.sp_pulsePhase,self.cb_rotPhaseMode,self.sp_rotPhaseDeg]:
+            if isinstance(w, QtWidgets.QComboBox): w.currentIndexChanged.connect(self.emit_delta)
+            else: w.valueChanged.connect(self.emit_delta)
+    def collect(self):
+        return dict(rotX=self.sp_rotX.value(), rotY=self.sp_rotY.value(), rotZ=self.sp_rotZ.value(),
+                    pulseA=self.sp_pulseA.value(), pulseW=self.sp_pulseW.value(),
+                    pulsePhaseDeg=self.sp_pulsePhase.value(),
+                    rotPhaseMode=self.cb_rotPhaseMode.currentText(), rotPhaseDeg=self.sp_rotPhaseDeg.value())
+    def set_defaults(self, cfg): pass
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"dynamics": self.collect()})
