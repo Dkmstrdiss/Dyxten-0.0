@@ -211,7 +211,7 @@ class ColorListDialog(QtWidgets.QDialog):
         btn_layout.addStretch(1)
         layout.addLayout(btn_layout)
 
-        self.bt_add.clicked.connect(self.add_row)
+        self.bt_add.clicked.connect(self._on_add_clicked)
         self.bt_remove.clicked.connect(self.remove_selected)
 
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
@@ -226,7 +226,12 @@ class ColorListDialog(QtWidgets.QDialog):
 
     # -- table helpers ------------------------------------------------------
 
+    def _on_add_clicked(self, checked=False):
+        # ``clicked`` emits a boolean, swallow it so ``add_row`` always uses defaults.
+        self.add_row()
+
     def add_row(self, color="#FFFFFF", pos=0.0):
+        color = self._normalize_color_value(color)
         row = self.table.rowCount()
         self.table.insertRow(row)
         item = QtWidgets.QTableWidgetItem(color)
@@ -259,6 +264,7 @@ class ColorListDialog(QtWidgets.QDialog):
             self._update_color_item(item, color.name())
 
     def _update_color_item(self, item, value):
+        value = self._normalize_color_value(value)
         item.setText(value)
         item.setData(QtCore.Qt.UserRole, value)
         color = QtGui.QColor(value)
@@ -279,3 +285,13 @@ class ColorListDialog(QtWidgets.QDialog):
             pos = spin.value() if isinstance(spin, QtWidgets.QDoubleSpinBox) else 0.0
             data.append((color, pos))
         return data
+
+    def _normalize_color_value(self, value):
+        if isinstance(value, QtGui.QColor):
+            value = value.name()
+        if not isinstance(value, str):
+            value = "#FFFFFF"
+        value = value.strip() or "#FFFFFF"
+        if not QtGui.QColor(value).isValid():
+            value = "#FFFFFF"
+        return value
