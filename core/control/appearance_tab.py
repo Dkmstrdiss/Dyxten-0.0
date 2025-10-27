@@ -26,7 +26,12 @@ class AppearanceTab(QtWidgets.QWidget):
 
         # Liste de couleurs
         self.ed_colors = QtWidgets.QLineEdit(d["colors"])
-        row(fl, "colors (list@pos)", self.ed_colors, "Ex: #F00@0,#0F0@0.5,#00F@1",
+        self.bt_colors = QtWidgets.QPushButton("Pick list")
+        self.bt_colors.clicked.connect(self.pick_colors)
+        cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0, 0, 0, 0)
+        cly.addWidget(self.ed_colors, 1); cly.addWidget(self.bt_colors, 0)
+        cw = QtWidgets.QWidget(); cw.setLayout(cly)
+        row(fl, "colors (list@pos)", cw, "Ex: #F00@0,#0F0@0.5,#00F@1",
             reset_cb=lambda: (self.ed_colors.setText(d["colors"]), self.emit_delta()))
 
         # Opacité / taille
@@ -145,3 +150,132 @@ class AppearanceTab(QtWidgets.QWidget):
         if c.isValid():
             self.ed_color.setText(c.name())
             self.emit_delta()
+
+    # --- Couleurs multiples -------------------------------------------------
+
+    def parse_color_stops(self):
+        stops = []
+        for chunk in self.ed_colors.text().split(','):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if '@' in chunk:
+                color, pos = chunk.split('@', 1)
+            else:
+                color, pos = chunk, ''
+            color = color.strip() or '#000000'
+            try:
+                pos_val = float(pos.strip()) if pos.strip() else 0.0
+            except ValueError:
+                pos_val = 0.0
+            stops.append((color, max(0.0, min(1.0, pos_val))))
+        return stops
+
+    def format_color_stops(self, stops):
+        parts = []
+        for color, pos in stops:
+            color = color if color.startswith('#') else QtGui.QColor(color).name()
+            parts.append(f"{color}@{pos:g}")
+        return ','.join(parts)
+
+    def pick_colors(self):
+        dlg = ColorListDialog(self.parse_color_stops(), self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            self.ed_colors.setText(self.format_color_stops(dlg.stops()))
+            self.emit_delta()
+
+
+class ColorListDialog(QtWidgets.QDialog):
+    def __init__(self, stops=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Liste de couleurs")
+        self.resize(420, 280)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        self.table = QtWidgets.QTableWidget(0, 2, self)
+        self.table.setHorizontalHeaderLabels(["Couleur", "Position"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.table.cellDoubleClicked.connect(self.edit_color_cell)
+        layout.addWidget(self.table)
+
+        btn_layout = QtWidgets.QHBoxLayout()
+        self.bt_add = QtWidgets.QPushButton("Ajouter")
+        self.bt_remove = QtWidgets.QPushButton("Supprimer")
+        btn_layout.addWidget(self.bt_add)
+        btn_layout.addWidget(self.bt_remove)
+        btn_layout.addStretch(1)
+        layout.addLayout(btn_layout)
+
+        self.bt_add.clicked.connect(self.add_row)
+        self.bt_remove.clicked.connect(self.remove_selected)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        for color, pos in stops or []:
+            self.add_row(color, pos)
+        if self.table.rowCount() == 0:
+            self.add_row()
+
+    # -- table helpers ------------------------------------------------------
+
+    def add_row(self, color="#FFFFFF", pos=0.0):
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        item = QtWidgets.QTableWidgetItem(color)
+        item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
+        self.table.setItem(row, 0, item)
+        self._update_color_item(item, color)
+
+        spin = QtWidgets.QDoubleSpinBox()
+        spin.setRange(0.0, 1.0)
+        spin.setSingleStep(0.05)
+        spin.setDecimals(3)
+        spin.setValue(pos)
+        self.table.setCellWidget(row, 1, spin)
+        self.table.setCurrentCell(row, 0)
+
+    def remove_selected(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+        if self.table.rowCount() == 0:
+            self.add_row()
+
+    def edit_color_cell(self, row, column):
+        if column != 0:
+            return
+        item = self.table.item(row, 0)
+        current = QtGui.QColor(item.text() or '#FFFFFF')
+        color = QtWidgets.QColorDialog.getColor(current, self, "Choisir une couleur")
+        if color.isValid():
+            self._update_color_item(item, color.name())
+
+    def _update_color_item(self, item, value):
+        item.setText(value)
+        item.setData(QtCore.Qt.UserRole, value)
+        color = QtGui.QColor(value)
+        if color.isValid():
+            item.setBackground(QtGui.QBrush(color))
+            brightness = QtGui.QColor(255, 255, 255) if color.lightness() < 128 else QtGui.QColor(0, 0, 0)
+            item.setForeground(QtGui.QBrush(brightness))
+        else:
+            item.setBackground(QtGui.QBrush())
+            item.setForeground(QtGui.QBrush())
+
+    def stops(self):
+        data = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            color = item.data(QtCore.Qt.UserRole) or item.text()
+            spin = self.table.cellWidget(row, 1)
+            pos = spin.value() if isinstance(spin, QtWidgets.QDoubleSpinBox) else 0.0
+            data.append((color, pos))
+        return data
