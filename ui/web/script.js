@@ -327,7 +327,7 @@
     const grid = new Map();
     function screenKeep(sx, sy){
       if (dmin<=0) return true;
-      const ix = Math.floor(sx/cell), iy=Math.floor(sy/cell);
+      const ix = Math.floor(sx/cell), iy = Math.floor(sy/cell);
       for(let dx=-1;dx<=1;dx++){
         for(let dy=-1;dy<=1;dy++){
           const k=(ix+dx)+"_"+(iy+dy);
@@ -405,6 +405,24 @@
     const stops = parseStops(state.appearance.colors);
     function colorFromT(t){ return sampleGradient(stops, t); }
 
+    function wrapHue(h){
+      h %= 360;
+      if (h < 0) h += 360;
+      return h;
+    }
+
+    function hslFromParams(ap, factor, now, opts={}){
+      const base = ap.h0 || 0;
+      const delta = ap.dh || 0;
+      const speed = ap.wh || 0;
+      const normFactor = Math.max(-1, Math.min(1, factor || 0));
+      const includeTime = opts.includeTime || false;
+      const timeWeight = opts.timeWeight !== undefined ? opts.timeWeight : 1;
+      const temporal = includeTime && speed !== 0 ? (delta * timeWeight * Math.sin(speed * now * 0.001)) : 0;
+      const hue = wrapHue(base + delta * normFactor + temporal);
+      return `hsl(${hue},75%,70%)`;
+    }
+
     function pickColor(p, now){
       const ap=state.appearance, choice=ap.palette||"uniform";
       if (choice==="uniform") return ap.color || "#00C8FF";
@@ -423,11 +441,12 @@
         return stops[idx].c;
       }
       if (choice==="hsl_time"){
-        const h=((ap.h0||200)+(ap.dh||0)*Math.sin((ap.wh||0)*now*0.001))%360; return `hsl(${h},75%,70%)`;
+        return hslFromParams(ap, 0, now, { includeTime: true });
       }
       if (choice==="directional"){
         const l = clamp01( (canvas.height/2 - p.sy) / Math.max(1,canvas.height) );
-        const h = 160 + 80*l; return `hsl(${h},75%,70%)`;
+        const factor = l*2 - 1;
+        return hslFromParams(ap, factor, now, { includeTime: true, timeWeight: 0.5 });
       }
       if (choice==="gradient_radial"){
         const dx=p.sx - canvas.width/2, dy=p.sy - canvas.height/2;
@@ -442,10 +461,12 @@
         const sph = sphericalFromCartesian(p.X, p.Y, p.Z);
         if (choice==="by_lat"){
           const t = 1 - (sph.theta/Math.PI); // 0 sud .. 1 nord
-          return colorFromT(t);
+          const factor = t*2 - 1;
+          return hslFromParams(ap, factor, now, { includeTime: true, timeWeight: 0.5 });
         } else {
           const t = (sph.phi)/(2*Math.PI);   // 0..1
-          return colorFromT(t);
+          const factor = t*2 - 1;
+          return hslFromParams(ap, factor, now, { includeTime: true, timeWeight: 0.5 });
         }
       }
       if (choice==="by_noise"){
