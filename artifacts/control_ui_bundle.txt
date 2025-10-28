@@ -1,0 +1,1329 @@
+# Dyxten control UI source bundle
+
+## core/control/__init__.py
+
+
+
+## core/control/appearance_tab.py
+
+from PyQt5 import QtWidgets, QtCore, QtGui
+
+try:
+    from .widgets import row
+    from .config import DEFAULTS
+except ImportError:
+    from core.control.widgets import row
+    from core.control.config import DEFAULTS
+
+
+class AppearanceTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["appearance"]
+        fl = QtWidgets.QFormLayout(self)
+
+        # Couleur unique + picker
+        self.ed_color = QtWidgets.QLineEdit(d["color"])
+        self.bt_pick = QtWidgets.QPushButton("Pick"); self.bt_pick.clicked.connect(self.pick_color)
+        cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0,0,0,0)
+        cly.addWidget(self.ed_color, 1); cly.addWidget(self.bt_pick, 0)
+        cw = QtWidgets.QWidget(); cw.setLayout(cly)
+        row(fl, "color (hex)", cw, "Couleur principale", reset_cb=lambda: (self.ed_color.setText(d["color"]), self.emit_delta()))
+
+        # Liste de couleurs
+        self.ed_colors = QtWidgets.QLineEdit(d["colors"])
+        self.bt_colors = QtWidgets.QPushButton("Pick list")
+        self.bt_colors.clicked.connect(self.pick_colors)
+        cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0, 0, 0, 0)
+        cly.addWidget(self.ed_colors, 1); cly.addWidget(self.bt_colors, 0)
+        cw = QtWidgets.QWidget(); cw.setLayout(cly)
+        row(fl, "colors (list@pos)", cw, "Ex: #F00@0,#0F0@0.5,#00F@1",
+            reset_cb=lambda: (self.ed_colors.setText(d["colors"]), self.emit_delta()))
+
+        # Opacité / taille
+        self.sp_opacity = QtWidgets.QDoubleSpinBox(); self.sp_opacity.setRange(0.0,1.0); self.sp_opacity.setSingleStep(0.05); self.sp_opacity.setValue(d["opacity"])
+        self.sp_px = QtWidgets.QDoubleSpinBox(); self.sp_px.setRange(0.1,20.0); self.sp_px.setSingleStep(0.1); self.sp_px.setValue(d["px"])
+        row(fl, "opacity", self.sp_opacity, "Opacité globale", reset_cb=lambda: (self.sp_opacity.setValue(d["opacity"]), self.emit_delta()))
+        row(fl, "particle size (px)", self.sp_px, "Taille particule", reset_cb=lambda: (self.sp_px.setValue(d["px"]), self.emit_delta()))
+
+        # Palette et options
+        self.cb_palette = QtWidgets.QComboBox()
+        self.cb_palette.addItems([
+            "uniform","gradient_linear","gradient_radial",
+            "every_other","every_kth","stripe_longitude",
+            "random_from_list","hsl_time","directional",
+            "by_lat","by_lon","by_noise"
+        ])
+        self.cb_palette.setCurrentText(d["palette"])
+        row(fl, "palette", self.cb_palette, "Schéma de couleur", reset_cb=lambda: (self.cb_palette.setCurrentText(d["palette"]), self.emit_delta()))
+
+        self.sp_paletteK = QtWidgets.QSpinBox(); self.sp_paletteK.setRange(1,512); self.sp_paletteK.setValue(d["paletteK"])
+        row(fl, "every_kth (K)", self.sp_paletteK, "Périodicité", reset_cb=lambda: (self.sp_paletteK.setValue(d["paletteK"]), self.emit_delta()))
+
+        # Blend / shape / profondeur alpha
+        self.cb_blend = QtWidgets.QComboBox(); self.cb_blend.addItems(["source-over","lighter","multiply","screen"]); self.cb_blend.setCurrentText(d["blendMode"])
+        self.cb_shape = QtWidgets.QComboBox(); self.cb_shape.addItems(["circle","square"]); self.cb_shape.setCurrentText(d["shape"])
+        self.sp_alphaDepth = QtWidgets.QDoubleSpinBox(); self.sp_alphaDepth.setRange(0.0,1.0); self.sp_alphaDepth.setSingleStep(0.05); self.sp_alphaDepth.setValue(d["alphaDepth"])
+        row(fl, "blend", self.cb_blend, "Mode de fusion", reset_cb=lambda: (self.cb_blend.setCurrentText(d["blendMode"]), self.emit_delta()))
+        row(fl, "shape", self.cb_shape, "Forme sprite", reset_cb=lambda: (self.cb_shape.setCurrentText(d["shape"]), self.emit_delta()))
+        row(fl, "alphaDepth", self.sp_alphaDepth, "Fondu distance", reset_cb=lambda: (self.sp_alphaDepth.setValue(d["alphaDepth"]), self.emit_delta()))
+
+        # HSL
+        self.sp_h0 = QtWidgets.QDoubleSpinBox(); self.sp_h0.setRange(0.0,360.0); self.sp_h0.setValue(d["h0"])
+        self.sp_dh = QtWidgets.QDoubleSpinBox(); self.sp_dh.setRange(0.0,360.0); self.sp_dh.setValue(d["dh"])
+        self.sp_wh = QtWidgets.QDoubleSpinBox(); self.sp_wh.setRange(0.0,20.0); self.sp_wh.setValue(d["wh"])
+        row(fl, "HSL h0", self.sp_h0, "Teinte base (°)", reset_cb=lambda: (self.sp_h0.setValue(d["h0"]), self.emit_delta()))
+        row(fl, "HSL Δh", self.sp_dh, "Amplitude teinte (°)", reset_cb=lambda: (self.sp_dh.setValue(d["dh"]), self.emit_delta()))
+        row(fl, "HSL ω", self.sp_wh, "Vitesse teinte", reset_cb=lambda: (self.sp_wh.setValue(d["wh"]), self.emit_delta()))
+
+        # Noise
+        self.sp_noiseScale = QtWidgets.QDoubleSpinBox(); self.sp_noiseScale.setRange(0.05,10.0); self.sp_noiseScale.setSingleStep(0.05); self.sp_noiseScale.setValue(d["noiseScale"])
+        self.sp_noiseSpeed = QtWidgets.QDoubleSpinBox(); self.sp_noiseSpeed.setRange(0.0,5.0); self.sp_noiseSpeed.setSingleStep(0.1); self.sp_noiseSpeed.setValue(d["noiseSpeed"])
+        row(fl, "noise scale", self.sp_noiseScale, "Échelle bruit", reset_cb=lambda: (self.sp_noiseScale.setValue(d["noiseScale"]), self.emit_delta()))
+        row(fl, "noise speed", self.sp_noiseSpeed, "Vitesse bruit", reset_cb=lambda: (self.sp_noiseSpeed.setValue(d["noiseSpeed"]), self.emit_delta()))
+
+        # Modulation de taille
+        self.cb_pxMode = QtWidgets.QComboBox(); self.cb_pxMode.addItems(["none","by_index","by_radius"]); self.cb_pxMode.setCurrentText(d["pxModMode"])
+        self.sp_pxAmp = QtWidgets.QDoubleSpinBox(); self.sp_pxAmp.setRange(0.0,1.0); self.sp_pxAmp.setSingleStep(0.01); self.sp_pxAmp.setValue(d["pxModAmp"])
+        self.sp_pxFreq = QtWidgets.QDoubleSpinBox(); self.sp_pxFreq.setRange(0.0,10.0); self.sp_pxFreq.setSingleStep(0.1); self.sp_pxFreq.setValue(d["pxModFreq"])
+        self.sp_pxPhase = QtWidgets.QDoubleSpinBox(); self.sp_pxPhase.setRange(0.0,360.0); self.sp_pxPhase.setValue(d["pxModPhaseDeg"])
+        row(fl, "px mode", self.cb_pxMode, "Modulation taille", reset_cb=lambda: (self.cb_pxMode.setCurrentText(d["pxModMode"]), self.emit_delta()))
+        row(fl, "px amp", self.sp_pxAmp, "Amplitude", reset_cb=lambda: (self.sp_pxAmp.setValue(d["pxModAmp"]), self.emit_delta()))
+        row(fl, "px freq", self.sp_pxFreq, "Fréquence", reset_cb=lambda: (self.sp_pxFreq.setValue(d["pxModFreq"]), self.emit_delta()))
+        row(fl, "px phase (°)", self.sp_pxPhase, "Phase", reset_cb=lambda: (self.sp_pxPhase.setValue(d["pxModPhaseDeg"]), self.emit_delta()))
+
+        # Signaux
+        for w in self.findChildren((QtWidgets.QDoubleSpinBox, QtWidgets.QComboBox, QtWidgets.QLineEdit)):
+            if isinstance(w, QtWidgets.QLineEdit): w.editingFinished.connect(self._on_change)
+            elif isinstance(w, QtWidgets.QComboBox): w.currentIndexChanged.connect(self._on_change)
+            else: w.valueChanged.connect(self._on_change)
+
+        self.cb_palette.currentIndexChanged.connect(self.sync_enabled)
+        self.cb_pxMode.currentIndexChanged.connect(self.sync_enabled)
+        self.sync_enabled()  # grise ce qu’il faut
+
+    def sync_enabled(self, emit=True):
+        p = self.cb_palette.currentText()
+        enable_colors = enable_k = enable_hsl = enable_noise = False
+
+        if p == "uniform":
+            pass
+        elif p in ("gradient_linear", "gradient_radial", "every_other", "stripe_longitude", "random_from_list"):
+            enable_colors = True
+        elif p == "every_kth":
+            enable_colors = True; enable_k = True
+        elif p in ("hsl_time", "by_lat", "by_lon", "directional"):
+            enable_hsl = True
+        elif p == "by_noise":
+            enable_noise = True; enable_colors = True  # si mix sur 2 stops
+
+        self.ed_colors.setEnabled(enable_colors)
+        self.sp_paletteK.setEnabled(enable_k)
+        for w in (self.sp_h0, self.sp_dh, self.sp_wh): w.setEnabled(enable_hsl)
+        for w in (self.sp_noiseScale, self.sp_noiseSpeed): w.setEnabled(enable_noise)
+
+        pm = self.cb_pxMode.currentText()
+        px_enabled = (pm != "none")
+        self.sp_pxAmp.setEnabled(px_enabled)
+        self.sp_pxFreq.setEnabled(px_enabled)
+        self.sp_pxPhase.setEnabled(px_enabled)
+
+        if emit:
+            self.emit_delta()
+
+    def _on_change(self, *a): self.sync_enabled()
+
+    def emit_delta(self): self.changed.emit({"appearance": self.collect()})
+
+    def collect(self):
+        return dict(
+            color=self.ed_color.text().strip(),
+            colors=self.ed_colors.text().strip(),
+            opacity=self.sp_opacity.value(),
+            px=self.sp_px.value(),
+            palette=self.cb_palette.currentText(),
+            paletteK=self.sp_paletteK.value(),
+            blendMode=self.cb_blend.currentText(),
+            shape=self.cb_shape.currentText(),
+            alphaDepth=self.sp_alphaDepth.value(),
+            h0=self.sp_h0.value(), dh=self.sp_dh.value(), wh=self.sp_wh.value(),
+            noiseScale=self.sp_noiseScale.value(), noiseSpeed=self.sp_noiseSpeed.value(),
+            pxModMode=self.cb_pxMode.currentText(), pxModAmp=self.sp_pxAmp.value(),
+            pxModFreq=self.sp_pxFreq.value(), pxModPhaseDeg=self.sp_pxPhase.value(),
+        )
+
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["appearance"]
+        def val(key):
+            return cfg.get(key, d[key])
+
+        with QtCore.QSignalBlocker(self.ed_color):
+            self.ed_color.setText(str(val("color")))
+        with QtCore.QSignalBlocker(self.ed_colors):
+            self.ed_colors.setText(str(val("colors")))
+        with QtCore.QSignalBlocker(self.sp_opacity):
+            self.sp_opacity.setValue(float(val("opacity")))
+        with QtCore.QSignalBlocker(self.sp_px):
+            self.sp_px.setValue(float(val("px")))
+        with QtCore.QSignalBlocker(self.cb_palette):
+            self.cb_palette.setCurrentText(str(val("palette")))
+        with QtCore.QSignalBlocker(self.sp_paletteK):
+            self.sp_paletteK.setValue(int(val("paletteK")))
+        with QtCore.QSignalBlocker(self.cb_blend):
+            self.cb_blend.setCurrentText(str(val("blendMode")))
+        with QtCore.QSignalBlocker(self.cb_shape):
+            self.cb_shape.setCurrentText(str(val("shape")))
+        with QtCore.QSignalBlocker(self.sp_alphaDepth):
+            self.sp_alphaDepth.setValue(float(val("alphaDepth")))
+        with QtCore.QSignalBlocker(self.sp_h0):
+            self.sp_h0.setValue(float(val("h0")))
+        with QtCore.QSignalBlocker(self.sp_dh):
+            self.sp_dh.setValue(float(val("dh")))
+        with QtCore.QSignalBlocker(self.sp_wh):
+            self.sp_wh.setValue(float(val("wh")))
+        with QtCore.QSignalBlocker(self.sp_noiseScale):
+            self.sp_noiseScale.setValue(float(val("noiseScale")))
+        with QtCore.QSignalBlocker(self.sp_noiseSpeed):
+            self.sp_noiseSpeed.setValue(float(val("noiseSpeed")))
+        with QtCore.QSignalBlocker(self.cb_pxMode):
+            self.cb_pxMode.setCurrentText(str(val("pxModMode")))
+        with QtCore.QSignalBlocker(self.sp_pxAmp):
+            self.sp_pxAmp.setValue(float(val("pxModAmp")))
+        with QtCore.QSignalBlocker(self.sp_pxFreq):
+            self.sp_pxFreq.setValue(float(val("pxModFreq")))
+        with QtCore.QSignalBlocker(self.sp_pxPhase):
+            self.sp_pxPhase.setValue(float(val("pxModPhaseDeg")))
+
+        self.sync_enabled(emit=False)
+
+    def pick_color(self):
+        c = QtWidgets.QColorDialog.getColor(QtGui.QColor(self.ed_color.text().strip() or "#00C8FF"), self, "Couleur")
+        if c.isValid():
+            self.ed_color.setText(c.name())
+            self.emit_delta()
+
+    # --- Couleurs multiples -------------------------------------------------
+
+    def parse_color_stops(self):
+        stops = []
+        for chunk in self.ed_colors.text().split(','):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if '@' in chunk:
+                color, pos = chunk.split('@', 1)
+            else:
+                color, pos = chunk, ''
+            color = color.strip() or '#000000'
+            try:
+                pos_val = float(pos.strip()) if pos.strip() else 0.0
+            except ValueError:
+                pos_val = 0.0
+            stops.append((color, max(0.0, min(1.0, pos_val))))
+        return stops
+
+    def format_color_stops(self, stops):
+        parts = []
+        for color, pos in stops:
+            color = color if color.startswith('#') else QtGui.QColor(color).name()
+            parts.append(f"{color}@{pos:g}")
+        return ','.join(parts)
+
+    def pick_colors(self):
+        dlg = ColorListDialog(self.parse_color_stops(), self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            self.ed_colors.setText(self.format_color_stops(dlg.stops()))
+            self.emit_delta()
+
+
+class ColorListDialog(QtWidgets.QDialog):
+    def __init__(self, stops=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Liste de couleurs")
+        self.resize(420, 280)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        self.table = QtWidgets.QTableWidget(0, 2, self)
+        self.table.setHorizontalHeaderLabels(["Couleur", "Position"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.table.cellDoubleClicked.connect(self.edit_color_cell)
+        layout.addWidget(self.table)
+
+        btn_layout = QtWidgets.QHBoxLayout()
+        self.bt_add = QtWidgets.QPushButton("Ajouter")
+        self.bt_remove = QtWidgets.QPushButton("Supprimer")
+        btn_layout.addWidget(self.bt_add)
+        btn_layout.addWidget(self.bt_remove)
+        btn_layout.addStretch(1)
+        layout.addLayout(btn_layout)
+
+        self.bt_add.clicked.connect(self._on_add_clicked)
+        self.bt_remove.clicked.connect(self.remove_selected)
+
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        for color, pos in stops or []:
+            self.add_row(color, pos)
+        if self.table.rowCount() == 0:
+            self.add_row()
+
+    # -- table helpers ------------------------------------------------------
+
+    def _on_add_clicked(self, checked=False):
+        # ``clicked`` emits a boolean, swallow it so ``add_row`` always uses defaults.
+        self.add_row()
+
+    def add_row(self, color="#FFFFFF", pos=0.0):
+        color = self._normalize_color_value(color)
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        item = QtWidgets.QTableWidgetItem(color)
+        item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
+        self.table.setItem(row, 0, item)
+        self._update_color_item(item, color)
+
+        spin = QtWidgets.QDoubleSpinBox()
+        spin.setRange(0.0, 1.0)
+        spin.setSingleStep(0.05)
+        spin.setDecimals(3)
+        spin.setValue(pos)
+        self.table.setCellWidget(row, 1, spin)
+        self.table.setCurrentCell(row, 0)
+
+    def remove_selected(self):
+        row = self.table.currentRow()
+        if row >= 0:
+            self.table.removeRow(row)
+        if self.table.rowCount() == 0:
+            self.add_row()
+
+    def edit_color_cell(self, row, column):
+        if column != 0:
+            return
+        item = self.table.item(row, 0)
+        current = QtGui.QColor(item.text() or '#FFFFFF')
+        color = QtWidgets.QColorDialog.getColor(current, self, "Choisir une couleur")
+        if color.isValid():
+            self._update_color_item(item, color.name())
+
+    def _update_color_item(self, item, value):
+        value = self._normalize_color_value(value)
+        item.setText(value)
+        item.setData(QtCore.Qt.UserRole, value)
+        color = QtGui.QColor(value)
+        if color.isValid():
+            item.setBackground(QtGui.QBrush(color))
+            brightness = QtGui.QColor(255, 255, 255) if color.lightness() < 128 else QtGui.QColor(0, 0, 0)
+            item.setForeground(QtGui.QBrush(brightness))
+        else:
+            item.setBackground(QtGui.QBrush())
+            item.setForeground(QtGui.QBrush())
+
+    def stops(self):
+        data = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            color = item.data(QtCore.Qt.UserRole) or item.text()
+            spin = self.table.cellWidget(row, 1)
+            pos = spin.value() if isinstance(spin, QtWidgets.QDoubleSpinBox) else 0.0
+            data.append((color, pos))
+        return data
+
+    def _normalize_color_value(self, value):
+        if isinstance(value, QtGui.QColor):
+            value = value.name()
+        if not isinstance(value, str):
+            value = "#FFFFFF"
+        value = value.strip() or "#FFFFFF"
+        if not QtGui.QColor(value).isValid():
+            value = "#FFFFFF"
+        return value
+
+## core/control/bus.py
+
+
+from PyQt5 import QtCore
+
+class Bus(QtCore.QObject):
+    changed = QtCore.pyqtSignal(dict)
+
+## core/control/camera_tab.py
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS
+
+class CameraTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["camera"]
+        fl = QtWidgets.QFormLayout(self)
+
+        self.sp_camRadius = QtWidgets.QDoubleSpinBox(); self.sp_camRadius.setRange(0.1, 20.0); self.sp_camRadius.setSingleStep(0.1); self.sp_camRadius.setValue(d["camRadius"])
+        self.sl_camHeight = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_camHeight.setRange(-90,90); self.sl_camHeight.setValue(d["camHeightDeg"])
+        self.sl_camTilt   = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_camTilt.setRange(-90,90); self.sl_camTilt.setValue(d["camTiltDeg"])
+        self.sl_omega     = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_omega.setRange(0,180); self.sl_omega.setValue(d["omegaDegPerSec"])
+        self.sp_fov       = QtWidgets.QSpinBox(); self.sp_fov.setRange(50,2000); self.sp_fov.setValue(d["fov"])
+
+        row(fl, "camRadius", self.sp_camRadius, "Distance caméra")
+        row(fl, "camHeightDeg", self.sl_camHeight, "Hauteur orbite (°)")
+        row(fl, "camTiltDeg", self.sl_camTilt, "Inclinaison (°)")
+        row(fl, "omegaDegPerSec", self.sl_omega, "Vitesse d’orbite (°/s)")
+        row(fl, "fov", self.sp_fov, "Champ de vision")
+
+        for w in [self.sp_camRadius,self.sl_camHeight,self.sl_camTilt,self.sl_omega,self.sp_fov]:
+            w.valueChanged.connect(self.emit_delta)
+
+    def emit_delta(self, *a):
+        self.changed.emit({"camera": self.collect()})
+
+    def collect(self):
+        return dict(
+            camRadius=self.sp_camRadius.value(),
+            camHeightDeg=self.sl_camHeight.value(),
+            camTiltDeg=self.sl_camTilt.value(),
+            omegaDegPerSec=self.sl_omega.value(),
+            fov=self.sp_fov.value()
+        )
+
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["camera"]
+        mappings = [
+            (self.sp_camRadius, float, cfg.get("camRadius", d["camRadius"])),
+            (self.sl_camHeight, int, cfg.get("camHeightDeg", d["camHeightDeg"])),
+            (self.sl_camTilt, int, cfg.get("camTiltDeg", d["camTiltDeg"])),
+            (self.sl_omega, int, cfg.get("omegaDegPerSec", d["omegaDegPerSec"])),
+            (self.sp_fov, int, cfg.get("fov", d["fov"])),
+        ]
+        for widget, cast, value in mappings:
+            with QtCore.QSignalBlocker(widget):
+                widget.setValue(cast(value))
+
+## core/control/config.py
+
+
+from PyQt5 import QtCore
+
+DEFAULTS = dict(
+    camera=dict(camRadius=3.2, camHeightDeg=15, camTiltDeg=0, omegaDegPerSec=20, fov=600),
+    geometry=dict(
+        topology="uv_sphere",
+        R=1.0, lat=64, lon=64, N=4096, phi_g=3.88322,
+        R_major=1.2, r_minor=0.45,
+        eps1=1.0, eps2=1.0, ax=1.0, ay=1.0, az=1.0,
+        geo_level=1, mobius_w=0.4
+    ),
+    appearance=dict(
+        color="#00C8FF", colors="#00C8FF@0,#FFFFFF@1", opacity=1.0, px=2.0,
+        palette="uniform", paletteK=2,
+        h0=200.0, dh=0.0, wh=0.0,
+        blendMode="source-over", shape="circle",
+        alphaDepth=0.0,
+        noiseScale=1.0, noiseSpeed=0.0,
+        pxModMode="none", pxModAmp=0.0, pxModFreq=0.0, pxModPhaseDeg=0.0,
+    ),
+    dynamics=dict(
+        rotX=0.0, rotY=0.0, rotZ=0.0, pulseA=0.0, pulseW=1.0,
+        pulsePhaseDeg=0.0, rotPhaseDeg=0.0, rotPhaseMode="none"
+    ),
+    distribution=dict(
+        pr="uniform_area", dmin_px=0.0
+    ),
+    mask=dict(
+        enabled=False, mode="none", angleDeg=30.0,
+        bandHalfDeg=20.0, lonCenterDeg=0.0, lonWidthDeg=30.0,
+        softDeg=10.0, invert=False
+    ),
+    system=dict(Nmax=50000, dprClamp=2.0, depthSort=True, transparent=True)
+)
+
+TOOLTIPS = {
+    "camera.camRadius":"Distance caméra",
+    "camera.camHeightDeg":"Hauteur d’orbite (°)",
+    "camera.camTiltDeg":"Inclinaison (°)",
+    "camera.omegaDegPerSec":"Vitesse d’orbite (°/s)",
+    "camera.fov":"Champ de vision",
+    "geometry.topology":"Choix de topologie",
+    "geometry.R":"Échelle globale",
+    "geometry.lat":"Anneaux / v-samples",
+    "geometry.lon":"Segments / u-samples",
+    "geometry.N":"Nombre total (génératifs)",
+    "geometry.phi_g":"Angle doré",
+    "geometry.R_major":"Tore grand rayon",
+    "geometry.r_minor":"Tore petit rayon",
+    "geometry.eps1":"Superquadric exp-1",
+    "geometry.eps2":"Superquadric exp-2",
+    "geometry.ax":"Axe X",
+    "geometry.ay":"Axe Y",
+    "geometry.az":"Axe Z",
+    "geometry.geo_level":"Icosa subdiv level",
+    "geometry.mobius_w":"Largeur ruban",
+    "appearance.color":"Couleur principale",
+    "appearance.colors":"Liste de stops: #hex@pos",
+    "appearance.opacity":"Opacité globale",
+    "appearance.px":"Taille particule (px)",
+    "appearance.palette":"Palette",
+    "appearance.paletteK":"K pour every_kth",
+    "appearance.blendMode":"Mode de fusion",
+    "appearance.shape":"Forme particule",
+    "appearance.alphaDepth":"Fondu avec distance",
+    "appearance.h0":"Teinte base",
+    "appearance.dh":"Amplitude teinte",
+    "appearance.wh":"Vitesse teinte",
+    "appearance.noiseScale":"Échelle bruit",
+    "appearance.noiseSpeed":"Vitesse bruit",
+    "appearance.pxModMode":"Mode mod taille",
+    "appearance.pxModAmp":"Amp mod taille",
+    "appearance.pxModFreq":"Freq mod taille",
+    "appearance.pxModPhaseDeg":"Phase mod taille",
+    "dynamics.rotX":"Rotation locale X (°/s)",
+    "dynamics.rotY":"Rotation locale Y (°/s)",
+    "dynamics.rotZ":"Rotation locale Z (°/s)",
+    "dynamics.pulseA":"Amplitude pulsation",
+    "dynamics.pulseW":"Fréquence pulsation",
+    "dynamics.pulsePhaseDeg":"Phase pulsation",
+    "dynamics.rotPhaseMode":"Mode déphasage rot",
+    "dynamics.rotPhaseDeg":"Amplitude déphasage rot (°)",
+    "distribution.pr":"Biais de conservation",
+    "distribution.dmin_px":"Espacement min écran (px)",
+    "mask.enabled":"Activer le masque",
+    "mask.mode":"Type de masque",
+    "mask.angleDeg":"Angle cap (°)",
+    "mask.bandHalfDeg":"Demi-largeur bande (°)",
+    "mask.lonCenterDeg":"Longitude centre (°)",
+    "mask.lonWidthDeg":"Largeur longitude (°)",
+    "mask.softDeg":"Lissage (°)",
+    "mask.invert":"Inverser",
+    "system.Nmax":"Budget points max",
+    "system.dprClamp":"Clamp DPI",
+    "system.depthSort":"Tri profondeur",
+    "system.transparent":"Transparence"
+}
+
+## core/control/control_window.py
+
+# core/control/control_window.py
+import json
+from typing import Optional
+from PyQt5 import QtWidgets, QtCore, QtGui
+
+# Imports robustes (exécution directe ou en module)
+try:
+    from .config import DEFAULTS
+    from .camera_tab import CameraTab
+    from .geometry_tab import GeometryTab
+    from .appearance_tab import AppearanceTab
+    from .dynamics_tab import DynamicsTab
+    from .distribution_tab import DistributionTab
+    from .mask_tab import MaskTab
+    from .system_tab import SystemTab
+    from .profile_manager import ProfileManager
+except ImportError:
+    from core.control.config import DEFAULTS
+    from core.control.camera_tab import CameraTab
+    from core.control.geometry_tab import GeometryTab
+    from core.control.appearance_tab import AppearanceTab
+    from core.control.dynamics_tab import DynamicsTab
+    from core.control.distribution_tab import DistributionTab
+    from core.control.mask_tab import MaskTab
+    from core.control.system_tab import SystemTab
+    from core.control.profile_manager import ProfileManager
+
+
+class ControlWindow(QtWidgets.QMainWindow):
+    def __init__(self, app: QtWidgets.QApplication, screen: QtGui.QScreen, view_win):
+        super().__init__(None)
+        self.setWindowTitle("Dyxten — Control v2")
+        self.view_win = view_win
+        self.profile_mgr = ProfileManager()
+        self._loading_profile = False
+        self._updating_profiles = False
+        self._dirty = False
+        self.current_profile = ProfileManager.DEFAULT_PROFILE
+
+        # Barre d’outils persistante
+        tb = QtWidgets.QToolBar("Main")
+        tb.setMovable(False)
+        tb.setFloatable(False)
+        tb.setIconSize(QtCore.QSize(16, 16))
+        self.addToolBar(QtCore.Qt.TopToolBarArea, tb)
+
+        act_quit = QtWidgets.QAction("Shutdown", self)
+        act_quit.setShortcut(QtGui.QKeySequence("Ctrl+Q"))
+        act_quit.setShortcutContext(QtCore.Qt.ApplicationShortcut)
+        act_quit.triggered.connect(app.quit)
+        self.addAction(act_quit)
+        tb.addAction(act_quit)
+
+        tb.addSeparator()
+        lbl_profile = QtWidgets.QLabel("Profil :")
+        tb.addWidget(lbl_profile)
+        self.cb_profiles = QtWidgets.QComboBox()
+        self.cb_profiles.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.cb_profiles.setMinimumContentsLength(8)
+        self.cb_profiles.currentTextChanged.connect(self.on_profile_selected)
+        tb.addWidget(self.cb_profiles)
+
+        self.act_save_profile = QtWidgets.QAction("Sauver", self)
+        self.act_save_profile.setShortcut(QtGui.QKeySequence("Ctrl+S"))
+        self.act_save_profile.setShortcutContext(QtCore.Qt.ApplicationShortcut)
+        self.act_save_profile.triggered.connect(self.save_profile)
+        self.addAction(self.act_save_profile)
+        tb.addAction(self.act_save_profile)
+
+        self.act_save_as_profile = QtWidgets.QAction("Sauver sous…", self)
+        self.act_save_as_profile.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
+        self.act_save_as_profile.setShortcutContext(QtCore.Qt.ApplicationShortcut)
+        self.act_save_as_profile.triggered.connect(self.save_profile_as)
+        self.addAction(self.act_save_as_profile)
+        tb.addAction(self.act_save_as_profile)
+
+        self.act_rename_profile = QtWidgets.QAction("Renommer", self)
+        self.act_rename_profile.triggered.connect(self.rename_profile)
+        tb.addAction(self.act_rename_profile)
+
+        self.act_delete_profile = QtWidgets.QAction("Supprimer", self)
+        self.act_delete_profile.triggered.connect(self.delete_profile)
+        tb.addAction(self.act_delete_profile)
+
+        self.act_reload_profile = QtWidgets.QAction("Recharger", self)
+        self.act_reload_profile.setShortcut(QtGui.QKeySequence("F5"))
+        self.act_reload_profile.setShortcutContext(QtCore.Qt.ApplicationShortcut)
+        self.act_reload_profile.triggered.connect(self.reload_profile)
+        self.addAction(self.act_reload_profile)
+        tb.addAction(self.act_reload_profile)
+
+        # Bouton persistant en bas
+        sb = QtWidgets.QStatusBar()
+        self.setStatusBar(sb)
+        btn_quit = QtWidgets.QPushButton("Shutdown")
+        btn_quit.setCursor(QtCore.Qt.PointingHandCursor)
+        btn_quit.clicked.connect(app.quit)
+        sb.addPermanentWidget(btn_quit)
+
+        # Raccourci redondant
+        sc_quit = QtWidgets.QShortcut(QtGui.QKeySequence("Ctrl+Q"), self)
+        sc_quit.setContext(QtCore.Qt.ApplicationShortcut)
+        sc_quit.activated.connect(app.quit)
+
+        # Onglets
+        self.tabs = QtWidgets.QTabWidget()
+        self.tab_camera = CameraTab()
+        self.tab_geometry = GeometryTab()
+        self.tab_appearance = AppearanceTab()
+        self.tab_dynamics = DynamicsTab()
+        self.tab_distribution = DistributionTab()
+        self.tab_mask = MaskTab()
+        self.tab_system = SystemTab()
+
+        for t in [
+            self.tab_camera,
+            self.tab_geometry,
+            self.tab_appearance,
+            self.tab_dynamics,
+            self.tab_distribution,
+            self.tab_mask,
+            self.tab_system,
+        ]:
+            t.changed.connect(self.on_delta)
+
+        self.tab_geometry.topologyChanged.connect(self.on_topology_changed)
+
+        self.tabs.addTab(self.tab_camera, "Caméra")
+        self.tabs.addTab(self.tab_geometry, "Géométrie")
+        self.tabs.addTab(self.tab_appearance, "Apparence")
+        self.tabs.addTab(self.tab_dynamics, "Dynamique")
+        self.tabs.addTab(self.tab_distribution, "Distribution")
+        self.tabs.addTab(self.tab_mask, "Masques")
+        self.tabs.addTab(self.tab_system, "Système")
+
+        self.setCentralWidget(self.tabs)
+
+        # Fenêtre
+        self.resize(760, 900)
+        geo = screen.availableGeometry()
+        self.move(
+            geo.x() + (geo.width() - self.width()) // 2,
+            geo.y() + (geo.height() - self.height()) // 2,
+        )
+        self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+        self.show()
+
+        # État initial
+        self.refresh_profiles(select=self.current_profile)
+        self.load_profile(self.current_profile)
+
+    # ----------------------------------------------------------------- profil
+    def refresh_profiles(self, select: Optional[str] = None):
+        names = list(self.profile_mgr.list_profiles())
+        if not names:
+            names = [ProfileManager.DEFAULT_PROFILE]
+        self._updating_profiles = True
+        try:
+            with QtCore.QSignalBlocker(self.cb_profiles):
+                self.cb_profiles.clear()
+                self.cb_profiles.addItems(names)
+            target = select or self.current_profile
+            if target in names:
+                idx = self.cb_profiles.findText(target)
+                if idx != -1:
+                    self.cb_profiles.setCurrentIndex(idx)
+            else:
+                self.cb_profiles.setCurrentIndex(0)
+        finally:
+            self._updating_profiles = False
+
+    def on_profile_selected(self, name: str):
+        if self._updating_profiles or self._loading_profile:
+            return
+        if name:
+            self.load_profile(name)
+
+    def load_profile(self, name: str):
+        self._loading_profile = True
+        try:
+            profile = self.profile_mgr.get_profile(name)
+            self.state = {k: (v.copy() if isinstance(v, dict) else v) for k, v in profile.items()}
+            self.tab_camera.set_defaults(self.state.get("camera"))
+            self.tab_geometry.set_defaults(self.state.get("geometry"))
+            self.tab_appearance.set_defaults(self.state.get("appearance"))
+            self.tab_dynamics.set_defaults(self.state.get("dynamics"))
+            self.tab_distribution.set_defaults(self.state.get("distribution"))
+            self.tab_mask.set_defaults(self.state.get("mask"))
+            self.tab_system.set_defaults(self.state.get("system"))
+        finally:
+            self._loading_profile = False
+        self.current_profile = name
+        self.set_dirty(False)
+        self.refresh_profiles(select=name)
+        self._apply_transparency()
+        self.push_params()
+        self.statusBar().showMessage(f"Profil '{name}' chargé", 3000)
+
+    def reload_profile(self):
+        if self.current_profile:
+            self.load_profile(self.current_profile)
+
+    def collect_state(self) -> dict:
+        return dict(
+            camera=self.tab_camera.collect(),
+            geometry=self.tab_geometry.collect(),
+            appearance=self.tab_appearance.collect(),
+            dynamics=self.tab_dynamics.collect(),
+            distribution=self.tab_distribution.collect(),
+            mask=self.tab_mask.collect(),
+            system=self.tab_system.collect(),
+        )
+
+    def save_profile(self):
+        if not self.current_profile:
+            self.save_profile_as()
+            return
+        self.state = self.collect_state()
+        try:
+            self.profile_mgr.save_profile(self.current_profile, self.state)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
+            return
+        self.set_dirty(False)
+        self.statusBar().showMessage(f"Profil '{self.current_profile}' enregistré", 3000)
+
+    def save_profile_as(self):
+        name, ok = QtWidgets.QInputDialog.getText(self, "Sauver le profil", "Nom du profil :", text=self.current_profile or "")
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom de profil.")
+            return
+        if self.profile_mgr.has_profile(name) and name != self.current_profile:
+            resp = QtWidgets.QMessageBox.question(
+                self,
+                "Écraser le profil",
+                f"Le profil '{name}' existe déjà. Voulez-vous l'écraser ?",
+            )
+            if resp != QtWidgets.QMessageBox.Yes:
+                return
+        state = self.collect_state()
+        try:
+            self.profile_mgr.save_profile(name, state)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
+            return
+        self.state = state
+        self.current_profile = name
+        self.refresh_profiles(select=name)
+        self.set_dirty(False)
+        self.statusBar().showMessage(f"Profil '{name}' enregistré", 3000)
+
+    def rename_profile(self):
+        if self.current_profile == ProfileManager.DEFAULT_PROFILE:
+            QtWidgets.QMessageBox.information(self, "Action impossible", "Le profil par défaut ne peut pas être renommé.")
+            return
+        name, ok = QtWidgets.QInputDialog.getText(self, "Renommer le profil", "Nouveau nom :", text=self.current_profile)
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom de profil.")
+            return
+        if self.profile_mgr.has_profile(name):
+            QtWidgets.QMessageBox.warning(self, "Nom déjà utilisé", "Un profil avec ce nom existe déjà.")
+            return
+        try:
+            self.profile_mgr.rename_profile(self.current_profile, name)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
+            return
+        self.current_profile = name
+        self.refresh_profiles(select=name)
+        self.set_dirty(False)
+        self.statusBar().showMessage(f"Profil renommé en '{name}'", 3000)
+
+    def delete_profile(self):
+        if self.current_profile == ProfileManager.DEFAULT_PROFILE:
+            QtWidgets.QMessageBox.information(self, "Action impossible", "Le profil par défaut ne peut pas être supprimé.")
+            return
+        resp = QtWidgets.QMessageBox.question(
+            self,
+            "Supprimer le profil",
+            f"Voulez-vous vraiment supprimer le profil '{self.current_profile}' ?",
+        )
+        if resp != QtWidgets.QMessageBox.Yes:
+            return
+        try:
+            self.profile_mgr.delete_profile(self.current_profile)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
+            return
+        self.statusBar().showMessage("Profil supprimé", 3000)
+        self.current_profile = ProfileManager.DEFAULT_PROFILE
+        self.refresh_profiles(select=self.current_profile)
+        self.load_profile(self.current_profile)
+
+    def set_dirty(self, dirty: bool):
+        self._dirty = dirty
+        self.update_window_title()
+        self.act_rename_profile.setEnabled(self.current_profile != ProfileManager.DEFAULT_PROFILE)
+        self.act_delete_profile.setEnabled(self.current_profile != ProfileManager.DEFAULT_PROFILE)
+
+    def update_window_title(self):
+        suffix = ""
+        if self.current_profile:
+            suffix = f" — {self.current_profile}{'*' if self._dirty else ''}"
+        self.setWindowTitle("Dyxten — Control v2" + suffix)
+
+    def _apply_transparency(self):
+        try:
+            self.view_win.set_transparent(bool(self.state.get("system", {}).get("transparent", True)))
+        except Exception:
+            pass
+
+    def on_delta(self, delta: dict):
+        for k, v in delta.items():
+            if isinstance(v, dict):
+                self.state.setdefault(k, {}).update(v)
+            else:
+                self.state[k] = v
+        self._apply_transparency()
+        if not self._loading_profile:
+            self.set_dirty(not self.profile_mgr.profile_equals(self.current_profile, self.state))
+        self.push_params()
+
+    def on_topology_changed(self, topo: str):
+        pass
+
+    def push_params(self):
+        js = (
+            "window.setDyxtenParams = window.setDyxtenParams || function(_){};"
+            f"window.setDyxtenParams({json.dumps(self.state, ensure_ascii=False)});"
+        )
+        try:
+            self.view_win.view.page().runJavaScript(js)
+        except Exception:
+            pass
+
+## core/control/distribution_tab.py
+
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS, TOOLTIPS
+
+class DistributionTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["distribution"]
+        fl = QtWidgets.QFormLayout(self)
+        self.cb_pr = QtWidgets.QComboBox(); self.cb_pr.addItems(["uniform_area","power_edge","gaussian_center","by_lat","by_lon"]); self.cb_pr.setCurrentText(d["pr"])
+        self.sp_dmin_px = QtWidgets.QDoubleSpinBox(); self.sp_dmin_px.setRange(0.0,200.0); self.sp_dmin_px.setSingleStep(1.0); self.sp_dmin_px.setValue(d["dmin_px"])
+        row(fl, "p(select)", self.cb_pr, TOOLTIPS["distribution.pr"], lambda: self.cb_pr.setCurrentText(d["pr"]))
+        row(fl, "d_min (px)", self.sp_dmin_px, TOOLTIPS["distribution.dmin_px"], lambda: self.sp_dmin_px.setValue(d["dmin_px"]))
+        self.cb_pr.currentIndexChanged.connect(self.emit_delta)
+        self.sp_dmin_px.valueChanged.connect(self.emit_delta)
+    def collect(self): return dict(pr=self.cb_pr.currentText(), dmin_px=self.sp_dmin_px.value())
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["distribution"]
+        with QtCore.QSignalBlocker(self.cb_pr):
+            self.cb_pr.setCurrentText(str(cfg.get("pr", d["pr"])))
+        with QtCore.QSignalBlocker(self.sp_dmin_px):
+            self.sp_dmin_px.setValue(float(cfg.get("dmin_px", d["dmin_px"])))
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"distribution": self.collect()})
+
+## core/control/dynamics_tab.py
+
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS, TOOLTIPS
+
+class DynamicsTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["dynamics"]
+        fl = QtWidgets.QFormLayout(self)
+        self.sp_rotX = QtWidgets.QDoubleSpinBox(); self.sp_rotX.setRange(-360,360); self.sp_rotX.setValue(d["rotX"])
+        self.sp_rotY = QtWidgets.QDoubleSpinBox(); self.sp_rotY.setRange(-360,360); self.sp_rotY.setValue(d["rotY"])
+        self.sp_rotZ = QtWidgets.QDoubleSpinBox(); self.sp_rotZ.setRange(-360,360); self.sp_rotZ.setValue(d["rotZ"])
+        self.sp_pulseA = QtWidgets.QDoubleSpinBox(); self.sp_pulseA.setRange(0.0,1.0); self.sp_pulseA.setSingleStep(0.01); self.sp_pulseA.setValue(d["pulseA"])
+        self.sp_pulseW = QtWidgets.QDoubleSpinBox(); self.sp_pulseW.setRange(0.0,20.0); self.sp_pulseW.setValue(d["pulseW"])
+        self.sp_pulsePhase = QtWidgets.QDoubleSpinBox(); self.sp_pulsePhase.setRange(0.0,360.0); self.sp_pulsePhase.setValue(d["pulsePhaseDeg"])
+        self.cb_rotPhaseMode = QtWidgets.QComboBox(); self.cb_rotPhaseMode.addItems(["none","by_index","by_radius"]); self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"])
+        self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox(); self.sp_rotPhaseDeg.setRange(0.0,360.0); self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"])
+        row(fl, "rotX (°/s)", self.sp_rotX, TOOLTIPS["dynamics.rotX"], lambda: self.sp_rotX.setValue(d["rotX"]))
+        row(fl, "rotY (°/s)", self.sp_rotY, TOOLTIPS["dynamics.rotY"], lambda: self.sp_rotY.setValue(d["rotY"]))
+        row(fl, "rotZ (°/s)", self.sp_rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self.sp_rotZ.setValue(d["rotZ"]))
+        row(fl, "pulse A", self.sp_pulseA, TOOLTIPS["dynamics.pulseA"], lambda: self.sp_pulseA.setValue(d["pulseA"]))
+        row(fl, "pulse ω", self.sp_pulseW, TOOLTIPS["dynamics.pulseW"], lambda: self.sp_pulseW.setValue(d["pulseW"]))
+        row(fl, "pulse phase (°)", self.sp_pulsePhase, TOOLTIPS["dynamics.pulsePhaseDeg"], lambda: self.sp_pulsePhase.setValue(d["pulsePhaseDeg"]))
+        row(fl, "rot phase mode", self.cb_rotPhaseMode, TOOLTIPS["dynamics.rotPhaseMode"], lambda: self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"]))
+        row(fl, "rot phase (°)", self.sp_rotPhaseDeg, TOOLTIPS["dynamics.rotPhaseDeg"], lambda: self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"]))
+        for w in [self.sp_rotX,self.sp_rotY,self.sp_rotZ,self.sp_pulseA,self.sp_pulseW,self.sp_pulsePhase,self.cb_rotPhaseMode,self.sp_rotPhaseDeg]:
+            if isinstance(w, QtWidgets.QComboBox): w.currentIndexChanged.connect(self.emit_delta)
+            else: w.valueChanged.connect(self.emit_delta)
+    def collect(self):
+        return dict(rotX=self.sp_rotX.value(), rotY=self.sp_rotY.value(), rotZ=self.sp_rotZ.value(),
+                    pulseA=self.sp_pulseA.value(), pulseW=self.sp_pulseW.value(),
+                    pulsePhaseDeg=self.sp_pulsePhase.value(),
+                    rotPhaseMode=self.cb_rotPhaseMode.currentText(), rotPhaseDeg=self.sp_rotPhaseDeg.value())
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["dynamics"]
+        def val(key):
+            return cfg.get(key, d[key])
+
+        with QtCore.QSignalBlocker(self.sp_rotX):
+            self.sp_rotX.setValue(float(val("rotX")))
+        with QtCore.QSignalBlocker(self.sp_rotY):
+            self.sp_rotY.setValue(float(val("rotY")))
+        with QtCore.QSignalBlocker(self.sp_rotZ):
+            self.sp_rotZ.setValue(float(val("rotZ")))
+        with QtCore.QSignalBlocker(self.sp_pulseA):
+            self.sp_pulseA.setValue(float(val("pulseA")))
+        with QtCore.QSignalBlocker(self.sp_pulseW):
+            self.sp_pulseW.setValue(float(val("pulseW")))
+        with QtCore.QSignalBlocker(self.sp_pulsePhase):
+            self.sp_pulsePhase.setValue(float(val("pulsePhaseDeg")))
+        with QtCore.QSignalBlocker(self.cb_rotPhaseMode):
+            self.cb_rotPhaseMode.setCurrentText(str(val("rotPhaseMode")))
+        with QtCore.QSignalBlocker(self.sp_rotPhaseDeg):
+            self.sp_rotPhaseDeg.setValue(float(val("rotPhaseDeg")))
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"dynamics": self.collect()})
+
+## core/control/geometry_tab.py
+
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row, vec_row
+from .config import DEFAULTS, TOOLTIPS
+
+class GeometryTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    topologyChanged = QtCore.pyqtSignal(str)
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["geometry"]
+        fl = QtWidgets.QFormLayout(self)
+        self.cb_topology = QtWidgets.QComboBox(); self.cb_topology.addItems(["uv_sphere","fibo_sphere","disk_phyllotaxis","torus","superquadric","geodesic","mobius"])
+        self.cb_topology.setCurrentText(d["topology"])
+        self.sp_R   = QtWidgets.QDoubleSpinBox(); self.sp_R.setRange(0.1, 5.0); self.sp_R.setSingleStep(0.1); self.sp_R.setValue(d["R"])
+        self.sp_lat = QtWidgets.QSpinBox(); self.sp_lat.setRange(4,512); self.sp_lat.setValue(d["lat"])
+        self.sp_lon = QtWidgets.QSpinBox(); self.sp_lon.setRange(4,512); self.sp_lon.setValue(d["lon"])
+        self.sp_N   = QtWidgets.QSpinBox(); self.sp_N.setRange(10,200000); self.sp_N.setValue(d["N"])
+        self.sp_phi = QtWidgets.QDoubleSpinBox(); self.sp_phi.setRange(0.0,6.28318); self.sp_phi.setDecimals(5); self.sp_phi.setValue(d["phi_g"])
+        self.sp_Rmaj = QtWidgets.QDoubleSpinBox(); self.sp_Rmaj.setRange(0.1,10.0); self.sp_Rmaj.setSingleStep(0.05); self.sp_Rmaj.setValue(d["R_major"])
+        self.sp_rmin = QtWidgets.QDoubleSpinBox(); self.sp_rmin.setRange(0.05,5.0); self.sp_rmin.setSingleStep(0.05); self.sp_rmin.setValue(d["r_minor"])
+        self.sp_eps1 = QtWidgets.QDoubleSpinBox(); self.sp_eps1.setRange(0.2,4.0); self.sp_eps1.setSingleStep(0.05); self.sp_eps1.setValue(d["eps1"])
+        self.sp_eps2 = QtWidgets.QDoubleSpinBox(); self.sp_eps2.setRange(0.2,4.0); self.sp_eps2.setSingleStep(0.05); self.sp_eps2.setValue(d["eps2"])
+        self.sp_ax = QtWidgets.QDoubleSpinBox(); self.sp_ax.setRange(0.1,5.0); self.sp_ax.setSingleStep(0.1); self.sp_ax.setValue(d["ax"])
+        self.sp_ay = QtWidgets.QDoubleSpinBox(); self.sp_ay.setRange(0.1,5.0); self.sp_ay.setSingleStep(0.1); self.sp_ay.setValue(d["ay"])
+        self.sp_az = QtWidgets.QDoubleSpinBox(); self.sp_az.setRange(0.1,5.0); self.sp_az.setSingleStep(0.1); self.sp_az.setValue(d["az"])
+        self.sp_geoLevel = QtWidgets.QSpinBox(); self.sp_geoLevel.setRange(0,5); self.sp_geoLevel.setValue(d["geo_level"])
+        self.sp_mobW = QtWidgets.QDoubleSpinBox(); self.sp_mobW.setRange(0.05,2.0); self.sp_mobW.setSingleStep(0.05); self.sp_mobW.setValue(d["mobius_w"])
+        row(fl, "Topology", self.cb_topology, TOOLTIPS["geometry.topology"], lambda: self.cb_topology.setCurrentText(d["topology"]))
+        row(fl, "R", self.sp_R, TOOLTIPS["geometry.R"], lambda: self.sp_R.setValue(d["R"]))
+        row(fl, "lat", self.sp_lat, TOOLTIPS["geometry.lat"], lambda: self.sp_lat.setValue(d["lat"]))
+        row(fl, "lon", self.sp_lon, TOOLTIPS["geometry.lon"], lambda: self.sp_lon.setValue(d["lon"]))
+        row(fl, "N (Fibo/Phyllo)", self.sp_N, TOOLTIPS["geometry.N"], lambda: self.sp_N.setValue(d["N"]))
+        row(fl, "phi_g", self.sp_phi, TOOLTIPS["geometry.phi_g"], lambda: self.sp_phi.setValue(d["phi_g"]))
+        row(fl, "R_major (torus)", self.sp_Rmaj, TOOLTIPS["geometry.R_major"], lambda: self.sp_Rmaj.setValue(d["R_major"]))
+        row(fl, "r_minor (torus)", self.sp_rmin, TOOLTIPS["geometry.r_minor"], lambda: self.sp_rmin.setValue(d["r_minor"]))
+        row(fl, "eps1/eps2 (superq)", vec_row([self.sp_eps1,self.sp_eps2]), TOOLTIPS["geometry.eps1"], lambda: (self.sp_eps1.setValue(d["eps1"]), self.sp_eps2.setValue(d["eps2"])))
+        row(fl, "ax/ay/az (superq)", vec_row([self.sp_ax,self.sp_ay,self.sp_az]), TOOLTIPS["geometry.ax"], lambda: (self.sp_ax.setValue(d["ax"]), self.sp_ay.setValue(d["ay"]), self.sp_az.setValue(d["az"])))
+        row(fl, "geo level", self.sp_geoLevel, TOOLTIPS["geometry.geo_level"], lambda: self.sp_geoLevel.setValue(d["geo_level"]))
+        row(fl, "mobius width", self.sp_mobW, TOOLTIPS["geometry.mobius_w"], lambda: self.sp_mobW.setValue(d["mobius_w"]))
+        self.cb_topology.currentIndexChanged.connect(self.on_topology_changed)
+        for w in [self.sp_R,self.sp_lat,self.sp_lon,self.sp_N,self.sp_phi,self.sp_Rmaj,self.sp_rmin,self.sp_eps1,self.sp_eps2,self.sp_ax,self.sp_ay,self.sp_az,self.sp_geoLevel,self.sp_mobW]:
+            w.valueChanged.connect(self.emit_delta)
+        self.on_topology_changed()
+    def _apply_topology_state(self, emit=True):
+        t = self.cb_topology.currentText()
+        uv  = (t=="uv_sphere")
+        fib = (t=="fibo_sphere")
+        phy = (t=="disk_phyllotaxis")
+        tor = (t=="torus")
+        sup = (t=="superquadric")
+        geo = (t=="geodesic")
+        mob = (t=="mobius")
+        self.sp_lat.setEnabled(uv or tor or sup or mob)
+        self.sp_lon.setEnabled(uv or tor or sup or mob)
+        self.sp_N.setEnabled(fib or phy)
+        self.sp_phi.setEnabled(fib or phy)
+        self.sp_Rmaj.setEnabled(tor)
+        self.sp_rmin.setEnabled(tor)
+        for w in [self.sp_eps1,self.sp_eps2,self.sp_ax,self.sp_ay,self.sp_az]: w.setEnabled(sup)
+        self.sp_geoLevel.setEnabled(geo)
+        self.sp_mobW.setEnabled(mob)
+        if emit:
+            self.topologyChanged.emit(t)
+            self.emit_delta()
+        return t
+    def on_topology_changed(self, *a):
+        self._apply_topology_state(True)
+    def collect(self):
+        return dict(
+            topology=self.cb_topology.currentText(),
+            R=self.sp_R.value(), lat=self.sp_lat.value(), lon=self.sp_lon.value(),
+            N=self.sp_N.value(), phi_g=self.sp_phi.value(),
+            R_major=self.sp_Rmaj.value(), r_minor=self.sp_rmin.value(),
+            eps1=self.sp_eps1.value(), eps2=self.sp_eps2.value(),
+            ax=self.sp_ax.value(), ay=self.sp_ay.value(), az=self.sp_az.value(),
+            geo_level=self.sp_geoLevel.value(), mobius_w=self.sp_mobW.value()
+        )
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["geometry"]
+        mappings = [
+            (self.cb_topology, cfg.get("topology", d["topology"])),
+            (self.sp_R, float(cfg.get("R", d["R"]))),
+            (self.sp_lat, int(cfg.get("lat", d["lat"]))),
+            (self.sp_lon, int(cfg.get("lon", d["lon"]))),
+            (self.sp_N, int(cfg.get("N", d["N"]))),
+            (self.sp_phi, float(cfg.get("phi_g", d["phi_g"]))),
+            (self.sp_Rmaj, float(cfg.get("R_major", d["R_major"]))),
+            (self.sp_rmin, float(cfg.get("r_minor", d["r_minor"]))),
+            (self.sp_eps1, float(cfg.get("eps1", d["eps1"]))),
+            (self.sp_eps2, float(cfg.get("eps2", d["eps2"]))),
+            (self.sp_ax, float(cfg.get("ax", d["ax"]))),
+            (self.sp_ay, float(cfg.get("ay", d["ay"]))),
+            (self.sp_az, float(cfg.get("az", d["az"]))),
+            (self.sp_geoLevel, int(cfg.get("geo_level", d["geo_level"]))),
+            (self.sp_mobW, float(cfg.get("mobius_w", d["mobius_w"]))),
+        ]
+
+        with QtCore.QSignalBlocker(self.cb_topology):
+            self.cb_topology.setCurrentText(mappings[0][1])
+
+        for widget, value in mappings[1:]:
+            with QtCore.QSignalBlocker(widget):
+                widget.setValue(value)
+
+        self._apply_topology_state(emit=False)
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"geometry": self.collect()})
+
+## core/control/mask_tab.py
+
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS, TOOLTIPS
+
+class MaskTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["mask"]
+        fl = QtWidgets.QFormLayout(self)
+        self.chk_enabled = QtWidgets.QCheckBox(); self.chk_enabled.setChecked(d["enabled"])
+        self.cb_mode = QtWidgets.QComboBox(); self.cb_mode.addItems(["none","north_cap","south_cap","equatorial_band","longitudinal_band"]); self.cb_mode.setCurrentText(d["mode"])
+        self.sp_angle = QtWidgets.QDoubleSpinBox(); self.sp_angle.setRange(0.0,90.0); self.sp_angle.setSingleStep(1.0); self.sp_angle.setValue(d["angleDeg"])
+        self.sp_band = QtWidgets.QDoubleSpinBox(); self.sp_band.setRange(0.0,90.0); self.sp_band.setSingleStep(1.0); self.sp_band.setValue(d["bandHalfDeg"])
+        self.sp_lonC = QtWidgets.QDoubleSpinBox(); self.sp_lonC.setRange(-180.0,180.0); self.sp_lonC.setSingleStep(1.0); self.sp_lonC.setValue(d["lonCenterDeg"])
+        self.sp_lonW = QtWidgets.QDoubleSpinBox(); self.sp_lonW.setRange(0.0,180.0); self.sp_lonW.setSingleStep(1.0); self.sp_lonW.setValue(d["lonWidthDeg"])
+        self.sp_soft = QtWidgets.QDoubleSpinBox(); self.sp_soft.setRange(0.0,45.0); self.sp_soft.setSingleStep(1.0); self.sp_soft.setValue(d["softDeg"])
+        self.chk_invert = QtWidgets.QCheckBox(); self.chk_invert.setChecked(d["invert"])
+        row(fl, "enable", self.chk_enabled, TOOLTIPS["mask.enabled"], lambda: self.chk_enabled.setChecked(d["enabled"]))
+        row(fl, "mode", self.cb_mode, TOOLTIPS["mask.mode"], lambda: self.cb_mode.setCurrentText(d["mode"]))
+        row(fl, "cap angle (°)", self.sp_angle, TOOLTIPS["mask.angleDeg"], lambda: self.sp_angle.setValue(d["angleDeg"]))
+        row(fl, "band half (°)", self.sp_band, TOOLTIPS["mask.bandHalfDeg"], lambda: self.sp_band.setValue(d["bandHalfDeg"]))
+        row(fl, "lon center (°)", self.sp_lonC, TOOLTIPS["mask.lonCenterDeg"], lambda: self.sp_lonC.setValue(d["lonCenterDeg"]))
+        row(fl, "lon width (°)", self.sp_lonW, TOOLTIPS["mask.lonWidthDeg"], lambda: self.sp_lonW.setValue(d["lonWidthDeg"]))
+        row(fl, "soft (°)", self.sp_soft, TOOLTIPS["mask.softDeg"], lambda: self.sp_soft.setValue(d["softDeg"]))
+        row(fl, "invert", self.chk_invert, TOOLTIPS["mask.invert"], lambda: self.chk_invert.setChecked(d["invert"]))
+        for w in [self.chk_enabled,self.cb_mode,self.sp_angle,self.sp_band,self.sp_lonC,self.sp_lonW,self.sp_soft,self.chk_invert]:
+            if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
+            elif isinstance(w, QtWidgets.QComboBox): w.currentIndexChanged.connect(self.emit_delta)
+            else: w.valueChanged.connect(self.emit_delta)
+    def collect(self):
+        return dict(enabled=self.chk_enabled.isChecked(), mode=self.cb_mode.currentText(), angleDeg=self.sp_angle.value(),
+                    bandHalfDeg=self.sp_band.value(), lonCenterDeg=self.sp_lonC.value(), lonWidthDeg=self.sp_lonW.value(),
+                    softDeg=self.sp_soft.value(), invert=self.chk_invert.isChecked())
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["mask"]
+        with QtCore.QSignalBlocker(self.chk_enabled):
+            self.chk_enabled.setChecked(bool(cfg.get("enabled", d["enabled"])))
+        with QtCore.QSignalBlocker(self.cb_mode):
+            self.cb_mode.setCurrentText(str(cfg.get("mode", d["mode"])))
+        with QtCore.QSignalBlocker(self.sp_angle):
+            self.sp_angle.setValue(float(cfg.get("angleDeg", d["angleDeg"])))
+        with QtCore.QSignalBlocker(self.sp_band):
+            self.sp_band.setValue(float(cfg.get("bandHalfDeg", d["bandHalfDeg"])))
+        with QtCore.QSignalBlocker(self.sp_lonC):
+            self.sp_lonC.setValue(float(cfg.get("lonCenterDeg", d["lonCenterDeg"])))
+        with QtCore.QSignalBlocker(self.sp_lonW):
+            self.sp_lonW.setValue(float(cfg.get("lonWidthDeg", d["lonWidthDeg"])))
+        with QtCore.QSignalBlocker(self.sp_soft):
+            self.sp_soft.setValue(float(cfg.get("softDeg", d["softDeg"])))
+        with QtCore.QSignalBlocker(self.chk_invert):
+            self.chk_invert.setChecked(bool(cfg.get("invert", d["invert"])))
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"mask": self.collect()})
+
+## core/control/profile_manager.py
+
+import copy
+import json
+from pathlib import Path
+from typing import Dict, Iterable, Optional
+
+try:
+    from .config import DEFAULTS
+except ImportError:  # pragma: no cover
+    from core.control.config import DEFAULTS
+
+
+class ProfileManager:
+    """Persist and retrieve parameter profiles."""
+
+    DEFAULT_PROFILE = "Default"
+
+    def __init__(self, storage_path: Optional[Path] = None):
+        base_dir = Path.home() / ".dyxten"
+        self.path = storage_path or (base_dir / "profiles.json")
+        self._profiles: Dict[str, dict] = {}
+        self._load()
+
+    # ------------------------------------------------------------------ utils
+    def _load(self) -> None:
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                self._profiles = {
+                    str(name): self._sanitize_profile(data)
+                    for name, data in raw.items()
+                    if isinstance(data, dict)
+                }
+            else:
+                self._profiles = {}
+        except FileNotFoundError:
+            self._profiles = {}
+        except Exception:
+            self._profiles = {}
+
+        if self.ensure_default(DEFAULTS):
+            self._write()
+
+    def _write(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        serialisable = {name: data for name, data in sorted(self._profiles.items())}
+        self.path.write_text(
+            json.dumps(serialisable, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def _sanitize_profile(data: Optional[dict]) -> dict:
+        if not isinstance(data, dict):
+            return {}
+        sanitized: Dict[str, dict] = {}
+        for section, values in data.items():
+            if isinstance(values, dict):
+                sanitized[str(section)] = copy.deepcopy(values)
+        return sanitized
+
+    @staticmethod
+    def _merge(base: dict, override: dict) -> dict:
+        out = copy.deepcopy(base)
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(out.get(key), dict):
+                out[key].update(copy.deepcopy(value))
+            else:
+                out[key] = copy.deepcopy(value)
+        return out
+
+    @staticmethod
+    def _coerce_state(state: dict) -> dict:
+        coerced: Dict[str, dict] = {}
+        for key, section in state.items():
+            if isinstance(section, dict):
+                coerced[key] = copy.deepcopy(section)
+        return coerced
+
+    # ---------------------------------------------------------------- profiles
+    def ensure_default(self, defaults: dict) -> bool:
+        if self.DEFAULT_PROFILE not in self._profiles:
+            self._profiles[self.DEFAULT_PROFILE] = copy.deepcopy(defaults)
+            return True
+        return False
+
+    def list_profiles(self) -> Iterable[str]:
+        return sorted(self._profiles.keys(), key=str.lower)
+
+    def has_profile(self, name: str) -> bool:
+        return name in self._profiles
+
+    def get_profile(self, name: str) -> dict:
+        data = self._profiles.get(name)
+        if data is None:
+            data = self._profiles[self.DEFAULT_PROFILE]
+        return self._merge(DEFAULTS, data)
+
+    def save_profile(self, name: str, state: dict) -> None:
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("Profile name cannot be empty")
+        self._profiles[clean_name] = self._coerce_state(state)
+        self._write()
+
+    def delete_profile(self, name: str) -> None:
+        if name == self.DEFAULT_PROFILE:
+            raise ValueError("Default profile cannot be deleted")
+        if name in self._profiles:
+            del self._profiles[name]
+            self._write()
+
+    def rename_profile(self, old: str, new: str) -> None:
+        new_name = new.strip()
+        if not new_name:
+            raise ValueError("Profile name cannot be empty")
+        if old == self.DEFAULT_PROFILE:
+            raise ValueError("Default profile cannot be renamed")
+        if old not in self._profiles:
+            raise KeyError(old)
+        if new_name in self._profiles:
+            raise ValueError("Profile already exists")
+        self._profiles[new_name] = self._profiles.pop(old)
+        self._write()
+
+    def profile_equals(self, name: str, state: dict) -> bool:
+        if name not in self._profiles:
+            return False
+        return self._profiles[name] == self._coerce_state(state)
+
+    def reload(self) -> None:
+        self._load()
+
+## core/control/system_tab.py
+
+
+from PyQt5 import QtWidgets, QtCore
+from .widgets import row
+from .config import DEFAULTS, TOOLTIPS
+
+class SystemTab(QtWidgets.QWidget):
+    changed = QtCore.pyqtSignal(dict)
+    shutdownRequested = QtCore.pyqtSignal()
+    def __init__(self):
+        super().__init__()
+        d = DEFAULTS["system"]
+        fl = QtWidgets.QFormLayout(self)
+        self.sp_Nmax = QtWidgets.QSpinBox(); self.sp_Nmax.setRange(100,500000); self.sp_Nmax.setValue(d["Nmax"])
+        self.sp_dpr  = QtWidgets.QDoubleSpinBox(); self.sp_dpr.setRange(1.0,2.0); self.sp_dpr.setSingleStep(0.1); self.sp_dpr.setValue(d["dprClamp"])
+        self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
+        self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
+        self.bt_shutdown = QtWidgets.QPushButton("Shutdown"); self.bt_shutdown.clicked.connect(lambda: self.shutdownRequested.emit())
+        row(fl, "N max", self.sp_Nmax, TOOLTIPS["system.Nmax"], lambda: self.sp_Nmax.setValue(d["Nmax"]))
+        row(fl, "DPR clamp", self.sp_dpr, TOOLTIPS["system.dprClamp"], lambda: self.sp_dpr.setValue(d["dprClamp"]))
+        row(fl, "Tri profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
+        row(fl, "Transparence", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
+        fl.addRow(self.bt_shutdown)
+        for w in [self.sp_Nmax,self.sp_dpr,self.chk_depthSort,self.chk_transparent]:
+            if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
+            else: w.valueChanged.connect(self.emit_delta)
+    def collect(self):
+        return dict(Nmax=self.sp_Nmax.value(), dprClamp=self.sp_dpr.value(),
+                    depthSort=self.chk_depthSort.isChecked(), transparent=self.chk_transparent.isChecked())
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["system"]
+        with QtCore.QSignalBlocker(self.sp_Nmax):
+            self.sp_Nmax.setValue(int(cfg.get("Nmax", d["Nmax"])))
+        with QtCore.QSignalBlocker(self.sp_dpr):
+            self.sp_dpr.setValue(float(cfg.get("dprClamp", d["dprClamp"])))
+        with QtCore.QSignalBlocker(self.chk_depthSort):
+            self.chk_depthSort.setChecked(bool(cfg.get("depthSort", d["depthSort"])))
+        with QtCore.QSignalBlocker(self.chk_transparent):
+            self.chk_transparent.setChecked(bool(cfg.get("transparent", d["transparent"])))
+    def set_enabled(self, context: dict): pass
+    def emit_delta(self, *a): self.changed.emit({"system": self.collect()})
+
+## core/control/widgets.py
+
+
+from PyQt5 import QtWidgets, QtCore
+
+def mk_info(text: str) -> QtWidgets.QToolButton:
+    b = QtWidgets.QToolButton(); b.setText("i"); b.setCursor(QtCore.Qt.PointingHandCursor)
+    b.setToolTipDuration(0); b.setToolTip(text); b.setFixedSize(20,20)
+    b.setStyleSheet("QToolButton{border:1px solid #7aa7c7;border-radius:10px;font-weight:bold;padding:0;color:#2b6ea8;background:#e6f2fb;}QToolButton:hover{background:#d8ecfa;}")
+    return b
+
+def mk_reset(cb) -> QtWidgets.QToolButton:
+    b = QtWidgets.QToolButton(); b.setText("↺"); b.setCursor(QtCore.Qt.PointingHandCursor)
+    b.setToolTip("Réinitialiser"); b.setFixedSize(22,22)
+    b.setStyleSheet("QToolButton{border:1px solid #9aa5b1;border-radius:11px;padding:0;background:#f2f4f7;color:#2b2b2b;font-weight:bold;}QToolButton:hover{background:#e9edf2;}")
+    b.clicked.connect(cb); return b
+
+def row(form: QtWidgets.QFormLayout, label: str, widget: QtWidgets.QWidget, tip: str, reset_cb=None):
+    h = QtWidgets.QHBoxLayout(); h.setContentsMargins(0,0,0,0); h.setSpacing(6)
+    h.addWidget(widget, 1)
+    if reset_cb: h.addWidget(mk_reset(reset_cb), 0)
+    h.addWidget(mk_info(tip), 0)
+    w = QtWidgets.QWidget(); w.setLayout(h); form.addRow(label, w)
+
+def vec_row(spins):
+    h = QtWidgets.QHBoxLayout(); h.setContentsMargins(0,0,0,0); h.setSpacing(6)
+    for s in spins: h.addWidget(s)
+    w = QtWidgets.QWidget(); w.setLayout(h); return w
+

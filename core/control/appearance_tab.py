@@ -96,7 +96,7 @@ class AppearanceTab(QtWidgets.QWidget):
         self.cb_pxMode.currentIndexChanged.connect(self.sync_enabled)
         self.sync_enabled()  # grise ce qu’il faut
 
-    def sync_enabled(self):
+    def sync_enabled(self, emit=True):
         p = self.cb_palette.currentText()
         enable_colors = enable_k = enable_hsl = enable_noise = False
 
@@ -122,7 +122,8 @@ class AppearanceTab(QtWidgets.QWidget):
         self.sp_pxFreq.setEnabled(px_enabled)
         self.sp_pxPhase.setEnabled(px_enabled)
 
-        self.emit_delta()
+        if emit:
+            self.emit_delta()
 
     def _on_change(self, *a): self.sync_enabled()
 
@@ -144,6 +145,51 @@ class AppearanceTab(QtWidgets.QWidget):
             pxModMode=self.cb_pxMode.currentText(), pxModAmp=self.sp_pxAmp.value(),
             pxModFreq=self.sp_pxFreq.value(), pxModPhaseDeg=self.sp_pxPhase.value(),
         )
+
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["appearance"]
+        def val(key):
+            return cfg.get(key, d[key])
+
+        with QtCore.QSignalBlocker(self.ed_color):
+            self.ed_color.setText(str(val("color")))
+        with QtCore.QSignalBlocker(self.ed_colors):
+            self.ed_colors.setText(str(val("colors")))
+        with QtCore.QSignalBlocker(self.sp_opacity):
+            self.sp_opacity.setValue(float(val("opacity")))
+        with QtCore.QSignalBlocker(self.sp_px):
+            self.sp_px.setValue(float(val("px")))
+        with QtCore.QSignalBlocker(self.cb_palette):
+            self.cb_palette.setCurrentText(str(val("palette")))
+        with QtCore.QSignalBlocker(self.sp_paletteK):
+            self.sp_paletteK.setValue(int(val("paletteK")))
+        with QtCore.QSignalBlocker(self.cb_blend):
+            self.cb_blend.setCurrentText(str(val("blendMode")))
+        with QtCore.QSignalBlocker(self.cb_shape):
+            self.cb_shape.setCurrentText(str(val("shape")))
+        with QtCore.QSignalBlocker(self.sp_alphaDepth):
+            self.sp_alphaDepth.setValue(float(val("alphaDepth")))
+        with QtCore.QSignalBlocker(self.sp_h0):
+            self.sp_h0.setValue(float(val("h0")))
+        with QtCore.QSignalBlocker(self.sp_dh):
+            self.sp_dh.setValue(float(val("dh")))
+        with QtCore.QSignalBlocker(self.sp_wh):
+            self.sp_wh.setValue(float(val("wh")))
+        with QtCore.QSignalBlocker(self.sp_noiseScale):
+            self.sp_noiseScale.setValue(float(val("noiseScale")))
+        with QtCore.QSignalBlocker(self.sp_noiseSpeed):
+            self.sp_noiseSpeed.setValue(float(val("noiseSpeed")))
+        with QtCore.QSignalBlocker(self.cb_pxMode):
+            self.cb_pxMode.setCurrentText(str(val("pxModMode")))
+        with QtCore.QSignalBlocker(self.sp_pxAmp):
+            self.sp_pxAmp.setValue(float(val("pxModAmp")))
+        with QtCore.QSignalBlocker(self.sp_pxFreq):
+            self.sp_pxFreq.setValue(float(val("pxModFreq")))
+        with QtCore.QSignalBlocker(self.sp_pxPhase):
+            self.sp_pxPhase.setValue(float(val("pxModPhaseDeg")))
+
+        self.sync_enabled(emit=False)
 
     def pick_color(self):
         c = QtWidgets.QColorDialog.getColor(QtGui.QColor(self.ed_color.text().strip() or "#00C8FF"), self, "Couleur")

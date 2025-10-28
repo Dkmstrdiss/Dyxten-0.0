@@ -16,6 +16,12 @@ class DistributionTab(QtWidgets.QWidget):
         self.cb_pr.currentIndexChanged.connect(self.emit_delta)
         self.sp_dmin_px.valueChanged.connect(self.emit_delta)
     def collect(self): return dict(pr=self.cb_pr.currentText(), dmin_px=self.sp_dmin_px.value())
-    def set_defaults(self, cfg): pass
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["distribution"]
+        with QtCore.QSignalBlocker(self.cb_pr):
+            self.cb_pr.setCurrentText(str(cfg.get("pr", d["pr"])))
+        with QtCore.QSignalBlocker(self.sp_dmin_px):
+            self.sp_dmin_px.setValue(float(cfg.get("dmin_px", d["dmin_px"])))
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"distribution": self.collect()})

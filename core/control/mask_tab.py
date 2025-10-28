@@ -33,6 +33,24 @@ class MaskTab(QtWidgets.QWidget):
         return dict(enabled=self.chk_enabled.isChecked(), mode=self.cb_mode.currentText(), angleDeg=self.sp_angle.value(),
                     bandHalfDeg=self.sp_band.value(), lonCenterDeg=self.sp_lonC.value(), lonWidthDeg=self.sp_lonW.value(),
                     softDeg=self.sp_soft.value(), invert=self.chk_invert.isChecked())
-    def set_defaults(self, cfg): pass
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["mask"]
+        with QtCore.QSignalBlocker(self.chk_enabled):
+            self.chk_enabled.setChecked(bool(cfg.get("enabled", d["enabled"])))
+        with QtCore.QSignalBlocker(self.cb_mode):
+            self.cb_mode.setCurrentText(str(cfg.get("mode", d["mode"])))
+        with QtCore.QSignalBlocker(self.sp_angle):
+            self.sp_angle.setValue(float(cfg.get("angleDeg", d["angleDeg"])))
+        with QtCore.QSignalBlocker(self.sp_band):
+            self.sp_band.setValue(float(cfg.get("bandHalfDeg", d["bandHalfDeg"])))
+        with QtCore.QSignalBlocker(self.sp_lonC):
+            self.sp_lonC.setValue(float(cfg.get("lonCenterDeg", d["lonCenterDeg"])))
+        with QtCore.QSignalBlocker(self.sp_lonW):
+            self.sp_lonW.setValue(float(cfg.get("lonWidthDeg", d["lonWidthDeg"])))
+        with QtCore.QSignalBlocker(self.sp_soft):
+            self.sp_soft.setValue(float(cfg.get("softDeg", d["softDeg"])))
+        with QtCore.QSignalBlocker(self.chk_invert):
+            self.chk_invert.setChecked(bool(cfg.get("invert", d["invert"])))
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"mask": self.collect()})

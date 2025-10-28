@@ -36,3 +36,17 @@ class CameraTab(QtWidgets.QWidget):
             omegaDegPerSec=self.sl_omega.value(),
             fov=self.sp_fov.value()
         )
+
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["camera"]
+        mappings = [
+            (self.sp_camRadius, float, cfg.get("camRadius", d["camRadius"])),
+            (self.sl_camHeight, int, cfg.get("camHeightDeg", d["camHeightDeg"])),
+            (self.sl_camTilt, int, cfg.get("camTiltDeg", d["camTiltDeg"])),
+            (self.sl_omega, int, cfg.get("omegaDegPerSec", d["omegaDegPerSec"])),
+            (self.sp_fov, int, cfg.get("fov", d["fov"])),
+        ]
+        for widget, cast, value in mappings:
+            with QtCore.QSignalBlocker(widget):
+                widget.setValue(cast(value))

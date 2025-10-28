@@ -33,6 +33,27 @@ class DynamicsTab(QtWidgets.QWidget):
                     pulseA=self.sp_pulseA.value(), pulseW=self.sp_pulseW.value(),
                     pulsePhaseDeg=self.sp_pulsePhase.value(),
                     rotPhaseMode=self.cb_rotPhaseMode.currentText(), rotPhaseDeg=self.sp_rotPhaseDeg.value())
-    def set_defaults(self, cfg): pass
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["dynamics"]
+        def val(key):
+            return cfg.get(key, d[key])
+
+        with QtCore.QSignalBlocker(self.sp_rotX):
+            self.sp_rotX.setValue(float(val("rotX")))
+        with QtCore.QSignalBlocker(self.sp_rotY):
+            self.sp_rotY.setValue(float(val("rotY")))
+        with QtCore.QSignalBlocker(self.sp_rotZ):
+            self.sp_rotZ.setValue(float(val("rotZ")))
+        with QtCore.QSignalBlocker(self.sp_pulseA):
+            self.sp_pulseA.setValue(float(val("pulseA")))
+        with QtCore.QSignalBlocker(self.sp_pulseW):
+            self.sp_pulseW.setValue(float(val("pulseW")))
+        with QtCore.QSignalBlocker(self.sp_pulsePhase):
+            self.sp_pulsePhase.setValue(float(val("pulsePhaseDeg")))
+        with QtCore.QSignalBlocker(self.cb_rotPhaseMode):
+            self.cb_rotPhaseMode.setCurrentText(str(val("rotPhaseMode")))
+        with QtCore.QSignalBlocker(self.sp_rotPhaseDeg):
+            self.sp_rotPhaseDeg.setValue(float(val("rotPhaseDeg")))
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"dynamics": self.collect()})
