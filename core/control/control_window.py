@@ -1,6 +1,5 @@
 # core/control/control_window.py
 import json
-from typing import Optional
 from PyQt5 import QtWidgets, QtCore, QtGui
 
 # Imports robustes (exécution directe ou en module)
@@ -13,7 +12,6 @@ try:
     from .distribution_tab import DistributionTab
     from .mask_tab import MaskTab
     from .system_tab import SystemTab
-    from .profile_manager import ProfileManager
 except ImportError:
     from core.control.config import DEFAULTS
     from core.control.camera_tab import CameraTab
@@ -23,7 +21,6 @@ except ImportError:
     from core.control.distribution_tab import DistributionTab
     from core.control.mask_tab import MaskTab
     from core.control.system_tab import SystemTab
-    from core.control.profile_manager import ProfileManager
 
 
 class ControlWindow(QtWidgets.QMainWindow):
@@ -31,11 +28,18 @@ class ControlWindow(QtWidgets.QMainWindow):
         super().__init__(None)
         self.setWindowTitle("Dyxten — Control v2")
         self.view_win = view_win
+
         self.profile_mgr = ProfileManager()
         self._loading_profile = False
         self._updating_profiles = False
         self._dirty = False
+
+
+        self.state = {}
+
         self.current_profile = ProfileManager.DEFAULT_PROFILE
+
+
 
         # Barre d’outils persistante
         tb = QtWidgets.QToolBar("Main")
@@ -89,7 +93,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.addAction(self.act_reload_profile)
         tb.addAction(self.act_reload_profile)
 
-        # Bouton persistant en bas
+
         sb = QtWidgets.QStatusBar()
         self.setStatusBar(sb)
         btn_quit = QtWidgets.QPushButton("Shutdown")
@@ -146,8 +150,17 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.show()
 
         # État initial
+
         self.refresh_profiles(select=self.current_profile)
+
         self.load_profile(self.current_profile)
+
+        QtCore.QTimer.singleShot(0, self._apply_initial_profile)
+
+    def _apply_initial_profile(self):
+        if self.current_profile:
+            self.load_profile(self.current_profile)
+
 
     # ----------------------------------------------------------------- profil
     def refresh_profiles(self, select: Optional[str] = None):
@@ -193,127 +206,10 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.set_dirty(False)
         self.refresh_profiles(select=name)
         self._apply_transparency()
+
+        self.state = {k: (v.copy() if isinstance(v, dict) else v) for k, v in DEFAULTS.items()}
+
         self.push_params()
-        self.statusBar().showMessage(f"Profil '{name}' chargé", 3000)
-
-    def reload_profile(self):
-        if self.current_profile:
-            self.load_profile(self.current_profile)
-
-    def collect_state(self) -> dict:
-        return dict(
-            camera=self.tab_camera.collect(),
-            geometry=self.tab_geometry.collect(),
-            appearance=self.tab_appearance.collect(),
-            dynamics=self.tab_dynamics.collect(),
-            distribution=self.tab_distribution.collect(),
-            mask=self.tab_mask.collect(),
-            system=self.tab_system.collect(),
-        )
-
-    def save_profile(self):
-        if not self.current_profile:
-            self.save_profile_as()
-            return
-        self.state = self.collect_state()
-        try:
-            self.profile_mgr.save_profile(self.current_profile, self.state)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.set_dirty(False)
-        self.statusBar().showMessage(f"Profil '{self.current_profile}' enregistré", 3000)
-
-    def save_profile_as(self):
-        name, ok = QtWidgets.QInputDialog.getText(self, "Sauver le profil", "Nom du profil :", text=self.current_profile or "")
-        if not ok:
-            return
-        name = name.strip()
-        if not name:
-            QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom de profil.")
-            return
-        if self.profile_mgr.has_profile(name) and name != self.current_profile:
-            resp = QtWidgets.QMessageBox.question(
-                self,
-                "Écraser le profil",
-                f"Le profil '{name}' existe déjà. Voulez-vous l'écraser ?",
-            )
-            if resp != QtWidgets.QMessageBox.Yes:
-                return
-        state = self.collect_state()
-        try:
-            self.profile_mgr.save_profile(name, state)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.state = state
-        self.current_profile = name
-        self.refresh_profiles(select=name)
-        self.set_dirty(False)
-        self.statusBar().showMessage(f"Profil '{name}' enregistré", 3000)
-
-    def rename_profile(self):
-        if self.current_profile == ProfileManager.DEFAULT_PROFILE:
-            QtWidgets.QMessageBox.information(self, "Action impossible", "Le profil par défaut ne peut pas être renommé.")
-            return
-        name, ok = QtWidgets.QInputDialog.getText(self, "Renommer le profil", "Nouveau nom :", text=self.current_profile)
-        if not ok:
-            return
-        name = name.strip()
-        if not name:
-            QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom de profil.")
-            return
-        if self.profile_mgr.has_profile(name):
-            QtWidgets.QMessageBox.warning(self, "Nom déjà utilisé", "Un profil avec ce nom existe déjà.")
-            return
-        try:
-            self.profile_mgr.rename_profile(self.current_profile, name)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.current_profile = name
-        self.refresh_profiles(select=name)
-        self.set_dirty(False)
-        self.statusBar().showMessage(f"Profil renommé en '{name}'", 3000)
-
-    def delete_profile(self):
-        if self.current_profile == ProfileManager.DEFAULT_PROFILE:
-            QtWidgets.QMessageBox.information(self, "Action impossible", "Le profil par défaut ne peut pas être supprimé.")
-            return
-        resp = QtWidgets.QMessageBox.question(
-            self,
-            "Supprimer le profil",
-            f"Voulez-vous vraiment supprimer le profil '{self.current_profile}' ?",
-        )
-        if resp != QtWidgets.QMessageBox.Yes:
-            return
-        try:
-            self.profile_mgr.delete_profile(self.current_profile)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.statusBar().showMessage("Profil supprimé", 3000)
-        self.current_profile = ProfileManager.DEFAULT_PROFILE
-        self.refresh_profiles(select=self.current_profile)
-        self.load_profile(self.current_profile)
-
-    def set_dirty(self, dirty: bool):
-        self._dirty = dirty
-        self.update_window_title()
-        self.act_rename_profile.setEnabled(self.current_profile != ProfileManager.DEFAULT_PROFILE)
-        self.act_delete_profile.setEnabled(self.current_profile != ProfileManager.DEFAULT_PROFILE)
-
-    def update_window_title(self):
-        suffix = ""
-        if self.current_profile:
-            suffix = f" — {self.current_profile}{'*' if self._dirty else ''}"
-        self.setWindowTitle("Dyxten — Control v2" + suffix)
-
-    def _apply_transparency(self):
-        try:
-            self.view_win.set_transparent(bool(self.state.get("system", {}).get("transparent", True)))
-        except Exception:
-            pass
 
     def on_delta(self, delta: dict):
         for k, v in delta.items():
@@ -321,9 +217,10 @@ class ControlWindow(QtWidgets.QMainWindow):
                 self.state.setdefault(k, {}).update(v)
             else:
                 self.state[k] = v
-        self._apply_transparency()
-        if not self._loading_profile:
-            self.set_dirty(not self.profile_mgr.profile_equals(self.current_profile, self.state))
+        try:
+            self.view_win.set_transparent(bool(self.state.get("system", {}).get("transparent", True)))
+        except Exception:
+            pass
         self.push_params()
 
     def on_topology_changed(self, topo: str):

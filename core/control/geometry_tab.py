@@ -42,7 +42,7 @@ class GeometryTab(QtWidgets.QWidget):
         for w in [self.sp_R,self.sp_lat,self.sp_lon,self.sp_N,self.sp_phi,self.sp_Rmaj,self.sp_rmin,self.sp_eps1,self.sp_eps2,self.sp_ax,self.sp_ay,self.sp_az,self.sp_geoLevel,self.sp_mobW]:
             w.valueChanged.connect(self.emit_delta)
         self.on_topology_changed()
-    def _apply_topology_state(self, emit=True):
+    def on_topology_changed(self, *a):
         t = self.cb_topology.currentText()
         uv  = (t=="uv_sphere")
         fib = (t=="fibo_sphere")
@@ -60,12 +60,7 @@ class GeometryTab(QtWidgets.QWidget):
         for w in [self.sp_eps1,self.sp_eps2,self.sp_ax,self.sp_ay,self.sp_az]: w.setEnabled(sup)
         self.sp_geoLevel.setEnabled(geo)
         self.sp_mobW.setEnabled(mob)
-        if emit:
-            self.topologyChanged.emit(t)
-            self.emit_delta()
-        return t
-    def on_topology_changed(self, *a):
-        self._apply_topology_state(True)
+        self.topologyChanged.emit(t); self.emit_delta()
     def collect(self):
         return dict(
             topology=self.cb_topology.currentText(),
@@ -76,34 +71,6 @@ class GeometryTab(QtWidgets.QWidget):
             ax=self.sp_ax.value(), ay=self.sp_ay.value(), az=self.sp_az.value(),
             geo_level=self.sp_geoLevel.value(), mobius_w=self.sp_mobW.value()
         )
-    def set_defaults(self, cfg):
-        cfg = cfg or {}
-        d = DEFAULTS["geometry"]
-        mappings = [
-            (self.cb_topology, cfg.get("topology", d["topology"])),
-            (self.sp_R, float(cfg.get("R", d["R"]))),
-            (self.sp_lat, int(cfg.get("lat", d["lat"]))),
-            (self.sp_lon, int(cfg.get("lon", d["lon"]))),
-            (self.sp_N, int(cfg.get("N", d["N"]))),
-            (self.sp_phi, float(cfg.get("phi_g", d["phi_g"]))),
-            (self.sp_Rmaj, float(cfg.get("R_major", d["R_major"]))),
-            (self.sp_rmin, float(cfg.get("r_minor", d["r_minor"]))),
-            (self.sp_eps1, float(cfg.get("eps1", d["eps1"]))),
-            (self.sp_eps2, float(cfg.get("eps2", d["eps2"]))),
-            (self.sp_ax, float(cfg.get("ax", d["ax"]))),
-            (self.sp_ay, float(cfg.get("ay", d["ay"]))),
-            (self.sp_az, float(cfg.get("az", d["az"]))),
-            (self.sp_geoLevel, int(cfg.get("geo_level", d["geo_level"]))),
-            (self.sp_mobW, float(cfg.get("mobius_w", d["mobius_w"]))),
-        ]
-
-        with QtCore.QSignalBlocker(self.cb_topology):
-            self.cb_topology.setCurrentText(mappings[0][1])
-
-        for widget, value in mappings[1:]:
-            with QtCore.QSignalBlocker(widget):
-                widget.setValue(value)
-
-        self._apply_topology_state(emit=False)
+    def set_defaults(self, cfg): pass
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"geometry": self.collect()})

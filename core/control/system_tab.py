@@ -26,16 +26,6 @@ class SystemTab(QtWidgets.QWidget):
     def collect(self):
         return dict(Nmax=self.sp_Nmax.value(), dprClamp=self.sp_dpr.value(),
                     depthSort=self.chk_depthSort.isChecked(), transparent=self.chk_transparent.isChecked())
-    def set_defaults(self, cfg):
-        cfg = cfg or {}
-        d = DEFAULTS["system"]
-        with QtCore.QSignalBlocker(self.sp_Nmax):
-            self.sp_Nmax.setValue(int(cfg.get("Nmax", d["Nmax"])))
-        with QtCore.QSignalBlocker(self.sp_dpr):
-            self.sp_dpr.setValue(float(cfg.get("dprClamp", d["dprClamp"])))
-        with QtCore.QSignalBlocker(self.chk_depthSort):
-            self.chk_depthSort.setChecked(bool(cfg.get("depthSort", d["depthSort"])))
-        with QtCore.QSignalBlocker(self.chk_transparent):
-            self.chk_transparent.setChecked(bool(cfg.get("transparent", d["transparent"])))
+    def set_defaults(self, cfg): pass
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"system": self.collect()})
