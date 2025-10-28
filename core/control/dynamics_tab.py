@@ -17,14 +17,14 @@ class DynamicsTab(QtWidgets.QWidget):
         self.sp_pulsePhase = QtWidgets.QDoubleSpinBox(); self.sp_pulsePhase.setRange(0.0,360.0); self.sp_pulsePhase.setValue(d["pulsePhaseDeg"])
         self.cb_rotPhaseMode = QtWidgets.QComboBox(); self.cb_rotPhaseMode.addItems(["none","by_index","by_radius"]); self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"])
         self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox(); self.sp_rotPhaseDeg.setRange(0.0,360.0); self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"])
-        row(fl, "rotX (°/s)", self.sp_rotX, TOOLTIPS["dynamics.rotX"], lambda: self.sp_rotX.setValue(d["rotX"]))
-        row(fl, "rotY (°/s)", self.sp_rotY, TOOLTIPS["dynamics.rotY"], lambda: self.sp_rotY.setValue(d["rotY"]))
-        row(fl, "rotZ (°/s)", self.sp_rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self.sp_rotZ.setValue(d["rotZ"]))
-        row(fl, "pulse A", self.sp_pulseA, TOOLTIPS["dynamics.pulseA"], lambda: self.sp_pulseA.setValue(d["pulseA"]))
-        row(fl, "pulse ω", self.sp_pulseW, TOOLTIPS["dynamics.pulseW"], lambda: self.sp_pulseW.setValue(d["pulseW"]))
-        row(fl, "pulse phase (°)", self.sp_pulsePhase, TOOLTIPS["dynamics.pulsePhaseDeg"], lambda: self.sp_pulsePhase.setValue(d["pulsePhaseDeg"]))
-        row(fl, "rot phase mode", self.cb_rotPhaseMode, TOOLTIPS["dynamics.rotPhaseMode"], lambda: self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"]))
-        row(fl, "rot phase (°)", self.sp_rotPhaseDeg, TOOLTIPS["dynamics.rotPhaseDeg"], lambda: self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"]))
+        row(fl, "Rotation X (°/s)", self.sp_rotX, TOOLTIPS["dynamics.rotX"], lambda: self.sp_rotX.setValue(d["rotX"]))
+        row(fl, "Rotation Y (°/s)", self.sp_rotY, TOOLTIPS["dynamics.rotY"], lambda: self.sp_rotY.setValue(d["rotY"]))
+        row(fl, "Rotation Z (°/s)", self.sp_rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self.sp_rotZ.setValue(d["rotZ"]))
+        row(fl, "Respiration (amplitude)", self.sp_pulseA, TOOLTIPS["dynamics.pulseA"], lambda: self.sp_pulseA.setValue(d["pulseA"]))
+        row(fl, "Respiration (vitesse)", self.sp_pulseW, TOOLTIPS["dynamics.pulseW"], lambda: self.sp_pulseW.setValue(d["pulseW"]))
+        row(fl, "Décalage respiration (°)", self.sp_pulsePhase, TOOLTIPS["dynamics.pulsePhaseDeg"], lambda: self.sp_pulsePhase.setValue(d["pulsePhaseDeg"]))
+        row(fl, "Décalage rotations", self.cb_rotPhaseMode, TOOLTIPS["dynamics.rotPhaseMode"], lambda: self.cb_rotPhaseMode.setCurrentText(d["rotPhaseMode"]))
+        row(fl, "Amplitude du décalage (°)", self.sp_rotPhaseDeg, TOOLTIPS["dynamics.rotPhaseDeg"], lambda: self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"]))
         for w in [self.sp_rotX,self.sp_rotY,self.sp_rotZ,self.sp_pulseA,self.sp_pulseW,self.sp_pulsePhase,self.cb_rotPhaseMode,self.sp_rotPhaseDeg]:
             if isinstance(w, QtWidgets.QComboBox): w.currentIndexChanged.connect(self.emit_delta)
             else: w.valueChanged.connect(self.emit_delta)
@@ -33,6 +33,27 @@ class DynamicsTab(QtWidgets.QWidget):
                     pulseA=self.sp_pulseA.value(), pulseW=self.sp_pulseW.value(),
                     pulsePhaseDeg=self.sp_pulsePhase.value(),
                     rotPhaseMode=self.cb_rotPhaseMode.currentText(), rotPhaseDeg=self.sp_rotPhaseDeg.value())
-    def set_defaults(self, cfg): pass
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["dynamics"]
+        def val(key):
+            return cfg.get(key, d[key])
+
+        with QtCore.QSignalBlocker(self.sp_rotX):
+            self.sp_rotX.setValue(float(val("rotX")))
+        with QtCore.QSignalBlocker(self.sp_rotY):
+            self.sp_rotY.setValue(float(val("rotY")))
+        with QtCore.QSignalBlocker(self.sp_rotZ):
+            self.sp_rotZ.setValue(float(val("rotZ")))
+        with QtCore.QSignalBlocker(self.sp_pulseA):
+            self.sp_pulseA.setValue(float(val("pulseA")))
+        with QtCore.QSignalBlocker(self.sp_pulseW):
+            self.sp_pulseW.setValue(float(val("pulseW")))
+        with QtCore.QSignalBlocker(self.sp_pulsePhase):
+            self.sp_pulsePhase.setValue(float(val("pulsePhaseDeg")))
+        with QtCore.QSignalBlocker(self.cb_rotPhaseMode):
+            self.cb_rotPhaseMode.setCurrentText(str(val("rotPhaseMode")))
+        with QtCore.QSignalBlocker(self.sp_rotPhaseDeg):
+            self.sp_rotPhaseDeg.setValue(float(val("rotPhaseDeg")))
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"dynamics": self.collect()})

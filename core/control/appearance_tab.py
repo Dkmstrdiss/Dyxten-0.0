@@ -22,7 +22,7 @@ class AppearanceTab(QtWidgets.QWidget):
         cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0,0,0,0)
         cly.addWidget(self.ed_color, 1); cly.addWidget(self.bt_pick, 0)
         cw = QtWidgets.QWidget(); cw.setLayout(cly)
-        row(fl, "color (hex)", cw, "Couleur principale", reset_cb=lambda: (self.ed_color.setText(d["color"]), self.emit_delta()))
+        row(fl, "Couleur principale", cw, "Couleur appliquée à toutes les particules lorsque la palette est uniforme.", reset_cb=lambda: (self.ed_color.setText(d["color"]), self.emit_delta()))
 
         # Liste de couleurs
         self.ed_colors = QtWidgets.QLineEdit(d["colors"])
@@ -31,14 +31,14 @@ class AppearanceTab(QtWidgets.QWidget):
         cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0, 0, 0, 0)
         cly.addWidget(self.ed_colors, 1); cly.addWidget(self.bt_colors, 0)
         cw = QtWidgets.QWidget(); cw.setLayout(cly)
-        row(fl, "colors (list@pos)", cw, "Ex: #F00@0,#0F0@0.5,#00F@1",
+        row(fl, "Dégradé personnalisé", cw, "Liste de couleurs et positions (ex. #F00@0,#0F0@0.5,#00F@1) pour les palettes dynamiques.",
             reset_cb=lambda: (self.ed_colors.setText(d["colors"]), self.emit_delta()))
 
         # Opacité / taille
         self.sp_opacity = QtWidgets.QDoubleSpinBox(); self.sp_opacity.setRange(0.0,1.0); self.sp_opacity.setSingleStep(0.05); self.sp_opacity.setValue(d["opacity"])
         self.sp_px = QtWidgets.QDoubleSpinBox(); self.sp_px.setRange(0.1,20.0); self.sp_px.setSingleStep(0.1); self.sp_px.setValue(d["px"])
-        row(fl, "opacity", self.sp_opacity, "Opacité globale", reset_cb=lambda: (self.sp_opacity.setValue(d["opacity"]), self.emit_delta()))
-        row(fl, "particle size (px)", self.sp_px, "Taille particule", reset_cb=lambda: (self.sp_px.setValue(d["px"]), self.emit_delta()))
+        row(fl, "Opacité", self.sp_opacity, "Rend les particules plus ou moins transparentes.", reset_cb=lambda: (self.sp_opacity.setValue(d["opacity"]), self.emit_delta()))
+        row(fl, "Taille des particules (px)", self.sp_px, "Définit le diamètre moyen des particules à l’écran.", reset_cb=lambda: (self.sp_px.setValue(d["px"]), self.emit_delta()))
 
         # Palette et options
         self.cb_palette = QtWidgets.QComboBox()
@@ -49,42 +49,42 @@ class AppearanceTab(QtWidgets.QWidget):
             "by_lat","by_lon","by_noise"
         ])
         self.cb_palette.setCurrentText(d["palette"])
-        row(fl, "palette", self.cb_palette, "Schéma de couleur", reset_cb=lambda: (self.cb_palette.setCurrentText(d["palette"]), self.emit_delta()))
+        row(fl, "Palette de couleurs", self.cb_palette, "Choisissez la façon dont les couleurs sont attribuées aux particules.", reset_cb=lambda: (self.cb_palette.setCurrentText(d["palette"]), self.emit_delta()))
 
         self.sp_paletteK = QtWidgets.QSpinBox(); self.sp_paletteK.setRange(1,512); self.sp_paletteK.setValue(d["paletteK"])
-        row(fl, "every_kth (K)", self.sp_paletteK, "Périodicité", reset_cb=lambda: (self.sp_paletteK.setValue(d["paletteK"]), self.emit_delta()))
+        row(fl, "Répétition (K)", self.sp_paletteK, "Nombre d’éléments avant que le motif de couleurs ne se répète.", reset_cb=lambda: (self.sp_paletteK.setValue(d["paletteK"]), self.emit_delta()))
 
         # Blend / shape / profondeur alpha
         self.cb_blend = QtWidgets.QComboBox(); self.cb_blend.addItems(["source-over","lighter","multiply","screen"]); self.cb_blend.setCurrentText(d["blendMode"])
         self.cb_shape = QtWidgets.QComboBox(); self.cb_shape.addItems(["circle","square"]); self.cb_shape.setCurrentText(d["shape"])
         self.sp_alphaDepth = QtWidgets.QDoubleSpinBox(); self.sp_alphaDepth.setRange(0.0,1.0); self.sp_alphaDepth.setSingleStep(0.05); self.sp_alphaDepth.setValue(d["alphaDepth"])
-        row(fl, "blend", self.cb_blend, "Mode de fusion", reset_cb=lambda: (self.cb_blend.setCurrentText(d["blendMode"]), self.emit_delta()))
-        row(fl, "shape", self.cb_shape, "Forme sprite", reset_cb=lambda: (self.cb_shape.setCurrentText(d["shape"]), self.emit_delta()))
-        row(fl, "alphaDepth", self.sp_alphaDepth, "Fondu distance", reset_cb=lambda: (self.sp_alphaDepth.setValue(d["alphaDepth"]), self.emit_delta()))
+        row(fl, "Fusion des couleurs", self.cb_blend, "Détermine comment les particules se mélangent entre elles et avec l’arrière-plan.", reset_cb=lambda: (self.cb_blend.setCurrentText(d["blendMode"]), self.emit_delta()))
+        row(fl, "Forme des particules", self.cb_shape, "Choisissez entre des particules rondes ou carrées.", reset_cb=lambda: (self.cb_shape.setCurrentText(d["shape"]), self.emit_delta()))
+        row(fl, "Fondu avec la profondeur", self.sp_alphaDepth, "Atténue progressivement les particules lointaines.", reset_cb=lambda: (self.sp_alphaDepth.setValue(d["alphaDepth"]), self.emit_delta()))
 
         # HSL
         self.sp_h0 = QtWidgets.QDoubleSpinBox(); self.sp_h0.setRange(0.0,360.0); self.sp_h0.setValue(d["h0"])
         self.sp_dh = QtWidgets.QDoubleSpinBox(); self.sp_dh.setRange(0.0,360.0); self.sp_dh.setValue(d["dh"])
         self.sp_wh = QtWidgets.QDoubleSpinBox(); self.sp_wh.setRange(0.0,20.0); self.sp_wh.setValue(d["wh"])
-        row(fl, "HSL h0", self.sp_h0, "Teinte base (°)", reset_cb=lambda: (self.sp_h0.setValue(d["h0"]), self.emit_delta()))
-        row(fl, "HSL Δh", self.sp_dh, "Amplitude teinte (°)", reset_cb=lambda: (self.sp_dh.setValue(d["dh"]), self.emit_delta()))
-        row(fl, "HSL ω", self.sp_wh, "Vitesse teinte", reset_cb=lambda: (self.sp_wh.setValue(d["wh"]), self.emit_delta()))
+        row(fl, "Teinte de départ (°)", self.sp_h0, "Couleur de base utilisée par les palettes HSL animées.", reset_cb=lambda: (self.sp_h0.setValue(d["h0"]), self.emit_delta()))
+        row(fl, "Amplitude de teinte (°)", self.sp_dh, "Élargit la plage de couleurs parcourue par l’animation.", reset_cb=lambda: (self.sp_dh.setValue(d["dh"]), self.emit_delta()))
+        row(fl, "Vitesse de variation", self.sp_wh, "Contrôle la rapidité du changement de couleur dans le temps.", reset_cb=lambda: (self.sp_wh.setValue(d["wh"]), self.emit_delta()))
 
         # Noise
         self.sp_noiseScale = QtWidgets.QDoubleSpinBox(); self.sp_noiseScale.setRange(0.05,10.0); self.sp_noiseScale.setSingleStep(0.05); self.sp_noiseScale.setValue(d["noiseScale"])
         self.sp_noiseSpeed = QtWidgets.QDoubleSpinBox(); self.sp_noiseSpeed.setRange(0.0,5.0); self.sp_noiseSpeed.setSingleStep(0.1); self.sp_noiseSpeed.setValue(d["noiseSpeed"])
-        row(fl, "noise scale", self.sp_noiseScale, "Échelle bruit", reset_cb=lambda: (self.sp_noiseScale.setValue(d["noiseScale"]), self.emit_delta()))
-        row(fl, "noise speed", self.sp_noiseSpeed, "Vitesse bruit", reset_cb=lambda: (self.sp_noiseSpeed.setValue(d["noiseSpeed"]), self.emit_delta()))
+        row(fl, "Taille du relief", self.sp_noiseScale, "Définit la taille des variations de couleur générées par le bruit.", reset_cb=lambda: (self.sp_noiseScale.setValue(d["noiseScale"]), self.emit_delta()))
+        row(fl, "Vitesse du relief", self.sp_noiseSpeed, "Anime les variations de couleur générées par le bruit.", reset_cb=lambda: (self.sp_noiseSpeed.setValue(d["noiseSpeed"]), self.emit_delta()))
 
         # Modulation de taille
         self.cb_pxMode = QtWidgets.QComboBox(); self.cb_pxMode.addItems(["none","by_index","by_radius"]); self.cb_pxMode.setCurrentText(d["pxModMode"])
         self.sp_pxAmp = QtWidgets.QDoubleSpinBox(); self.sp_pxAmp.setRange(0.0,1.0); self.sp_pxAmp.setSingleStep(0.01); self.sp_pxAmp.setValue(d["pxModAmp"])
         self.sp_pxFreq = QtWidgets.QDoubleSpinBox(); self.sp_pxFreq.setRange(0.0,10.0); self.sp_pxFreq.setSingleStep(0.1); self.sp_pxFreq.setValue(d["pxModFreq"])
         self.sp_pxPhase = QtWidgets.QDoubleSpinBox(); self.sp_pxPhase.setRange(0.0,360.0); self.sp_pxPhase.setValue(d["pxModPhaseDeg"])
-        row(fl, "px mode", self.cb_pxMode, "Modulation taille", reset_cb=lambda: (self.cb_pxMode.setCurrentText(d["pxModMode"]), self.emit_delta()))
-        row(fl, "px amp", self.sp_pxAmp, "Amplitude", reset_cb=lambda: (self.sp_pxAmp.setValue(d["pxModAmp"]), self.emit_delta()))
-        row(fl, "px freq", self.sp_pxFreq, "Fréquence", reset_cb=lambda: (self.sp_pxFreq.setValue(d["pxModFreq"]), self.emit_delta()))
-        row(fl, "px phase (°)", self.sp_pxPhase, "Phase", reset_cb=lambda: (self.sp_pxPhase.setValue(d["pxModPhaseDeg"]), self.emit_delta()))
+        row(fl, "Variation de taille", self.cb_pxMode, "Active des effets qui agrandissent ou réduisent les particules selon leur position.", reset_cb=lambda: (self.cb_pxMode.setCurrentText(d["pxModMode"]), self.emit_delta()))
+        row(fl, "Amplitude de variation", self.sp_pxAmp, "Contrôle l’écart maximum entre les particules les plus petites et les plus grandes.", reset_cb=lambda: (self.sp_pxAmp.setValue(d["pxModAmp"]), self.emit_delta()))
+        row(fl, "Rythme de variation", self.sp_pxFreq, "Règle la répétition du motif de taille.", reset_cb=lambda: (self.sp_pxFreq.setValue(d["pxModFreq"]), self.emit_delta()))
+        row(fl, "Décalage du motif (°)", self.sp_pxPhase, "Décale le motif de variation pour aligner les tailles comme souhaité.", reset_cb=lambda: (self.sp_pxPhase.setValue(d["pxModPhaseDeg"]), self.emit_delta()))
 
         # Signaux
         for w in self.findChildren((QtWidgets.QDoubleSpinBox, QtWidgets.QComboBox, QtWidgets.QLineEdit)):
@@ -96,7 +96,7 @@ class AppearanceTab(QtWidgets.QWidget):
         self.cb_pxMode.currentIndexChanged.connect(self.sync_enabled)
         self.sync_enabled()  # grise ce qu’il faut
 
-    def sync_enabled(self):
+    def sync_enabled(self, emit=True):
         p = self.cb_palette.currentText()
         enable_colors = enable_k = enable_hsl = enable_noise = False
 
@@ -122,7 +122,8 @@ class AppearanceTab(QtWidgets.QWidget):
         self.sp_pxFreq.setEnabled(px_enabled)
         self.sp_pxPhase.setEnabled(px_enabled)
 
-        self.emit_delta()
+        if emit:
+            self.emit_delta()
 
     def _on_change(self, *a): self.sync_enabled()
 
@@ -144,6 +145,51 @@ class AppearanceTab(QtWidgets.QWidget):
             pxModMode=self.cb_pxMode.currentText(), pxModAmp=self.sp_pxAmp.value(),
             pxModFreq=self.sp_pxFreq.value(), pxModPhaseDeg=self.sp_pxPhase.value(),
         )
+
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["appearance"]
+        def val(key):
+            return cfg.get(key, d[key])
+
+        with QtCore.QSignalBlocker(self.ed_color):
+            self.ed_color.setText(str(val("color")))
+        with QtCore.QSignalBlocker(self.ed_colors):
+            self.ed_colors.setText(str(val("colors")))
+        with QtCore.QSignalBlocker(self.sp_opacity):
+            self.sp_opacity.setValue(float(val("opacity")))
+        with QtCore.QSignalBlocker(self.sp_px):
+            self.sp_px.setValue(float(val("px")))
+        with QtCore.QSignalBlocker(self.cb_palette):
+            self.cb_palette.setCurrentText(str(val("palette")))
+        with QtCore.QSignalBlocker(self.sp_paletteK):
+            self.sp_paletteK.setValue(int(val("paletteK")))
+        with QtCore.QSignalBlocker(self.cb_blend):
+            self.cb_blend.setCurrentText(str(val("blendMode")))
+        with QtCore.QSignalBlocker(self.cb_shape):
+            self.cb_shape.setCurrentText(str(val("shape")))
+        with QtCore.QSignalBlocker(self.sp_alphaDepth):
+            self.sp_alphaDepth.setValue(float(val("alphaDepth")))
+        with QtCore.QSignalBlocker(self.sp_h0):
+            self.sp_h0.setValue(float(val("h0")))
+        with QtCore.QSignalBlocker(self.sp_dh):
+            self.sp_dh.setValue(float(val("dh")))
+        with QtCore.QSignalBlocker(self.sp_wh):
+            self.sp_wh.setValue(float(val("wh")))
+        with QtCore.QSignalBlocker(self.sp_noiseScale):
+            self.sp_noiseScale.setValue(float(val("noiseScale")))
+        with QtCore.QSignalBlocker(self.sp_noiseSpeed):
+            self.sp_noiseSpeed.setValue(float(val("noiseSpeed")))
+        with QtCore.QSignalBlocker(self.cb_pxMode):
+            self.cb_pxMode.setCurrentText(str(val("pxModMode")))
+        with QtCore.QSignalBlocker(self.sp_pxAmp):
+            self.sp_pxAmp.setValue(float(val("pxModAmp")))
+        with QtCore.QSignalBlocker(self.sp_pxFreq):
+            self.sp_pxFreq.setValue(float(val("pxModFreq")))
+        with QtCore.QSignalBlocker(self.sp_pxPhase):
+            self.sp_pxPhase.setValue(float(val("pxModPhaseDeg")))
+
+        self.sync_enabled(emit=False)
 
     def pick_color(self):
         c = QtWidgets.QColorDialog.getColor(QtGui.QColor(self.ed_color.text().strip() or "#00C8FF"), self, "Couleur")

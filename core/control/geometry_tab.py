@@ -26,23 +26,23 @@ class GeometryTab(QtWidgets.QWidget):
         self.sp_az = QtWidgets.QDoubleSpinBox(); self.sp_az.setRange(0.1,5.0); self.sp_az.setSingleStep(0.1); self.sp_az.setValue(d["az"])
         self.sp_geoLevel = QtWidgets.QSpinBox(); self.sp_geoLevel.setRange(0,5); self.sp_geoLevel.setValue(d["geo_level"])
         self.sp_mobW = QtWidgets.QDoubleSpinBox(); self.sp_mobW.setRange(0.05,2.0); self.sp_mobW.setSingleStep(0.05); self.sp_mobW.setValue(d["mobius_w"])
-        row(fl, "Topology", self.cb_topology, TOOLTIPS["geometry.topology"], lambda: self.cb_topology.setCurrentText(d["topology"]))
-        row(fl, "R", self.sp_R, TOOLTIPS["geometry.R"], lambda: self.sp_R.setValue(d["R"]))
-        row(fl, "lat", self.sp_lat, TOOLTIPS["geometry.lat"], lambda: self.sp_lat.setValue(d["lat"]))
-        row(fl, "lon", self.sp_lon, TOOLTIPS["geometry.lon"], lambda: self.sp_lon.setValue(d["lon"]))
-        row(fl, "N (Fibo/Phyllo)", self.sp_N, TOOLTIPS["geometry.N"], lambda: self.sp_N.setValue(d["N"]))
-        row(fl, "phi_g", self.sp_phi, TOOLTIPS["geometry.phi_g"], lambda: self.sp_phi.setValue(d["phi_g"]))
-        row(fl, "R_major (torus)", self.sp_Rmaj, TOOLTIPS["geometry.R_major"], lambda: self.sp_Rmaj.setValue(d["R_major"]))
-        row(fl, "r_minor (torus)", self.sp_rmin, TOOLTIPS["geometry.r_minor"], lambda: self.sp_rmin.setValue(d["r_minor"]))
-        row(fl, "eps1/eps2 (superq)", vec_row([self.sp_eps1,self.sp_eps2]), TOOLTIPS["geometry.eps1"], lambda: (self.sp_eps1.setValue(d["eps1"]), self.sp_eps2.setValue(d["eps2"])))
-        row(fl, "ax/ay/az (superq)", vec_row([self.sp_ax,self.sp_ay,self.sp_az]), TOOLTIPS["geometry.ax"], lambda: (self.sp_ax.setValue(d["ax"]), self.sp_ay.setValue(d["ay"]), self.sp_az.setValue(d["az"])))
-        row(fl, "geo level", self.sp_geoLevel, TOOLTIPS["geometry.geo_level"], lambda: self.sp_geoLevel.setValue(d["geo_level"]))
-        row(fl, "mobius width", self.sp_mobW, TOOLTIPS["geometry.mobius_w"], lambda: self.sp_mobW.setValue(d["mobius_w"]))
+        row(fl, "Forme de base", self.cb_topology, TOOLTIPS["geometry.topology"], lambda: self.cb_topology.setCurrentText(d["topology"]))
+        row(fl, "Taille générale", self.sp_R, TOOLTIPS["geometry.R"], lambda: self.sp_R.setValue(d["R"]))
+        row(fl, "Anneaux horizontaux", self.sp_lat, TOOLTIPS["geometry.lat"], lambda: self.sp_lat.setValue(d["lat"]))
+        row(fl, "Colonnes verticales", self.sp_lon, TOOLTIPS["geometry.lon"], lambda: self.sp_lon.setValue(d["lon"]))
+        row(fl, "Nombre de points", self.sp_N, TOOLTIPS["geometry.N"], lambda: self.sp_N.setValue(d["N"]))
+        row(fl, "Rotation progressive", self.sp_phi, TOOLTIPS["geometry.phi_g"], lambda: self.sp_phi.setValue(d["phi_g"]))
+        row(fl, "Rayon externe (tore)", self.sp_Rmaj, TOOLTIPS["geometry.R_major"], lambda: self.sp_Rmaj.setValue(d["R_major"]))
+        row(fl, "Épaisseur du tore", self.sp_rmin, TOOLTIPS["geometry.r_minor"], lambda: self.sp_rmin.setValue(d["r_minor"]))
+        row(fl, "Arrondi horizontal/vertical", vec_row([self.sp_eps1,self.sp_eps2]), TOOLTIPS["geometry.eps1"], lambda: (self.sp_eps1.setValue(d["eps1"]), self.sp_eps2.setValue(d["eps2"])))
+        row(fl, "Étirer X / Y / Z", vec_row([self.sp_ax,self.sp_ay,self.sp_az]), TOOLTIPS["geometry.ax"], lambda: (self.sp_ax.setValue(d["ax"]), self.sp_ay.setValue(d["ay"]), self.sp_az.setValue(d["az"])))
+        row(fl, "Niveau de détail (icosaèdre)", self.sp_geoLevel, TOOLTIPS["geometry.geo_level"], lambda: self.sp_geoLevel.setValue(d["geo_level"]))
+        row(fl, "Largeur du ruban (Möbius)", self.sp_mobW, TOOLTIPS["geometry.mobius_w"], lambda: self.sp_mobW.setValue(d["mobius_w"]))
         self.cb_topology.currentIndexChanged.connect(self.on_topology_changed)
         for w in [self.sp_R,self.sp_lat,self.sp_lon,self.sp_N,self.sp_phi,self.sp_Rmaj,self.sp_rmin,self.sp_eps1,self.sp_eps2,self.sp_ax,self.sp_ay,self.sp_az,self.sp_geoLevel,self.sp_mobW]:
             w.valueChanged.connect(self.emit_delta)
         self.on_topology_changed()
-    def on_topology_changed(self, *a):
+    def _apply_topology_state(self, emit=True):
         t = self.cb_topology.currentText()
         uv  = (t=="uv_sphere")
         fib = (t=="fibo_sphere")
@@ -60,7 +60,12 @@ class GeometryTab(QtWidgets.QWidget):
         for w in [self.sp_eps1,self.sp_eps2,self.sp_ax,self.sp_ay,self.sp_az]: w.setEnabled(sup)
         self.sp_geoLevel.setEnabled(geo)
         self.sp_mobW.setEnabled(mob)
-        self.topologyChanged.emit(t); self.emit_delta()
+        if emit:
+            self.topologyChanged.emit(t)
+            self.emit_delta()
+        return t
+    def on_topology_changed(self, *a):
+        self._apply_topology_state(True)
     def collect(self):
         return dict(
             topology=self.cb_topology.currentText(),
@@ -71,6 +76,34 @@ class GeometryTab(QtWidgets.QWidget):
             ax=self.sp_ax.value(), ay=self.sp_ay.value(), az=self.sp_az.value(),
             geo_level=self.sp_geoLevel.value(), mobius_w=self.sp_mobW.value()
         )
-    def set_defaults(self, cfg): pass
+    def set_defaults(self, cfg):
+        cfg = cfg or {}
+        d = DEFAULTS["geometry"]
+        mappings = [
+            (self.cb_topology, cfg.get("topology", d["topology"])),
+            (self.sp_R, float(cfg.get("R", d["R"]))),
+            (self.sp_lat, int(cfg.get("lat", d["lat"]))),
+            (self.sp_lon, int(cfg.get("lon", d["lon"]))),
+            (self.sp_N, int(cfg.get("N", d["N"]))),
+            (self.sp_phi, float(cfg.get("phi_g", d["phi_g"]))),
+            (self.sp_Rmaj, float(cfg.get("R_major", d["R_major"]))),
+            (self.sp_rmin, float(cfg.get("r_minor", d["r_minor"]))),
+            (self.sp_eps1, float(cfg.get("eps1", d["eps1"]))),
+            (self.sp_eps2, float(cfg.get("eps2", d["eps2"]))),
+            (self.sp_ax, float(cfg.get("ax", d["ax"]))),
+            (self.sp_ay, float(cfg.get("ay", d["ay"]))),
+            (self.sp_az, float(cfg.get("az", d["az"]))),
+            (self.sp_geoLevel, int(cfg.get("geo_level", d["geo_level"]))),
+            (self.sp_mobW, float(cfg.get("mobius_w", d["mobius_w"]))),
+        ]
+
+        with QtCore.QSignalBlocker(self.cb_topology):
+            self.cb_topology.setCurrentText(mappings[0][1])
+
+        for widget, value in mappings[1:]:
+            with QtCore.QSignalBlocker(widget):
+                widget.setValue(value)
+
+        self._apply_topology_state(emit=False)
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a): self.changed.emit({"geometry": self.collect()})
