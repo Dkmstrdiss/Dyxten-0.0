@@ -1,6 +1,7 @@
 # core/control/control_window.py
 import json
 from typing import Optional
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 
 # Imports robustes (exécution directe ou en module)
@@ -14,16 +15,16 @@ try:
     from .mask_tab import MaskTab
     from .system_tab import SystemTab
     from .profile_manager import ProfileManager
-except ImportError:
-    from core.control.config import DEFAULTS
-    from core.control.camera_tab import CameraTab
-    from core.control.geometry_tab import GeometryTab
-    from core.control.appearance_tab import AppearanceTab
-    from core.control.dynamics_tab import DynamicsTab
-    from core.control.distribution_tab import DistributionTab
-    from core.control.mask_tab import MaskTab
-    from core.control.system_tab import SystemTab
-    from core.control.profile_manager import ProfileManager
+except ImportError:  # pragma: no cover - compatibilité exécution directe
+    from core.control.config import DEFAULTS  # type: ignore
+    from core.control.camera_tab import CameraTab  # type: ignore
+    from core.control.geometry_tab import GeometryTab  # type: ignore
+    from core.control.appearance_tab import AppearanceTab  # type: ignore
+    from core.control.dynamics_tab import DynamicsTab  # type: ignore
+    from core.control.distribution_tab import DistributionTab  # type: ignore
+    from core.control.mask_tab import MaskTab  # type: ignore
+    from core.control.system_tab import SystemTab  # type: ignore
+    from core.control.profile_manager import ProfileManager  # type: ignore
 
 
 class ControlWindow(QtWidgets.QMainWindow):
@@ -40,88 +41,105 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.state = {}
         self.current_profile = ProfileManager.DEFAULT_PROFILE
 
-        self.profile_mgr = ProfileManager()
-        self._loading_profile = False
-        self._updating_profiles = False
-        self._dirty = False
-
-
-        self.state = {}
-
-        self.current_profile = ProfileManager.DEFAULT_PROFILE
-
-
+        self._apply_theme()
 
         # Barre d’outils persistante
-        tb = QtWidgets.QToolBar("Main")
-        tb.setMovable(False)
-        tb.setFloatable(False)
-        tb.setIconSize(QtCore.QSize(16, 16))
-        self.addToolBar(QtCore.Qt.TopToolBarArea, tb)
+        toolbar = QtWidgets.QToolBar("Main")
+        toolbar.setMovable(False)
+        toolbar.setFloatable(False)
+        toolbar.setIconSize(QtCore.QSize(18, 18))
+        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
 
-        act_quit = QtWidgets.QAction("Shutdown", self)
+        style = self.style()
+
+        act_quit = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_TitleBarCloseButton), "Shutdown", self
+        )
         act_quit.setShortcut(QtGui.QKeySequence("Ctrl+Q"))
         act_quit.setShortcutContext(QtCore.Qt.ApplicationShortcut)
         act_quit.triggered.connect(app.quit)
         self.addAction(act_quit)
-        tb.addAction(act_quit)
+        toolbar.addAction(act_quit)
 
-        tb.addSeparator()
+        toolbar.addSeparator()
         lbl_profile = QtWidgets.QLabel("Profil :")
-        tb.addWidget(lbl_profile)
+        toolbar.addWidget(lbl_profile)
+
         self.cb_profiles = QtWidgets.QComboBox()
         self.cb_profiles.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.cb_profiles.setMinimumContentsLength(8)
         self.cb_profiles.currentTextChanged.connect(self.on_profile_selected)
-        tb.addWidget(self.cb_profiles)
+        toolbar.addWidget(self.cb_profiles)
 
-        self.act_save_profile = QtWidgets.QAction("Sauver", self)
+        spacer = QtWidgets.QWidget()
+        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        toolbar.addWidget(spacer)
+
+        self.act_save_profile = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_DialogSaveButton), "Sauver", self
+        )
         self.act_save_profile.setShortcut(QtGui.QKeySequence("Ctrl+S"))
         self.act_save_profile.setShortcutContext(QtCore.Qt.ApplicationShortcut)
         self.act_save_profile.triggered.connect(self.save_profile)
         self.addAction(self.act_save_profile)
-        tb.addAction(self.act_save_profile)
+        toolbar.addAction(self.act_save_profile)
 
-        self.act_save_as_profile = QtWidgets.QAction("Sauver sous…", self)
+        self.act_save_as_profile = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_DialogOpenButton), "Sauver sous…", self
+        )
         self.act_save_as_profile.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
         self.act_save_as_profile.setShortcutContext(QtCore.Qt.ApplicationShortcut)
         self.act_save_as_profile.triggered.connect(self.save_profile_as)
         self.addAction(self.act_save_as_profile)
-        tb.addAction(self.act_save_as_profile)
+        toolbar.addAction(self.act_save_as_profile)
 
-        self.act_rename_profile = QtWidgets.QAction("Renommer", self)
+        self.act_rename_profile = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder), "Renommer", self
+        )
         self.act_rename_profile.triggered.connect(self.rename_profile)
-        tb.addAction(self.act_rename_profile)
+        toolbar.addAction(self.act_rename_profile)
 
-        self.act_delete_profile = QtWidgets.QAction("Supprimer", self)
+        self.act_delete_profile = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_TrashIcon), "Supprimer", self
+        )
         self.act_delete_profile.triggered.connect(self.delete_profile)
-        tb.addAction(self.act_delete_profile)
+        toolbar.addAction(self.act_delete_profile)
 
-        self.act_reload_profile = QtWidgets.QAction("Recharger", self)
+        self.act_reload_profile = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_BrowserReload), "Recharger", self
+        )
         self.act_reload_profile.setShortcut(QtGui.QKeySequence("F5"))
         self.act_reload_profile.setShortcutContext(QtCore.Qt.ApplicationShortcut)
         self.act_reload_profile.triggered.connect(self.reload_profile)
         self.addAction(self.act_reload_profile)
-        tb.addAction(self.act_reload_profile)
+        toolbar.addAction(self.act_reload_profile)
 
         # Barre de statut pour les messages utilisateur
-        sb = QtWidgets.QStatusBar()
-        self.setStatusBar(sb)
+        status = QtWidgets.QStatusBar()
+        status.setObjectName("StatusBar")
+        status.setSizeGripEnabled(False)
+        self.setStatusBar(status)
 
         view = getattr(self.view_win, "view", None)
         if view is not None:
             try:
                 view.loadFinished.connect(self._on_view_ready)
-            except Exception:
+            except Exception:  # pragma: no cover - garde-fou plateforme
                 pass
             try:
                 if hasattr(view, "isLoading") and not view.isLoading():
                     QtCore.QTimer.singleShot(0, lambda: self._on_view_ready(True))
-            except Exception:
+            except Exception:  # pragma: no cover - garde-fou plateforme
                 pass
 
         # Onglets
         self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setObjectName("ControlTabs")
+        self.tabs.setTabBarAutoHide(False)
+        self.tabs.setMovable(False)
+        self.tabs.setDocumentMode(True)
+
         self.tab_camera = CameraTab()
         self.tab_geometry = GeometryTab()
         self.tab_appearance = AppearanceTab()
@@ -130,7 +148,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_mask = MaskTab()
         self.tab_system = SystemTab()
 
-        for t in [
+        for tab in [
             self.tab_camera,
             self.tab_geometry,
             self.tab_appearance,
@@ -139,7 +157,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_mask,
             self.tab_system,
         ]:
-            t.changed.connect(self.on_delta)
+            tab.changed.connect(self.on_delta)
 
         self.tab_geometry.topologyChanged.connect(self.on_topology_changed)
 
@@ -151,14 +169,33 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.tab_mask, "Masques")
         self.tabs.addTab(self.tab_system, "Système")
 
-        self.setCentralWidget(self.tabs)
+        # Habillage principal
+        shell = QtWidgets.QWidget()
+        shell.setObjectName("CardContainer")
+        shell_layout = QtWidgets.QVBoxLayout(shell)
+        shell_layout.setContentsMargins(24, 24, 24, 24)
+        shell_layout.setSpacing(18)
+
+        banner = self._build_profile_banner()
+        shell_layout.addWidget(banner)
+
+        card = QtWidgets.QFrame()
+        card.setObjectName("Card")
+        card.setGraphicsEffect(self._make_shadow(blur=36, offset=12))
+        card_layout = QtWidgets.QVBoxLayout(card)
+        card_layout.setContentsMargins(18, 18, 18, 18)
+        card_layout.setSpacing(12)
+        card_layout.addWidget(self.tabs)
+        shell_layout.addWidget(card, 1)
+
+        self.setCentralWidget(shell)
 
         # Fenêtre
-        self.resize(760, 900)
-        geo = screen.availableGeometry()
+        self.resize(780, 920)
+        geometry = screen.availableGeometry()
         self.move(
-            geo.x() + (geo.width() - self.width()) // 2,
-            geo.y() + (geo.height() - self.height()) // 2,
+            geometry.x() + (geometry.width() - self.width()) // 2,
+            geometry.y() + (geometry.height() - self.height()) // 2,
         )
         self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         self.show()
@@ -167,6 +204,8 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.refresh_profiles(select=self.current_profile)
         if self.current_profile:
             self.load_profile(self.current_profile)
+        else:
+            self._update_profile_banner()
 
     # ----------------------------------------------------------------- profil
     def refresh_profiles(self, select: Optional[str] = None):
@@ -180,13 +219,14 @@ class ControlWindow(QtWidgets.QMainWindow):
                 self.cb_profiles.addItems(names)
             target = select or self.current_profile
             if target in names:
-                idx = self.cb_profiles.findText(target)
-                if idx != -1:
-                    self.cb_profiles.setCurrentIndex(idx)
+                index = self.cb_profiles.findText(target)
+                if index != -1:
+                    self.cb_profiles.setCurrentIndex(index)
             else:
                 self.cb_profiles.setCurrentIndex(0)
         finally:
             self._updating_profiles = False
+        self._update_profile_banner()
 
     def on_profile_selected(self, name: str):
         if self._updating_profiles or self._loading_profile:
@@ -198,7 +238,10 @@ class ControlWindow(QtWidgets.QMainWindow):
         self._loading_profile = True
         try:
             profile = self.profile_mgr.get_profile(name)
-            self.state = {k: (v.copy() if isinstance(v, dict) else v) for k, v in profile.items()}
+            self.state = {
+                key: (value.copy() if isinstance(value, dict) else value)
+                for key, value in profile.items()
+            }
             self.tab_camera.set_defaults(self.state.get("camera"))
             self.tab_geometry.set_defaults(self.state.get("geometry"))
             self.tab_appearance.set_defaults(self.state.get("appearance"))
@@ -237,14 +280,19 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.state = self.collect_state()
         try:
             self.profile_mgr.save_profile(self.current_profile, self.state)
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - retour utilisateur
             QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
             return
         self.set_dirty(False)
         self.statusBar().showMessage(f"Profil '{self.current_profile}' enregistré", 3000)
 
     def save_profile_as(self):
-        name, ok = QtWidgets.QInputDialog.getText(self, "Sauver le profil", "Nom du profil :", text=self.current_profile or "")
+        name, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Sauver le profil",
+            "Nom du profil :",
+            text=self.current_profile or "",
+        )
         if not ok:
             return
         name = name.strip()
@@ -252,17 +300,17 @@ class ControlWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom de profil.")
             return
         if self.profile_mgr.has_profile(name) and name != self.current_profile:
-            resp = QtWidgets.QMessageBox.question(
+            response = QtWidgets.QMessageBox.question(
                 self,
                 "Écraser le profil",
                 f"Le profil '{name}' existe déjà. Voulez-vous l'écraser ?",
             )
-            if resp != QtWidgets.QMessageBox.Yes:
+            if response != QtWidgets.QMessageBox.Yes:
                 return
         state = self.collect_state()
         try:
             self.profile_mgr.save_profile(name, state)
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - retour utilisateur
             QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
             return
         self.state = state
@@ -273,9 +321,18 @@ class ControlWindow(QtWidgets.QMainWindow):
 
     def rename_profile(self):
         if self.current_profile == ProfileManager.DEFAULT_PROFILE:
-            QtWidgets.QMessageBox.information(self, "Action impossible", "Le profil par défaut ne peut pas être renommé.")
+            QtWidgets.QMessageBox.information(
+                self,
+                "Action impossible",
+                "Le profil par défaut ne peut pas être renommé.",
+            )
             return
-        name, ok = QtWidgets.QInputDialog.getText(self, "Renommer le profil", "Nouveau nom :", text=self.current_profile)
+        name, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Renommer le profil",
+            "Nouveau nom :",
+            text=self.current_profile,
+        )
         if not ok:
             return
         name = name.strip()
@@ -283,11 +340,15 @@ class ControlWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom de profil.")
             return
         if self.profile_mgr.has_profile(name):
-            QtWidgets.QMessageBox.warning(self, "Nom déjà utilisé", "Un profil avec ce nom existe déjà.")
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Nom déjà utilisé",
+                "Un profil avec ce nom existe déjà.",
+            )
             return
         try:
             self.profile_mgr.rename_profile(self.current_profile, name)
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - retour utilisateur
             QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
             return
         self.current_profile = name
@@ -297,18 +358,22 @@ class ControlWindow(QtWidgets.QMainWindow):
 
     def delete_profile(self):
         if self.current_profile == ProfileManager.DEFAULT_PROFILE:
-            QtWidgets.QMessageBox.information(self, "Action impossible", "Le profil par défaut ne peut pas être supprimé.")
+            QtWidgets.QMessageBox.information(
+                self,
+                "Action impossible",
+                "Le profil par défaut ne peut pas être supprimé.",
+            )
             return
-        resp = QtWidgets.QMessageBox.question(
+        response = QtWidgets.QMessageBox.question(
             self,
             "Supprimer le profil",
             f"Voulez-vous vraiment supprimer le profil '{self.current_profile}' ?",
         )
-        if resp != QtWidgets.QMessageBox.Yes:
+        if response != QtWidgets.QMessageBox.Yes:
             return
         try:
             self.profile_mgr.delete_profile(self.current_profile)
-        except Exception as exc:
+        except Exception as exc:  # pragma: no cover - retour utilisateur
             QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
             return
         self.statusBar().showMessage("Profil supprimé", 3000)
@@ -319,8 +384,13 @@ class ControlWindow(QtWidgets.QMainWindow):
     def set_dirty(self, dirty: bool):
         self._dirty = dirty
         self.update_window_title()
-        self.act_rename_profile.setEnabled(self.current_profile != ProfileManager.DEFAULT_PROFILE)
-        self.act_delete_profile.setEnabled(self.current_profile != ProfileManager.DEFAULT_PROFILE)
+        self.act_rename_profile.setEnabled(
+            self.current_profile != ProfileManager.DEFAULT_PROFILE
+        )
+        self.act_delete_profile.setEnabled(
+            self.current_profile != ProfileManager.DEFAULT_PROFILE
+        )
+        self._update_profile_banner()
 
     def update_window_title(self):
         suffix = ""
@@ -330,22 +400,26 @@ class ControlWindow(QtWidgets.QMainWindow):
 
     def _apply_transparency(self):
         try:
-            self.view_win.set_transparent(bool(self.state.get("system", {}).get("transparent", True)))
-        except Exception:
+            self.view_win.set_transparent(
+                bool(self.state.get("system", {}).get("transparent", True))
+            )
+        except Exception:  # pragma: no cover - garde-fou plateforme
             pass
 
     def on_delta(self, delta: dict):
-        for k, v in delta.items():
-            if isinstance(v, dict):
-                self.state.setdefault(k, {}).update(v)
+        for key, value in delta.items():
+            if isinstance(value, dict):
+                self.state.setdefault(key, {}).update(value)
             else:
-                self.state[k] = v
+                self.state[key] = value
         self._apply_transparency()
         if not self._loading_profile:
-            self.set_dirty(not self.profile_mgr.profile_equals(self.current_profile, self.state))
+            self.set_dirty(
+                not self.profile_mgr.profile_equals(self.current_profile, self.state)
+            )
         self.push_params()
 
-    def on_topology_changed(self, topo: str):
+    def on_topology_changed(self, topo: str):  # pragma: no cover - extension future
         pass
 
     def push_params(self):
@@ -371,5 +445,231 @@ class ControlWindow(QtWidgets.QMainWindow):
     def _run_js(self, js: str):
         try:
             self.view_win.view.page().runJavaScript(js)
-        except Exception:
+        except Exception:  # pragma: no cover - garde-fou plateforme
             pass
+
+    # ----------------------------------------------------------------- thème & bannière
+    def _apply_theme(self):
+        accent = "#536dfe"
+        accent_alt = "#7c4dff"
+        accent_rgb = "83, 109, 254"
+        parts = [
+            "QMainWindow {",
+            "    background-color: #15151f;",
+            "    color: #f5f6ff;",
+            "}",
+            "QToolBar {",
+            "    background: #1d1d29;",
+            "    border: none;",
+            "    border-bottom: 1px solid rgba(255, 255, 255, 0.08);",
+            "    padding: 8px 18px;",
+            "    spacing: 12px;",
+            "}",
+            "QToolButton {",
+            "    color: #f5f6ff;",
+            "    background: transparent;",
+            "    border-radius: 8px;",
+            "    padding: 6px 12px;",
+            "    font-weight: 500;",
+            "}",
+            f"QToolButton:hover {{",
+            f"    background: rgba({accent_rgb}, 0.14);",
+            "}",
+            f"QToolButton:pressed {{",
+            f"    background: rgba({accent_rgb}, 0.22);",
+            "}",
+            "QLabel {",
+            "    color: #f5f6ff;",
+            "}",
+            "QComboBox {",
+            "    background: #232332;",
+            "    border: 1px solid rgba(255, 255, 255, 0.08);",
+            "    border-radius: 8px;",
+            "    padding: 4px 10px;",
+            "    color: #f5f6ff;",
+            "    min-height: 28px;",
+            "}",
+            f"QComboBox:hover {{",
+            f"    border: 1px solid {accent};",
+            "}",
+            "QComboBox::drop-down {",
+            "    border: none;",
+            "}",
+            "QComboBox QAbstractItemView {",
+            "    background: #232332;",
+            "    border: 1px solid rgba(255, 255, 255, 0.08);",
+            "    selection-background-color: rgba(83, 109, 254, 0.35);",
+            "    selection-color: #ffffff;",
+            "}",
+            "QLineEdit, QSpinBox, QDoubleSpinBox, QAbstractSpinBox, QTextEdit, QPlainTextEdit {",
+            "    background: #1f1f2d;",
+            "    border: 1px solid rgba(255, 255, 255, 0.08);",
+            "    border-radius: 8px;",
+            "    padding: 4px 8px;",
+            "    color: #f5f6ff;",
+            "}",
+            f"QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover, QAbstractSpinBox:hover, QTextEdit:hover, QPlainTextEdit:hover {{",
+            f"    border: 1px solid {accent};",
+            "}",
+            "QCheckBox, QRadioButton {",
+            "    color: #f5f6ff;",
+            "}",
+            "QGroupBox {",
+            "    border: 1px solid rgba(255, 255, 255, 0.08);",
+            "    border-radius: 12px;",
+            "    margin-top: 18px;",
+            "    padding: 12px;",
+            "}",
+            "QGroupBox::title {",
+            "    subcontrol-origin: margin;",
+            "    left: 16px;",
+            "    padding: 0 6px;",
+            "}",
+            "QStatusBar {",
+            "    background: #1d1d29;",
+            "    border-top: 1px solid rgba(255, 255, 255, 0.08);",
+            "    color: #c8c9d1;",
+            "}",
+            "QStatusBar::item { border: none; }",
+            "QWidget#CardContainer {",
+            "    background: transparent;",
+            "}",
+            "QFrame#Card {",
+            "    background: #1b1b28;",
+            "    border-radius: 20px;",
+            "    border: 1px solid rgba(255, 255, 255, 0.06);",
+            "}",
+            "QTabWidget#ControlTabs::pane {",
+            "    border: none;",
+            "    margin-top: 12px;",
+            "}",
+            "QTabBar::tab {",
+            "    background: transparent;",
+            "    border: none;",
+            "    padding: 10px 18px;",
+            "    margin-right: 6px;",
+            "    border-radius: 18px;",
+            "    color: #b4b7c9;",
+            "    font-weight: 500;",
+            "}",
+            f"QTabBar::tab:selected {{",
+            f"    background: rgba({accent_rgb}, 0.32);",
+            "    color: #ffffff;",
+            "}",
+            f"QTabBar::tab:hover {{",
+            f"    background: rgba({accent_rgb}, 0.18);",
+            "    color: #f5f6ff;",
+            "}",
+            "QScrollArea {",
+            "    background: transparent;",
+            "    border: none;",
+            "}",
+            "QScrollArea > QWidget > QWidget {",
+            "    background: transparent;",
+            "}",
+            "QLabel#DirtyBadge {",
+            "    background: #ff6b6b;",
+            "    color: #ffffff;",
+            "    padding: 4px 12px;",
+            "    border-radius: 12px;",
+            "    font-weight: 600;",
+            "}",
+            f"QFrame#ProfileBanner {{",
+            f"    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {accent}, stop:1 {accent_alt});",
+            "    border-radius: 22px;",
+            "    color: #ffffff;",
+            "}",
+            "QLabel#BannerTitle {",
+            "    font-size: 20px;",
+            "    font-weight: 600;",
+            "    color: #ffffff;",
+            "}",
+            "QLabel#BannerSubtitle {",
+            "    color: rgba(255, 255, 255, 0.85);",
+            "    font-size: 13px;",
+            "}",
+            "QPushButton {",
+            "    background: rgba(255, 255, 255, 0.06);",
+            "    color: #f5f6ff;",
+            "    border: 1px solid transparent;",
+            "    border-radius: 10px;",
+            "    padding: 6px 14px;",
+            "    font-weight: 500;",
+            "}",
+            f"QPushButton:hover {{",
+            f"    border: 1px solid {accent};",
+            "}",
+            f"QPushButton:pressed {{",
+            f"    background: rgba({accent_rgb}, 0.18);",
+            "}",
+        ]
+        self.setStyleSheet("\n".join(parts))
+
+    def _build_profile_banner(self) -> QtWidgets.QFrame:
+        banner = QtWidgets.QFrame()
+        banner.setObjectName("ProfileBanner")
+        banner.setMinimumHeight(96)
+        layout = QtWidgets.QHBoxLayout(banner)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(18)
+
+        icon_label = QtWidgets.QLabel()
+        icon_label.setAlignment(QtCore.Qt.AlignCenter)
+        icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView)
+        icon_label.setPixmap(icon.pixmap(40, 40))
+        layout.addWidget(icon_label)
+
+        text_container = QtWidgets.QVBoxLayout()
+        text_container.setSpacing(6)
+
+        self.lbl_profile_title = QtWidgets.QLabel()
+        self.lbl_profile_title.setObjectName("BannerTitle")
+        text_container.addWidget(self.lbl_profile_title)
+
+        self.lbl_profile_subtitle = QtWidgets.QLabel()
+        self.lbl_profile_subtitle.setObjectName("BannerSubtitle")
+        self.lbl_profile_subtitle.setWordWrap(True)
+        text_container.addWidget(self.lbl_profile_subtitle)
+
+        layout.addLayout(text_container, stretch=1)
+
+        self.lbl_dirty_badge = QtWidgets.QLabel()
+        self.lbl_dirty_badge.setObjectName("DirtyBadge")
+        self.lbl_dirty_badge.setAlignment(QtCore.Qt.AlignCenter)
+        self.lbl_dirty_badge.hide()
+        layout.addWidget(
+            self.lbl_dirty_badge,
+            alignment=QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
+        )
+
+        banner.setGraphicsEffect(self._make_shadow(blur=40, offset=18))
+        return banner
+
+    def _make_shadow(self, blur: int, offset: int) -> QtWidgets.QGraphicsDropShadowEffect:
+        effect = QtWidgets.QGraphicsDropShadowEffect(self)
+        effect.setBlurRadius(blur)
+        effect.setOffset(0, offset)
+        effect.setColor(QtGui.QColor(0, 0, 0, 110))
+        return effect
+
+    def _update_profile_banner(self):
+        if not hasattr(self, "lbl_profile_title"):
+            return
+
+        profile_name = self.current_profile or "—"
+        if profile_name == ProfileManager.DEFAULT_PROFILE:
+            title = "Profil actif : Défaut"
+            subtitle = "Ce profil de base se charge automatiquement à chaque démarrage."
+        else:
+            title = f"Profil actif : {profile_name}"
+            subtitle = "Vos réglages personnalisés sont appliqués à la scène courante."
+
+        if self._dirty:
+            subtitle = "Des changements non sauvegardés sont prêts à être enregistrés."
+            self.lbl_dirty_badge.setText("Modifications en cours")
+            self.lbl_dirty_badge.show()
+        else:
+            self.lbl_dirty_badge.hide()
+
+        self.lbl_profile_title.setText(title)
+        self.lbl_profile_subtitle.setText(subtitle)
