@@ -3,13 +3,15 @@ import json
 from typing import Optional
 
 from PyQt5 import QtWidgets, QtCore, QtGui
+from PyQt5.QtCore import Qt
+
 
 # Imports robustes (exécution directe ou en module)
 try:
     from .config import DEFAULTS
     from .camera_tab import CameraTab
     from .geometry_tab import GeometryTab
-    from .appearance_tab import AppearanceTab
+    from .appearance_tab import AppearanceTaba
     from .dynamics_tab import DynamicsTab
     from .distribution_tab import DistributionTab
     from .mask_tab import MaskTab
@@ -48,7 +50,8 @@ class ControlWindow(QtWidgets.QMainWindow):
         toolbar.setMovable(False)
         toolbar.setFloatable(False)
         toolbar.setIconSize(QtCore.QSize(18, 18))
-        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+
         self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
 
         style = self.style()
@@ -61,6 +64,25 @@ class ControlWindow(QtWidgets.QMainWindow):
         act_quit.triggered.connect(app.quit)
         self.addAction(act_quit)
         toolbar.addAction(act_quit)
+        # Style rouge spécifique au bouton Shutdown
+        btn_quit = toolbar.widgetForAction(act_quit)
+        btn_quit.setStyleSheet("""
+            QToolButton {
+                background: #b22222;           /* rouge sombre */
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 8px;
+                color: #ffffff;
+                font-weight: 500;
+                padding: 4px 10px;
+            }
+            QToolButton:hover {
+                background: #d32f2f;           /* rouge clair au survol */
+            }
+            QToolButton:pressed {
+                background: #8b0000;           /* rouge profond au clic */
+            }
+        """)
+
 
         toolbar.addSeparator()
         lbl_profile = QtWidgets.QLabel("Profil :")
@@ -72,9 +94,11 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.cb_profiles.currentTextChanged.connect(self.on_profile_selected)
         toolbar.addWidget(self.cb_profiles)
 
+        # Réduit la largeur de séparation
         spacer = QtWidgets.QWidget()
-        spacer.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        spacer.setFixedWidth(12)  # au lieu d'expanding
         toolbar.addWidget(spacer)
+
 
         self.act_save_profile = QtWidgets.QAction(
             style.standardIcon(QtWidgets.QStyle.SP_DialogSaveButton), "Sauver", self
@@ -84,6 +108,9 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.act_save_profile.triggered.connect(self.save_profile)
         self.addAction(self.act_save_profile)
         toolbar.addAction(self.act_save_profile)
+        # Sauver
+        self.act_save_profile.setToolTip("Sauver")
+        self.act_save_profile.setStatusTip("Sauver")
 
         self.act_save_as_profile = QtWidgets.QAction(
             style.standardIcon(QtWidgets.QStyle.SP_DialogOpenButton), "Sauver sous…", self
@@ -93,18 +120,28 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.act_save_as_profile.triggered.connect(self.save_profile_as)
         self.addAction(self.act_save_as_profile)
         toolbar.addAction(self.act_save_as_profile)
+        # Sauver
+        self.act_save_profile.setToolTip("Sauver")
+        self.act_save_profile.setStatusTip("Sauver")
 
         self.act_rename_profile = QtWidgets.QAction(
             style.standardIcon(QtWidgets.QStyle.SP_FileDialogNewFolder), "Renommer", self
         )
         self.act_rename_profile.triggered.connect(self.rename_profile)
         toolbar.addAction(self.act_rename_profile)
+        # Renommer
+        self.act_rename_profile.setToolTip("Renommer")
+        self.act_rename_profile.setStatusTip("Renommer")
 
         self.act_delete_profile = QtWidgets.QAction(
             style.standardIcon(QtWidgets.QStyle.SP_TrashIcon), "Supprimer", self
         )
         self.act_delete_profile.triggered.connect(self.delete_profile)
         toolbar.addAction(self.act_delete_profile)
+        # Supprimer
+        self.act_delete_profile.setToolTip("Supprimer")
+        self.act_delete_profile.setStatusTip("Supprimer")
+
 
         self.act_reload_profile = QtWidgets.QAction(
             style.standardIcon(QtWidgets.QStyle.SP_BrowserReload), "Recharger", self
@@ -114,6 +151,9 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.act_reload_profile.triggered.connect(self.reload_profile)
         self.addAction(self.act_reload_profile)
         toolbar.addAction(self.act_reload_profile)
+        # Recharger
+        self.act_reload_profile.setToolTip("Recharger")
+        self.act_reload_profile.setStatusTip("Recharger")
 
         # Barre de statut pour les messages utilisateur
         status = QtWidgets.QStatusBar()
@@ -169,6 +209,14 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.tab_mask, "Masques")
         self.tabs.addTab(self.tab_system, "Système")
 
+        bar = self.tabs.tabBar()
+        bar.setExpanding(True)                 # <— onglets étirés sur la largeur disponible
+        bar.setElideMode(QtCore.Qt.ElideNone)
+
+        self.tabs.setUsesScrollButtons(False)  # pas de flèches en mode expanding
+
+
+
         # Habillage principal
         shell = QtWidgets.QWidget()
         shell.setObjectName("CardContainer")
@@ -194,7 +242,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.resize(780, 920)
         geometry = screen.availableGeometry()
         self.move(
-            geometry.x() + (geometry.width() - self.width()) // 2,
+            geometry.x() + geometry.width() - self.width(),
             geometry.y() + (geometry.height() - self.height()) // 2,
         )
         self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
@@ -462,8 +510,8 @@ class ControlWindow(QtWidgets.QMainWindow):
             "    background: #1d1d29;",
             "    border: none;",
             "    border-bottom: 1px solid rgba(255, 255, 255, 0.08);",
-            "    padding: 8px 18px;",
-            "    spacing: 12px;",
+            "    padding: 8px 8px;",
+            "    spacing: 6px;",
             "}",
             "QToolButton {",
             "    color: #f5f6ff;",
@@ -534,28 +582,42 @@ class ControlWindow(QtWidgets.QMainWindow):
             "QWidget#CardContainer {",
             "    background: transparent;",
             "}",
+
             "QFrame#Card {",
             "    background: #1b1b28;",
             "    border-radius: 20px;",
-            "    border: 1px solid rgba(255, 255, 255, 0.06);",
+            "    border-left: 1px solid rgba(255, 255, 255, 0.06);",
+            "    border-right: 1px solid rgba(255, 255, 255, 0.06);",
+            "    border-bottom: 1px solid rgba(255, 255, 255, 0.06);",
+            "    border-top: none;",                      # <— plus de trait au-dessus des tabs
             "}",
+
             "QTabWidget#ControlTabs::pane {",
-            "    border: none;",
-            "    margin-top: 12px;",
+            "    border-top: none;",                         # supprime la ligne du haut
+            "    border-bottom: 1px solid rgba(255,255,255,0.08);",  # ajoute la ligne sous les tabs
+            "    margin-top: 0;",                            # supprime l’espace au-dessus
             "}",
+
             "QTabBar::tab {",
             "    background: transparent;",
-            "    border: none;",
-            "    padding: 10px 18px;",
-            "    margin-right: 6px;",
-            "    border-radius: 18px;",
+            "    border: 1px solid #444;",
+            "    padding: 6px 1px;",      # marges internes réduites
+            "    margin-right: 4px;",      # espace entre onglets
+            "    border-radius: 4px;",
+            "    min-height: 28px;",       # évite coupe verticale
+            "    min-width: 48px;",        # évite coupe horizontale
             "    color: #b4b7c9;",
-            "    font-weight: 500;",
+            "    font-weight: 400;",
+            "    margin-bottom: -1px;",   # chevauche la ligne du pane pour éviter double-trait
+
             "}",
-            f"QTabBar::tab:selected {{",
-            f"    background: rgba({accent_rgb}, 0.32);",
+
+            "QTabBar::tab:selected {",
+            "    background: rgba(83,109,254,0.32);",
             "    color: #ffffff;",
+            "    border-bottom: 1px solid transparent;",   # masque la jonction avec la ligne du pane
             "}",
+
             f"QTabBar::tab:hover {{",
             f"    background: rgba({accent_rgb}, 0.18);",
             "    color: #f5f6ff;",
