@@ -1,0 +1,19 @@
+# Contrôles — Distribution / Répartition
+densityMode | Répartition (uniform, centered, edges, noise_field) | contrôle global
+dmin | Distance minimale entre particules | évite amas
+maskMode | Masque spatial (north_cap, band, random_patch) | fenêtre sur modèle
+maskSoftness | Adoucit bords du masque | transition fluide
+noiseDistortion | Déforme positions via bruit 3D | effet liquide
+
+# Distribution dynamique
+densityPulse | Variation périodique de densité | contraction/expansion
+clusterCount | Nombre de groupes | multi-centres
+clusterSpread | Écartement entre groupes | nuage éclaté
+repelForce | Répulsion locale | auto-répartition
+noiseWarp | Déformation continue par bruit | vivant
+fieldFlow | Champ vectoriel local | rotation complexe
+maskAnimate | Animation du masque | bande mobile
+
+# Générateurs de points utiles
+blue_noise | Échantillonnage Poisson-disk | R, dmin
+weighted_sampling | Importance sampling par w(p) | densité cible

@@ -1,0 +1,15 @@
+# Contrôles — Système / Caméra / Lumière
+fov | Angle de vue | zoom/fisheye
+depthSort | Tri par distance | rendu 3D crédible
+glowPass | Double dessin avec halo | aura, néon
+shadowFake | Ombre simulée sous la forme | ancrage
+lightDir | Direction d’une lumière simple | dégradé directionnel
+bgColor | Couleur de fond | sombre/clair/transparent
+
+# Caméra et perception
+focusDepth | Zone nette, reste flouté | pseudo DoF
+zoomPulse | Variation périodique du FOV | respiration caméra
+orbitEccentricity | Orbite elliptique | trajectoire irrégulière
+followPoint | Caméra suit une particule | focalisation dynamique
+shakeIntensity | Petites vibrations | réalisme/chaos
+panDrift | Glissement latéral lent | mouvement cinématique
