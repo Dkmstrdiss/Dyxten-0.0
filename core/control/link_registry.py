@@ -9,6 +9,12 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from PyQt5 import QtCore, QtWidgets
 
+try:  # pragma: no cover - sip is optional
+    from sip import isdeleted as _sip_isdeleted
+except ImportError:  # pragma: no cover - fallback when sip is unavailable
+    def _sip_isdeleted(_obj) -> bool:
+        return False
+
 
 Number = float
 
@@ -44,6 +50,8 @@ class LinkRegistry(QtCore.QObject):
         self._controls: Dict[int, LinkableControl] = {}
         self._selected_order: List[int] = []
         self._by_identifier: Dict[str, int] = {}
+        self._alive = True
+        self.destroyed.connect(self._mark_destroyed)
 
     # ------------------------------------------------------------------ utils
     def register(self, widget: QtWidgets.QWidget, control: LinkableControl) -> None:
@@ -74,6 +82,9 @@ class LinkRegistry(QtCore.QObject):
         self._cleanup_widget(widget_id)
 
     def _cleanup_widget(self, widget_id: int) -> None:
+        if not self._alive or _sip_isdeleted(self):
+            return
+
         control = self._controls.pop(widget_id, None)
         if control is None:
             return
@@ -82,6 +93,9 @@ class LinkRegistry(QtCore.QObject):
             self._selected_order.remove(widget_id)
             self.selectionChanged.emit()
         self.registryChanged.emit()
+
+    def _mark_destroyed(self, *args) -> None:  # pragma: no cover - Qt lifecycle callback
+        self._alive = False
 
     def _update_widget_state(self, widget_id: int, selected: bool) -> None:
         control = self._controls.get(widget_id)

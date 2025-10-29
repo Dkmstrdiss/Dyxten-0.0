@@ -101,6 +101,31 @@ class DynamicsTab(QtWidgets.QWidget):
         self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox()
         self.sp_rotPhaseDeg.setRange(0.0, 360.0)
         self.sp_rotPhaseDeg.setValue(float(d.get("rotPhaseDeg", 0.0)))
+        self.phase_amp_dial = QtWidgets.QDial()
+        self.phase_amp_dial.setRange(0, 360)
+        self.phase_amp_dial.setNotchesVisible(True)
+        self.phase_amp_dial.setWrapping(False)
+        self.phase_amp_dial.setSingleStep(5)
+        self.phase_amp_dial.setPageStep(15)
+        self.phase_amp_dial.setValue(int(round(self.sp_rotPhaseDeg.value())))
+        self.phase_amp_dial.setProperty("dyxten_form_label", "Amplitude du déphasage (°)")
+        self.phase_amp_label = QtWidgets.QLabel(
+            f"{int(round(self.sp_rotPhaseDeg.value()))}°"
+        )
+        self.phase_amp_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.phase_amp_label.setObjectName("DialValueLabel")
+
+        phase_container = QtWidgets.QWidget()
+        phase_layout = QtWidgets.QHBoxLayout(phase_container)
+        phase_layout.setContentsMargins(0, 0, 0, 0)
+        phase_layout.setSpacing(6)
+        phase_layout.addWidget(self.phase_amp_dial, 1)
+        phase_side = QtWidgets.QVBoxLayout()
+        phase_side.setContentsMargins(0, 0, 0, 0)
+        phase_side.setSpacing(4)
+        phase_side.addWidget(self.phase_amp_label, alignment=QtCore.Qt.AlignCenter)
+        phase_side.addWidget(self.sp_rotPhaseDeg)
+        phase_layout.addLayout(phase_side, 0)
         self.rows["rotX"] = row(fl, "Rotation X (°/s)", self.rotX, TOOLTIPS["dynamics.rotX"], lambda: self._reset_rotation("X"))
         self.rows["rotY"] = row(fl, "Rotation Y (°/s)", self.rotY, TOOLTIPS["dynamics.rotY"], lambda: self._reset_rotation("Y"))
         self.rows["rotZ"] = row(fl, "Rotation Z (°/s)", self.rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self._reset_rotation("Z"))
@@ -114,18 +139,6 @@ class DynamicsTab(QtWidgets.QWidget):
             TOOLTIPS["dynamics.rotPhaseMode"],
             lambda: self._set_combo_value(self.cb_rotPhaseMode, d.get("rotPhaseMode", "none")),
         )
-        phase_container = QtWidgets.QWidget()
-        phase_layout = QtWidgets.QHBoxLayout(phase_container)
-        phase_layout.setContentsMargins(0, 0, 0, 0)
-        phase_layout.setSpacing(6)
-        phase_layout.addWidget(self.phase_amp_dial, 1)
-        aux = QtWidgets.QVBoxLayout()
-        aux.setContentsMargins(0, 0, 0, 0)
-        aux.setSpacing(4)
-        aux.addWidget(self._phase_label, alignment=QtCore.Qt.AlignCenter)
-        aux.addWidget(self._phase_snap_btn, alignment=QtCore.Qt.AlignCenter)
-        phase_layout.addLayout(aux, 0)
-
         self.rows["rotPhaseDeg"] = row(
             fl,
             "Amplitude du déphasage (°)",
@@ -134,6 +147,8 @@ class DynamicsTab(QtWidgets.QWidget):
             lambda: self._reset_phase_amplitude(),
         )
 
+        self._snap_targets = {}
+        self._snap_timers = {}
         self._orient_labels = {}
         self.orient_dials = {}
         self._phase_mode_default_row = 0
@@ -195,14 +210,14 @@ class DynamicsTab(QtWidgets.QWidget):
             self._orient_labels[axis] = label
             dial.valueChanged.connect(lambda value, ax=axis: self._on_dial_changed(ax, value))
 
-        self._apply_phase_snap_targets()
-
-        for w in [self.sp_pulseA, self.sp_pulseW, self.sp_pulsePhase, self.cb_rotPhaseMode]:
+        for w in [self.sp_pulseA,self.sp_pulseW,self.sp_pulsePhase,self.cb_rotPhaseMode]:
             if isinstance(w, QtWidgets.QComboBox):
                 w.currentIndexChanged.connect(self.emit_delta)
             else:
                 w.valueChanged.connect(self.emit_delta)
-        self.phase_amp_dial.valueChanged.connect(self._on_phase_amp_changed)
+
+        self.phase_amp_dial.valueChanged.connect(self._on_phase_dial_changed)
+        self.sp_rotPhaseDeg.valueChanged.connect(self._on_phase_spin_changed)
 
         for control in (self.rotX, self.rotY, self.rotZ):
             control.valueChanged.connect(self.emit_delta)
@@ -214,7 +229,16 @@ class DynamicsTab(QtWidgets.QWidget):
         register_linkable_widget(self.sp_pulseA, section="dynamics", key="pulseA", tab="Dynamique")
         register_linkable_widget(self.sp_pulseW, section="dynamics", key="pulseW", tab="Dynamique")
         register_linkable_widget(self.sp_pulsePhase, section="dynamics", key="pulsePhaseDeg", tab="Dynamique")
-        register_linkable_widget(self.sp_rotPhaseDeg, section="dynamics", key="rotPhaseDeg", tab="Dynamique")
+        register_linkable_widget(
+            self.phase_amp_dial,
+            section="dynamics",
+            key="rotPhaseDeg",
+            tab="Dynamique",
+            value_getter=lambda: float(self.sp_rotPhaseDeg.value()),
+            value_setter=self._set_phase_amplitude,
+            range_getter=lambda: (0.0, 360.0),
+            value_type=float,
+        )
         for axis in ("X", "Y", "Z"):
             register_linkable_widget(
                 self.orient_dials[axis],
@@ -275,10 +299,12 @@ class DynamicsTab(QtWidgets.QWidget):
         with QtCore.QSignalBlocker(self.sp_pulsePhase):
             self.sp_pulsePhase.setValue(float(val("pulsePhaseDeg")))
         self._set_combo_value(self.cb_rotPhaseMode, str(val("rotPhaseMode")))
+        target_phase = float(val("rotPhaseDeg"))
+        with QtCore.QSignalBlocker(self.sp_rotPhaseDeg):
+            self.sp_rotPhaseDeg.setValue(target_phase)
         with QtCore.QSignalBlocker(self.phase_amp_dial):
-            phase_value = int(val("rotPhaseDeg"))
-            self.phase_amp_dial.setValue(phase_value)
-        self._phase_label.setText(f"{int(self.phase_amp_dial.value()):+d}°")
+            self.phase_amp_dial.setValue(int(round(target_phase)))
+        self.phase_amp_label.setText(f"{int(round(target_phase))}°")
         for axis in ("X", "Y", "Z"):
             dial = self.orient_dials[axis]
             label = self._orient_labels[axis]
@@ -340,9 +366,29 @@ class DynamicsTab(QtWidgets.QWidget):
         mode = self.cb_rotPhaseMode.currentData() or "none"
         show_phase = mode != "none"
         self._set_row_visible("rotPhaseDeg", show_phase)
+        self.sp_rotPhaseDeg.setEnabled(show_phase)
         self.phase_amp_dial.setEnabled(show_phase)
-        self._phase_snap_btn.setEnabled(show_phase)
-        self._phase_label.setEnabled(show_phase)
+
+    def _on_phase_dial_changed(self, value: int):
+        with QtCore.QSignalBlocker(self.sp_rotPhaseDeg):
+            self.sp_rotPhaseDeg.setValue(float(value))
+        self.phase_amp_label.setText(f"{int(value)}°")
+        self.emit_delta()
+
+    def _on_phase_spin_changed(self, value: float):
+        int_value = int(round(float(value)))
+        with QtCore.QSignalBlocker(self.phase_amp_dial):
+            self.phase_amp_dial.setValue(int_value)
+        self.phase_amp_label.setText(f"{int_value}°")
+        self.emit_delta()
+
+    def _set_phase_amplitude(self, value: float) -> None:
+        clamped = max(0.0, min(360.0, float(value)))
+        self.sp_rotPhaseDeg.setValue(clamped)
+
+    def _reset_phase_amplitude(self) -> None:
+        default = float(DEFAULTS["dynamics"].get("rotPhaseDeg", 0.0))
+        self._set_phase_amplitude(default)
     def _reset_rotation(self, axis: str):
         defaults = DEFAULTS["dynamics"]
         control = getattr(self, f"rot{axis}")
