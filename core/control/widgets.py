@@ -18,7 +18,12 @@ def row(form: QtWidgets.QFormLayout, label: str, widget: QtWidgets.QWidget, tip:
     h.addWidget(widget, 1)
     if reset_cb: h.addWidget(mk_reset(reset_cb), 0)
     h.addWidget(mk_info(tip), 0)
-    w = QtWidgets.QWidget(); w.setLayout(h); form.addRow(label, w)
+    w = QtWidgets.QWidget(); w.setLayout(h)
+    lbl = QtWidgets.QLabel(label)
+    lbl.setObjectName("FormLabel")
+    form.addRow(lbl, w)
+    w._form_label = lbl  # type: ignore[attr-defined]
+    return w
 
 def vec_row(spins):
     h = QtWidgets.QHBoxLayout(); h.setContentsMargins(0,0,0,0); h.setSpacing(6)

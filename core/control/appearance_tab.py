@@ -8,6 +8,24 @@ except ImportError:
     from core.control.config import DEFAULTS
 
 
+def open_color_dialog(parent, initial: QtGui.QColor, title: str) -> QtGui.QColor:
+    dlg = QtWidgets.QColorDialog(initial, parent)
+    dlg.setWindowTitle(title)
+    dlg.setOption(QtWidgets.QColorDialog.ShowAlphaChannel, False)
+    dlg.setStyleSheet("""
+        QColorDialog, QColorDialog QWidget {
+            color: #15151f;
+            background-color: #ffffff;
+        }
+        QPushButton {
+            color: #15151f;
+        }
+    """)
+    if dlg.exec_() == QtWidgets.QDialog.Accepted:
+        return dlg.selectedColor()
+    return QtGui.QColor()
+
+
 class AppearanceTab(QtWidgets.QWidget):
     changed = QtCore.pyqtSignal(dict)
 
@@ -192,7 +210,7 @@ class AppearanceTab(QtWidgets.QWidget):
         self.sync_enabled(emit=False)
 
     def pick_color(self):
-        c = QtWidgets.QColorDialog.getColor(QtGui.QColor(self.ed_color.text().strip() or "#00C8FF"), self, "Couleur")
+        c = open_color_dialog(self, QtGui.QColor(self.ed_color.text().strip() or "#00C8FF"), "Couleur")
         if c.isValid():
             self.ed_color.setText(c.name())
             self.emit_delta()
@@ -236,6 +254,29 @@ class ColorListDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("Liste de couleurs")
         self.resize(420, 280)
+
+        self.setStyleSheet("""
+            QDialog, QWidget {
+                color: #15151f;
+                background-color: #ffffff;
+            }
+            QHeaderView::section {
+                background-color: #f0f0f5;
+                color: #15151f;
+            }
+            QTableWidget {
+                background-color: #ffffff;
+                alternate-background-color: #f7f7fb;
+                gridline-color: rgba(0, 0, 0, 0.15);
+            }
+            QLineEdit, QSpinBox, QDoubleSpinBox, QAbstractSpinBox {
+                color: #15151f;
+                background-color: #ffffff;
+            }
+            QPushButton {
+                color: #15151f;
+            }
+        """)
 
         layout = QtWidgets.QVBoxLayout(self)
         self.table = QtWidgets.QTableWidget(0, 2, self)
@@ -305,7 +346,7 @@ class ColorListDialog(QtWidgets.QDialog):
             return
         item = self.table.item(row, 0)
         current = QtGui.QColor(item.text() or '#FFFFFF')
-        color = QtWidgets.QColorDialog.getColor(current, self, "Choisir une couleur")
+        color = open_color_dialog(self, current, "Choisir une couleur")
         if color.isValid():
             self._update_color_item(item, color.name())
 
