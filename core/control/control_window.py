@@ -8,16 +8,16 @@ from PyQt5.QtCore import Qt
 
 # Imports robustes (exécution directe ou en module)
 try:
-    from .config import DEFAULTS
+    from .config import DEFAULTS, PROFILE_PRESET_DESCRIPTIONS
     from .camera_tab import CameraTab
     from .geometry_tab import GeometryTab
-    from .appearance_tab import AppearanceTaba
+    from .appearance_tab import AppearanceTab
     from .dynamics_tab import DynamicsTab
     from .distribution_tab import DistributionTab
     from .system_tab import SystemTab
     from .profile_manager import ProfileManager
 except ImportError:  # pragma: no cover - compatibilité exécution directe
-    from core.control.config import DEFAULTS  # type: ignore
+    from core.control.config import DEFAULTS, PROFILE_PRESET_DESCRIPTIONS  # type: ignore
     from core.control.camera_tab import CameraTab  # type: ignore
     from core.control.geometry_tab import GeometryTab  # type: ignore
     from core.control.appearance_tab import AppearanceTab  # type: ignore
@@ -745,6 +745,9 @@ class ControlWindow(QtWidgets.QMainWindow):
         if profile_name == ProfileManager.DEFAULT_PROFILE:
             title = "Profil actif : Défaut"
             subtitle = "Ce profil de base se charge automatiquement à chaque démarrage."
+        elif profile_name in PROFILE_PRESET_DESCRIPTIONS:
+            title = f"Profil prédéfini : {profile_name}"
+            subtitle = PROFILE_PRESET_DESCRIPTIONS[profile_name]
         else:
             title = f"Profil actif : {profile_name}"
             subtitle = "Vos réglages personnalisés sont appliqués à la scène courante."

@@ -4,9 +4,9 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional
 
 try:
-    from .config import DEFAULTS
+    from .config import DEFAULTS, PROFILE_PRESETS
 except ImportError:  # pragma: no cover
-    from core.control.config import DEFAULTS
+    from core.control.config import DEFAULTS, PROFILE_PRESETS
 
 
 class ProfileManager:
@@ -37,7 +37,10 @@ class ProfileManager:
         except Exception:
             self._profiles = {}
 
-        if self.ensure_default(DEFAULTS):
+        changed = self.ensure_default(DEFAULTS)
+        if self.ensure_presets(PROFILE_PRESETS):
+            changed = True
+        if changed:
             self._write()
 
     def _write(self) -> None:
@@ -83,8 +86,20 @@ class ProfileManager:
             return True
         return False
 
+    def ensure_presets(self, presets: Dict[str, dict]) -> bool:
+        changed = False
+        for name, data in presets.items():
+            if name not in self._profiles:
+                self._profiles[name] = self._coerce_state(data)
+                changed = True
+        return changed
+
     def list_profiles(self) -> Iterable[str]:
-        return sorted(self._profiles.keys(), key=str.lower)
+        names = [n for n in self._profiles.keys() if n != self.DEFAULT_PROFILE]
+        names.sort(key=str.lower)
+        if self.DEFAULT_PROFILE in self._profiles:
+            return [self.DEFAULT_PROFILE, *names]
+        return names
 
     def has_profile(self, name: str) -> bool:
         return name in self._profiles
