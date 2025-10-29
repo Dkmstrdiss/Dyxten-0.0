@@ -1,7 +1,0 @@
-# Contrôles — Interaction et comportement
-mouseAttract | Attraction vers la souris | effet magnétique
-clickShock | Onde d’expansion au clic | réaction instantanée
-audioReact | Modulation par audio/musique | pulsation au rythme
-autoPreset | Changement d’état aléatoire | cycle autonome
-stateBlend | Mélange entre deux ensembles de paramètres | transition fluide
-interactivity | Active les réactions utilisateur | clic/souris/ptt
