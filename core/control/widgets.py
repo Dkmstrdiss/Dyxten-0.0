@@ -2,12 +2,40 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 
 
+SUBPROFILE_HEADER_ROLE = QtCore.Qt.UserRole + 1
+
+
+class SubProfileItemDelegate(QtWidgets.QStyledItemDelegate):
+    """Draw category headers and indent entries without breaking combo display."""
+
+    def __init__(self, *, indent: int = 12, parent=None):
+        super().__init__(parent)
+        self._indent = indent
+
+    def paint(self, painter, option, index):
+        is_header = bool(index.data(SUBPROFILE_HEADER_ROLE))
+        opt = QtWidgets.QStyleOptionViewItem(option)
+        if not is_header and index.data(QtCore.Qt.UserRole) is not None:
+            if isinstance(option.widget, QtWidgets.QListView):
+                opt.rect = opt.rect.adjusted(self._indent, 0, 0, 0)
+        super().paint(painter, opt, index)
+
+    def sizeHint(self, option, index):
+        hint = super().sizeHint(option, index)
+        if bool(index.data(SUBPROFILE_HEADER_ROLE)):
+            return hint
+        if index.data(QtCore.Qt.UserRole) is not None and isinstance(option.widget, QtWidgets.QListView):
+            return QtCore.QSize(hint.width() + self._indent, hint.height())
+        return hint
+
+
 class SubProfilePanel(QtWidgets.QFrame):
     """Common toolbar used to manage per-tab sub profiles."""
 
     def __init__(self, title: str):
         super().__init__()
         self.setObjectName("SubProfilePanel")
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self._manager = None
         self._section = ""
         self._collect_cb = None
@@ -17,19 +45,23 @@ class SubProfilePanel(QtWidgets.QFrame):
         self._active_name = None
 
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(8)
 
         label = QtWidgets.QLabel(title)
         label.setObjectName("SubProfileLabel")
         layout.addWidget(label)
 
         self.combo = QtWidgets.QComboBox()
+        self.combo.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.combo.setMinimumContentsLength(12)
+        self.combo.setMinimumWidth(260)
         self.combo.setModel(QtGui.QStandardItemModel(self.combo))
         self.combo.setView(QtWidgets.QListView())
         self.combo.view().setSpacing(2)
+        delegate = SubProfileItemDelegate(parent=self.combo)
+        self.combo.setItemDelegate(delegate)
+        self.combo.view().setItemDelegate(delegate)
         self._header_font = QtGui.QFont(self.font())
         self._header_font.setBold(True)
         self._header_brush = QtGui.QBrush(QtGui.QColor(76, 94, 111))
@@ -58,23 +90,27 @@ class SubProfilePanel(QtWidgets.QFrame):
                     stop:0 #f9fbfe, stop:1 #edf3fb);
                 border: 1px solid #d7e4f3;
                 border-radius: 5px;
+                min-height: 52px;
             }
             QLabel#SubProfileLabel {
                 color: #204060;
                 font-weight: 600;
             }
             QComboBox {
-                min-height: 22px;
+                min-height: 28px;
+                padding-left: 6px;
             }
             QToolButton#SubProfileMenuButton {
                 width: 28px;
                 border-radius: 14px;
                 border: 1px solid #7aa7c7;
                 background: #e6f2fb;
+                color: #0f0f0f;
                 font-weight: 700;
             }
             QToolButton#SubProfileMenuButton:hover {
                 background: #d8ecfa;
+                color: #000000;
             }
         """)
 
@@ -91,7 +127,7 @@ class SubProfilePanel(QtWidgets.QFrame):
             manager.ensure_section(section, defaults)
         self.refresh()
 
-    HEADER_ROLE = QtCore.Qt.UserRole + 1
+    HEADER_ROLE = SUBPROFILE_HEADER_ROLE
 
     def _populate_combo_header(self) -> None:
         model: QtGui.QStandardItemModel = self.combo.model()  # type: ignore[assignment]
@@ -113,7 +149,7 @@ class SubProfilePanel(QtWidgets.QFrame):
         header.setBackground(self._header_background)
         model.appendRow(header)
         for name in names:
-            item = QtGui.QStandardItem(f"  {name}")
+            item = QtGui.QStandardItem(name)
             item.setEditable(False)
             item.setData(name, QtCore.Qt.UserRole)
             model.appendRow(item)
@@ -138,245 +174,6 @@ class SubProfilePanel(QtWidgets.QFrame):
                     target_index = row
                     break
             self.combo.setCurrentIndex(target_index)
-        data = self.combo.currentData()
-        self._active_name = data if isinstance(data, str) else None
-        self._update_buttons()
-
-    def sync_from_data(self, payload: dict):
-        if self._manager is None:
-            return
-        match = self._manager.find_match(self._section, payload)
-        with QtCore.QSignalBlocker(self.combo):
-            if match:
-                index = self.combo.findData(match)
-                if index != -1:
-                    self.combo.setCurrentIndex(index)
-                    self._active_name = match
-                    self._update_buttons()
-                    return
-            self.combo.setCurrentIndex(0)
-            self._active_name = None
-        self._update_buttons()
-
-    # ---------------------------------------------------------------- events
-    def _on_select(self, index: int):
-        if self._applying:
-            return
-        name = self.combo.itemData(index)
-        self._active_name = name if isinstance(name, str) else None
-        self._update_buttons()
-        if self._manager is None or self._apply_cb is None or not isinstance(name, str):
-            return
-        payload = self._manager.get(self._section, name)
-        self._applying = True
-        try:
-            self._apply_cb(payload)
-        finally:
-            self._applying = False
-        if callable(self._on_change):
-            self._on_change()
-        if callable(self._collect_cb):
-            self.sync_from_data(self._collect_cb())
-
-    def _on_save(self):
-        if self._manager is None or self._collect_cb is None:
-            return
-        target = self._active_name
-        if not target:
-            self._on_save_as()
-            return
-        payload = self._collect_cb()
-        try:
-            self._manager.save(self._section, target, payload)
-        except Exception as exc:  # pragma: no cover - feedback utilisateur
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.refresh(select=target)
-
-    def _on_save_as(self):
-        if self._manager is None or self._collect_cb is None:
-            return
-        name, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Nouveau sous-profil",
-            "Nom du sous-profil :",
-            text=self._active_name or "",
-        )
-        if not ok:
-            return
-        name = name.strip()
-        if not name:
-            QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom valide.")
-            return
-        payload = self._collect_cb()
-        try:
-            self._manager.save(self._section, name, payload)
-        except Exception as exc:  # pragma: no cover - feedback utilisateur
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.refresh(select=name)
-
-    def _on_rename(self):
-        if self._manager is None or not self._active_name:
-            return
-        if self._active_name == self._manager.DEFAULT_NAME:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Action impossible",
-                "Le sous-profil par défaut ne peut pas être renommé.",
-            )
-            return
-        name, ok = QtWidgets.QInputDialog.getText(
-            self,
-            "Renommer le sous-profil",
-            "Nouveau nom :",
-            text=self._active_name,
-        )
-        if not ok:
-            return
-        name = name.strip()
-        if not name:
-            QtWidgets.QMessageBox.warning(self, "Nom invalide", "Veuillez saisir un nom valide.")
-            return
-        try:
-            self._manager.rename(self._section, self._active_name, name)
-        except Exception as exc:  # pragma: no cover - feedback utilisateur
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.refresh(select=name)
-
-    def _on_delete(self):
-        if self._manager is None or not self._active_name:
-            return
-        if self._active_name == self._manager.DEFAULT_NAME:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Action impossible",
-                "Le sous-profil par défaut ne peut pas être supprimé.",
-            )
-            return
-        response = QtWidgets.QMessageBox.question(
-            self,
-            "Supprimer le sous-profil",
-            f"Supprimer '{self._active_name}' ?",
-        )
-        if response != QtWidgets.QMessageBox.Yes:
-            return
-        try:
-            self._manager.delete(self._section, self._active_name)
-        except Exception as exc:  # pragma: no cover - feedback utilisateur
-            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
-            return
-        self.refresh(select=None)
-
-    def _update_buttons(self):
-        has_selection = bool(self._active_name)
-        can_edit = has_selection and self._manager is not None and self._active_name != getattr(self._manager, "DEFAULT_NAME", "")
-        has_manager = self._manager is not None
-        if self.btn_menu.menu() is not None:
-            self.act_save.setEnabled(has_manager)
-            self.act_save_as.setEnabled(has_manager)
-            self.act_rename.setEnabled(can_edit)
-            self.act_delete.setEnabled(can_edit)
-        self.btn_menu.setEnabled(has_manager)
-
-
-
-class SubProfilePanel(QtWidgets.QFrame):
-    """Common toolbar used to manage per-tab sub profiles."""
-
-    def __init__(self, title: str):
-        super().__init__()
-        self.setObjectName("SubProfilePanel")
-        self._manager = None
-        self._section = ""
-        self._collect_cb = None
-        self._apply_cb = None
-        self._on_change = None
-        self._applying = False
-        self._active_name = None
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(6)
-
-        label = QtWidgets.QLabel(title)
-        label.setObjectName("SubProfileLabel")
-        layout.addWidget(label)
-
-        self.combo = QtWidgets.QComboBox()
-        self.combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.combo.setMinimumContentsLength(8)
-        self.combo.addItem("— Personnalisé —", None)
-        self.combo.currentIndexChanged.connect(self._on_select)
-        layout.addWidget(self.combo, 1)
-
-        self.btn_menu = QtWidgets.QToolButton()
-        self.btn_menu.setObjectName("SubProfileMenuButton")
-        self.btn_menu.setText("⋯")
-        self.btn_menu.setCursor(QtCore.Qt.PointingHandCursor)
-        self.btn_menu.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        layout.addWidget(self.btn_menu)
-
-        menu = QtWidgets.QMenu(self)
-        self.act_save = menu.addAction("Sauver le sous-profil", self._on_save)
-        self.act_save_as = menu.addAction("Créer un nouveau…", self._on_save_as)
-        self.act_rename = menu.addAction("Renommer…", self._on_rename)
-        self.act_delete = menu.addAction("Supprimer", self._on_delete)
-        self.btn_menu.setMenu(menu)
-
-        self.setStyleSheet("""
-            QFrame#SubProfilePanel {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #f9fbfe, stop:1 #edf3fb);
-                border: 1px solid #d7e4f3;
-                border-radius: 5px;
-            }
-            QLabel#SubProfileLabel {
-                color: #204060;
-                font-weight: 600;
-            }
-            QComboBox {
-                min-height: 22px;
-            }
-            QToolButton#SubProfileMenuButton {
-                width: 28px;
-                border-radius: 14px;
-                border: 1px solid #7aa7c7;
-                background: #e6f2fb;
-                font-weight: 700;
-            }
-            QToolButton#SubProfileMenuButton:hover {
-                background: #d8ecfa;
-            }
-        """)
-
-        self._update_buttons()
-
-    # ------------------------------------------------------------------ API
-    def bind(self, *, manager, section: str, defaults: dict, collect_cb, apply_cb, on_change):
-        self._manager = manager
-        self._section = section
-        self._collect_cb = collect_cb
-        self._apply_cb = apply_cb
-        self._on_change = on_change
-        if manager is not None:
-            manager.ensure_section(section, defaults)
-        self.refresh()
-
-    def refresh(self, select=None):
-        with QtCore.QSignalBlocker(self.combo):
-            current = select or self.combo.currentData()
-            self.combo.clear()
-            self.combo.addItem("— Personnalisé —", None)
-            if self._manager is not None:
-                for name in self._manager.list(self._section):
-                    self.combo.addItem(name, name)
-            index = self.combo.findData(current)
-            if index != -1:
-                self.combo.setCurrentIndex(index)
-            else:
-                self.combo.setCurrentIndex(0)
         data = self.combo.currentData()
         self._active_name = data if isinstance(data, str) else None
         self._update_buttons()

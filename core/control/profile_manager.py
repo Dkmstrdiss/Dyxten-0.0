@@ -263,6 +263,20 @@ class SubProfileManager:
             return {}
         return copy.deepcopy(data)
 
+    @staticmethod
+    def _dict_subset(target: dict, template: dict) -> bool:
+        for key, value in template.items():
+            if isinstance(value, dict):
+                child = target.get(key)
+                if not isinstance(child, dict):
+                    return False
+                if not SubProfileManager._dict_subset(child, value):
+                    return False
+            else:
+                if target.get(key) != value:
+                    return False
+        return True
+
     # ---------------------------------------------------------------- storage
     def list(self, section: str) -> Iterable[str]:
         ordered: List[str] = []
@@ -353,9 +367,9 @@ class SubProfileManager:
 
     def find_match(self, section: str, payload: dict) -> Optional[str]:
         store = self._sections.get(section, {})
-        target = json.dumps(self._sanitize_profile(payload), sort_keys=True)
+        target = self._sanitize_profile(payload)
         for name, data in store.items():
-            if json.dumps(data, sort_keys=True) == target:
+            if self._dict_subset(target, data):
                 return name
         return None
 

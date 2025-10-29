@@ -76,7 +76,7 @@ class AppearanceTab(QtWidgets.QWidget):
 
         # Opacité / taille
         self.sp_opacity = QtWidgets.QDoubleSpinBox(); self.sp_opacity.setRange(0.0,1.0); self.sp_opacity.setSingleStep(0.05); self.sp_opacity.setValue(d["opacity"])
-        self.sp_px = QtWidgets.QDoubleSpinBox(); self.sp_px.setRange(0.1,20.0); self.sp_px.setSingleStep(0.1); self.sp_px.setValue(d["px"])
+        self.sp_px = QtWidgets.QDoubleSpinBox(); self.sp_px.setRange(0.1,50.0); self.sp_px.setSingleStep(0.1); self.sp_px.setValue(d["px"])
         self.rows["opacity"] = row(fl, "Opacité", self.sp_opacity, "Rend les particules plus ou moins transparentes.", reset_cb=lambda: (self.sp_opacity.setValue(d["opacity"]), self.emit_delta()))
         self.rows["px"] = row(fl, "Taille des particules (px)", self.sp_px, "Définit le diamètre moyen des particules à l’écran.", reset_cb=lambda: (self.sp_px.setValue(d["px"]), self.emit_delta()))
 
