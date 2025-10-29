@@ -18,7 +18,7 @@ def open_color_dialog(parent, initial: QtGui.QColor, title: str) -> QtGui.QColor
             background-color: #ffffff;
         }
         QPushButton {
-            color: #15151f;
+            color: #000000;
         }
     """)
     if dlg.exec_() == QtWidgets.QDialog.Accepted:
@@ -48,6 +48,7 @@ class AppearanceTab(QtWidgets.QWidget):
         # Couleur unique + picker
         self.ed_color = QtWidgets.QLineEdit(d["color"])
         self.bt_pick = QtWidgets.QPushButton("Pick"); self.bt_pick.clicked.connect(self.pick_color)
+        self.bt_pick.setStyleSheet("color: #FFFFFF;")
         cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0,0,0,0)
         cly.addWidget(self.ed_color, 1); cly.addWidget(self.bt_pick, 0)
         cw = QtWidgets.QWidget(); cw.setLayout(cly)
@@ -62,6 +63,7 @@ class AppearanceTab(QtWidgets.QWidget):
         # Liste de couleurs
         self.ed_colors = QtWidgets.QLineEdit(d["colors"])
         self.bt_colors = QtWidgets.QPushButton("Pick list")
+        self.bt_colors.setStyleSheet("color: #FFFFFF;")
         self.bt_colors.clicked.connect(self.pick_colors)
         cly = QtWidgets.QHBoxLayout(); cly.setContentsMargins(0, 0, 0, 0)
         cly.addWidget(self.ed_colors, 1); cly.addWidget(self.bt_colors, 0)
@@ -330,7 +332,7 @@ class ColorListDialog(QtWidgets.QDialog):
                 background-color: #ffffff;
             }
             QPushButton {
-                color: #15151f;
+                color: #000000;
             }
         """)
 

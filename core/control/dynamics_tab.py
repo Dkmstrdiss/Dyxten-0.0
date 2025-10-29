@@ -1,21 +1,53 @@
 import math
 from functools import partial
 
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 
-from .widgets import row, SliderWithMax, SubProfilePanel
+from .widgets import (
+    row,
+    SliderWithMax,
+    SubProfilePanel,
+    SubProfileItemDelegate,
+    SUBPROFILE_HEADER_ROLE,
+)
 from .config import DEFAULTS, TOOLTIPS
 
 POPULAR_ORIENTATION_ANGLES = [-180, -135, -120, -90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90, 120, 135, 180]
+DEFAULT_PHASE_SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360]
 
-PHASE_MODE_CHOICES = [
-    ("Aucun déphasage", "none"),
-    ("Index linéaire", "by_index"),
-    ("Rayon (distance au centre)", "by_radius"),
-    ("Longitude (angle autour de Y)", "by_longitude"),
-    ("Latitude (hauteur)", "by_latitude"),
-    ("Damier pair/impair", "checkerboard"),
-    ("Aléatoire reproductible", "random"),
+PHASE_MODE_GROUPS = [
+    (
+        "Progressifs",
+        [
+            ("Aucun déphasage", "none"),
+            ("Index linéaire", "by_index"),
+            ("Rayon (distance au centre)", "by_radius"),
+            ("Longitude (angle autour de Y)", "by_longitude"),
+            ("Latitude (hauteur)", "by_latitude"),
+        ],
+    ),
+    (
+        "Alternances",
+        [
+            ("Damier pair/impair", "checkerboard"),
+            ("Anneaux alternés", "alternate_rings"),
+            ("Quadrillage lat/lon", "lat_lon_checker"),
+        ],
+    ),
+    (
+        "Bruit & aléa",
+        [
+            ("Aléatoire reproductible", "random"),
+            ("Bruit volumique", "noise3d"),
+        ],
+    ),
+    (
+        "Structures avancées",
+        [
+            ("Spirale dorée", "golden_spiral"),
+            ("Ondes de clusters", "cluster_wave"),
+        ],
+    ),
 ]
 
 
@@ -46,13 +78,53 @@ class DynamicsTab(QtWidgets.QWidget):
         self.rotY = SliderWithMax(d.get("rotY", 0.0), d.get("rotYMax", 360.0))
         self.rotZ = SliderWithMax(d.get("rotZ", 0.0), d.get("rotZMax", 360.0))
         self.sp_pulseA = QtWidgets.QDoubleSpinBox(); self.sp_pulseA.setRange(0.0,1.0); self.sp_pulseA.setSingleStep(0.01); self.sp_pulseA.setValue(d["pulseA"])
-        self.sp_pulseW = QtWidgets.QDoubleSpinBox(); self.sp_pulseW.setRange(0.0,20.0); self.sp_pulseW.setValue(d["pulseW"])
+        self.sp_pulseW = QtWidgets.QDoubleSpinBox(); self.sp_pulseW.setRange(0.0,20.0); self.sp_pulseW.setSingleStep(0.1); self.sp_pulseW.setDecimals(3); self.sp_pulseW.setValue(d["pulseW"])
         self.sp_pulsePhase = QtWidgets.QDoubleSpinBox(); self.sp_pulsePhase.setRange(0.0,360.0); self.sp_pulsePhase.setValue(d["pulsePhaseDeg"])
+
         self.cb_rotPhaseMode = QtWidgets.QComboBox()
-        for label, value in PHASE_MODE_CHOICES:
-            self.cb_rotPhaseMode.addItem(label, value)
+        self.cb_rotPhaseMode.setModel(QtGui.QStandardItemModel(self.cb_rotPhaseMode))
+        self.cb_rotPhaseMode.setView(QtWidgets.QListView())
+        delegate = SubProfileItemDelegate(parent=self.cb_rotPhaseMode, indent=10)
+        self.cb_rotPhaseMode.setItemDelegate(delegate)
+        self.cb_rotPhaseMode.view().setItemDelegate(delegate)
+        self._populate_phase_modes()
         self._set_combo_value(self.cb_rotPhaseMode, d.get("rotPhaseMode", "none"))
-        self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox(); self.sp_rotPhaseDeg.setRange(0.0,360.0); self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"])
+
+        self._phase_snap_angles = [
+            int(v) for v in d.get("phaseSnapAngles", DEFAULT_PHASE_SNAP_ANGLES)
+        ] or list(DEFAULT_PHASE_SNAP_ANGLES)
+        self._snap_targets = {}
+        self._snap_timers = {}
+
+        self.phase_amp_dial = QtWidgets.QDial()
+        self.phase_amp_dial.setRange(0, 360)
+        self.phase_amp_dial.setNotchesVisible(True)
+        self.phase_amp_dial.setWrapping(False)
+        self.phase_amp_dial.setSingleStep(1)
+        phase_default = int(d.get("rotPhaseDeg", 0.0))
+        self.phase_amp_dial.setValue(phase_default)
+        self._install_angle_snap(self.phase_amp_dial, self._phase_snap_angles)
+
+        self._phase_label = QtWidgets.QLabel(f"{phase_default:+d}°")
+        self._phase_label.setAlignment(QtCore.Qt.AlignCenter)
+        self._phase_label.setMinimumWidth(48)
+        self._phase_label.setObjectName("DialValueLabel")
+
+        self._phase_snap_btn = QtWidgets.QToolButton()
+        self._phase_snap_btn.setText("⚙")
+        self._phase_snap_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self._phase_snap_btn.setToolTip(
+            "Configurer les crans d’accroche en multiples de π pour l’amplitude du déphasage."
+        )
+        self._phase_snap_btn.setFixedSize(26, 26)
+        self._phase_snap_btn.setStyleSheet(
+            "QToolButton{border:1px solid #7aa7c7;border-radius:13px;padding:0;"
+            "background:#e6f2fb;color:#2b6ea8;font-weight:bold;}"
+            "QToolButton:hover{background:#d8ecfa;}"
+        )
+        self._phase_snap_btn.clicked.connect(
+            lambda checked=False: self._configure_phase_snap_targets()
+        )
         self.rows["rotX"] = row(fl, "Rotation X (°/s)", self.rotX, TOOLTIPS["dynamics.rotX"], lambda: self._reset_rotation("X"))
         self.rows["rotY"] = row(fl, "Rotation Y (°/s)", self.rotY, TOOLTIPS["dynamics.rotY"], lambda: self._reset_rotation("Y"))
         self.rows["rotZ"] = row(fl, "Rotation Z (°/s)", self.rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self._reset_rotation("Z"))
@@ -66,12 +138,29 @@ class DynamicsTab(QtWidgets.QWidget):
             TOOLTIPS["dynamics.rotPhaseMode"],
             lambda: self._set_combo_value(self.cb_rotPhaseMode, d.get("rotPhaseMode", "none")),
         )
-        self.rows["rotPhaseDeg"] = row(fl, "Amplitude du déphasage (°)", self.sp_rotPhaseDeg, TOOLTIPS["dynamics.rotPhaseDeg"], lambda: self.sp_rotPhaseDeg.setValue(d["rotPhaseDeg"]))
+        phase_container = QtWidgets.QWidget()
+        phase_layout = QtWidgets.QHBoxLayout(phase_container)
+        phase_layout.setContentsMargins(0, 0, 0, 0)
+        phase_layout.setSpacing(6)
+        phase_layout.addWidget(self.phase_amp_dial, 1)
+        aux = QtWidgets.QVBoxLayout()
+        aux.setContentsMargins(0, 0, 0, 0)
+        aux.setSpacing(4)
+        aux.addWidget(self._phase_label, alignment=QtCore.Qt.AlignCenter)
+        aux.addWidget(self._phase_snap_btn, alignment=QtCore.Qt.AlignCenter)
+        phase_layout.addLayout(aux, 0)
 
-        self._snap_targets = {}
-        self._snap_timers = {}
+        self.rows["rotPhaseDeg"] = row(
+            fl,
+            "Amplitude du déphasage (°)",
+            phase_container,
+            TOOLTIPS["dynamics.rotPhaseDeg"],
+            lambda: self._reset_phase_amplitude(),
+        )
+
         self._orient_labels = {}
         self.orient_dials = {}
+        self._phase_mode_default_row = 0
 
         for axis in ("X", "Y", "Z"):
             dial = QtWidgets.QDial()
@@ -129,11 +218,14 @@ class DynamicsTab(QtWidgets.QWidget):
             self._orient_labels[axis] = label
             dial.valueChanged.connect(lambda value, ax=axis: self._on_dial_changed(ax, value))
 
-        for w in [self.sp_pulseA,self.sp_pulseW,self.sp_pulsePhase,self.cb_rotPhaseMode,self.sp_rotPhaseDeg]:
+        self._apply_phase_snap_targets()
+
+        for w in [self.sp_pulseA, self.sp_pulseW, self.sp_pulsePhase, self.cb_rotPhaseMode]:
             if isinstance(w, QtWidgets.QComboBox):
                 w.currentIndexChanged.connect(self.emit_delta)
             else:
                 w.valueChanged.connect(self.emit_delta)
+        self.phase_amp_dial.valueChanged.connect(self._on_phase_amp_changed)
 
         for control in (self.rotX, self.rotY, self.rotZ):
             control.valueChanged.connect(self.emit_delta)
@@ -148,11 +240,12 @@ class DynamicsTab(QtWidgets.QWidget):
                     rotXMax=self.rotX.maximum(), rotYMax=self.rotY.maximum(), rotZMax=self.rotZ.maximum(),
                     pulseA=self.sp_pulseA.value(), pulseW=self.sp_pulseW.value(),
                     pulsePhaseDeg=self.sp_pulsePhase.value(),
-                    rotPhaseMode=self.cb_rotPhaseMode.currentData() or "none", rotPhaseDeg=self.sp_rotPhaseDeg.value(),
+                    rotPhaseMode=self.cb_rotPhaseMode.currentData() or "none", rotPhaseDeg=self.phase_amp_dial.value(),
                     orientXDeg=self.orient_dials["X"].value(),
                     orientYDeg=self.orient_dials["Y"].value(),
                     orientZDeg=self.orient_dials["Z"].value(),
                     orientationSnapAngles=list(self._orientation_snap_angles),
+                    phaseSnapAngles=list(self._phase_snap_angles),
                 )
         return data
 
@@ -172,6 +265,10 @@ class DynamicsTab(QtWidgets.QWidget):
         self._orientation_snap_angles = [int(v) for v in snap_cfg] or list(POPULAR_ORIENTATION_ANGLES)
         self._apply_snap_targets()
 
+        phase_snap_cfg = cfg.get("phaseSnapAngles", d.get("phaseSnapAngles", DEFAULT_PHASE_SNAP_ANGLES))
+        self._phase_snap_angles = [int(v) for v in phase_snap_cfg] or list(DEFAULT_PHASE_SNAP_ANGLES)
+        self._apply_phase_snap_targets()
+
         self.rotX.setMaximum(float(cfg.get("rotXMax", d.get("rotXMax", 360.0))))
         self.rotY.setMaximum(float(cfg.get("rotYMax", d.get("rotYMax", 360.0))))
         self.rotZ.setMaximum(float(cfg.get("rotZMax", d.get("rotZMax", 360.0))))
@@ -186,8 +283,10 @@ class DynamicsTab(QtWidgets.QWidget):
         with QtCore.QSignalBlocker(self.sp_pulsePhase):
             self.sp_pulsePhase.setValue(float(val("pulsePhaseDeg")))
         self._set_combo_value(self.cb_rotPhaseMode, str(val("rotPhaseMode")))
-        with QtCore.QSignalBlocker(self.sp_rotPhaseDeg):
-            self.sp_rotPhaseDeg.setValue(float(val("rotPhaseDeg")))
+        with QtCore.QSignalBlocker(self.phase_amp_dial):
+            phase_value = int(val("rotPhaseDeg"))
+            self.phase_amp_dial.setValue(phase_value)
+        self._phase_label.setText(f"{int(self.phase_amp_dial.value()):+d}°")
         for axis in ("X", "Y", "Z"):
             dial = self.orient_dials[axis]
             label = self._orient_labels[axis]
@@ -233,7 +332,7 @@ class DynamicsTab(QtWidgets.QWidget):
             if index == -1:
                 index = combo.findData(DEFAULTS["dynamics"].get("rotPhaseMode", "none"))
             if index == -1:
-                index = 0
+                index = self._phase_mode_default_row if combo is self.cb_rotPhaseMode else 0
             combo.setCurrentIndex(max(0, index))
 
     def _set_row_visible(self, key: str, visible: bool):
@@ -249,7 +348,9 @@ class DynamicsTab(QtWidgets.QWidget):
         mode = self.cb_rotPhaseMode.currentData() or "none"
         show_phase = mode != "none"
         self._set_row_visible("rotPhaseDeg", show_phase)
-        self.sp_rotPhaseDeg.setEnabled(show_phase)
+        self.phase_amp_dial.setEnabled(show_phase)
+        self._phase_snap_btn.setEnabled(show_phase)
+        self._phase_label.setEnabled(show_phase)
     def _reset_rotation(self, axis: str):
         defaults = DEFAULTS["dynamics"]
         control = getattr(self, f"rot{axis}")
@@ -277,6 +378,42 @@ class DynamicsTab(QtWidgets.QWidget):
             self._snap_targets[dial] = targets
             self._schedule_snap(dial, cancel_only=True)
 
+    def _populate_phase_modes(self):
+        model: QtGui.QStandardItemModel = self.cb_rotPhaseMode.model()  # type: ignore[assignment]
+        model.clear()
+        for category, entries in PHASE_MODE_GROUPS:
+            header = QtGui.QStandardItem(category)
+            header.setFlags(QtCore.Qt.NoItemFlags)
+            header.setData(True, SUBPROFILE_HEADER_ROLE)
+            header.setForeground(QtGui.QBrush(QtGui.QColor(76, 94, 111)))
+            header.setBackground(QtGui.QBrush(QtGui.QColor(238, 242, 247)))
+            model.appendRow(header)
+            for label, value in entries:
+                item = QtGui.QStandardItem(label)
+                item.setEditable(False)
+                item.setData(value, QtCore.Qt.UserRole)
+                model.appendRow(item)
+        self._phase_mode_default_row = self._first_phase_mode_row()
+
+    def _first_phase_mode_row(self) -> int:
+        model: QtGui.QStandardItemModel = self.cb_rotPhaseMode.model()  # type: ignore[assignment]
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if not item:
+                continue
+            if not (item.flags() & QtCore.Qt.ItemIsEnabled):
+                continue
+            return row
+        return 0
+
+    def _apply_phase_snap_targets(self):
+        clean = sorted({max(0, min(360, int(v))) for v in self._phase_snap_angles})
+        if not clean:
+            clean = list(DEFAULT_PHASE_SNAP_ANGLES)
+        self._phase_snap_angles = clean
+        self._snap_targets[self.phase_amp_dial] = clean
+        self._schedule_snap(self.phase_amp_dial, cancel_only=True)
+
     def _snap_slider(self, slider: QtWidgets.QAbstractSlider):
         targets = self._snap_targets.get(slider)
         if not targets:
@@ -291,6 +428,8 @@ class DynamicsTab(QtWidgets.QWidget):
                 if dial is slider:
                     self._orient_labels[axis].setText(f"{int(snap):+d}°")
                     break
+            if slider is self.phase_amp_dial:
+                self._phase_label.setText(f"{int(snap):+d}°")
             self.emit_delta()
 
     def _schedule_snap(self, slider: QtWidgets.QAbstractSlider, delay: int = 180, cancel_only: bool = False):
@@ -308,6 +447,10 @@ class DynamicsTab(QtWidgets.QWidget):
             label.setText(f"{int(value):+d}°")
         self.emit_delta()
 
+    def _on_phase_amp_changed(self, value: int):
+        self._phase_label.setText(f"{int(value):+d}°")
+        self.emit_delta()
+
     def _reset_orientation(self, axis: str):
         default = DEFAULTS["dynamics"].get(f"orient{axis}Deg", 0.0)
         dial = self.orient_dials[axis]
@@ -316,8 +459,15 @@ class DynamicsTab(QtWidgets.QWidget):
         self._orient_labels[axis].setText(f"{int(default):+d}°")
         self.emit_delta()
 
+    def _reset_phase_amplitude(self):
+        default = int(DEFAULTS["dynamics"].get("rotPhaseDeg", 0.0))
+        with QtCore.QSignalBlocker(self.phase_amp_dial):
+            self.phase_amp_dial.setValue(default)
+        self._phase_label.setText(f"{default:+d}°")
+        self.emit_delta()
+
     def _configure_snap_targets(self, axis: str):
-        dlg = OrientationSnapDialog(axis, self._orientation_snap_angles, self)
+        dlg = OrientationSnapDialog(axis, self._orientation_snap_angles, self, default_angles=POPULAR_ORIENTATION_ANGLES)
         if dlg.exec_() != QtWidgets.QDialog.Accepted:
             return
         dial = self.orient_dials[axis]
@@ -332,6 +482,24 @@ class DynamicsTab(QtWidgets.QWidget):
             with QtCore.QSignalBlocker(dial):
                 dial.setValue(angle)
             label.setText(f"{angle:+d}°")
+            updated = True
+        if updated:
+            self.emit_delta()
+
+    def _configure_phase_snap_targets(self):
+        dlg = OrientationSnapDialog("Amplitude", self._phase_snap_angles, self, default_angles=DEFAULT_PHASE_SNAP_ANGLES)
+        if dlg.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        updated = False
+        if dlg.values:
+            self._phase_snap_angles = [int(v) for v in dlg.values]
+            self._apply_phase_snap_targets()
+            updated = True
+        if dlg.selected_deg is not None:
+            angle = max(0, min(360, int(dlg.selected_deg)))
+            with QtCore.QSignalBlocker(self.phase_amp_dial):
+                self.phase_amp_dial.setValue(angle)
+            self._phase_label.setText(f"{angle:+d}°")
             updated = True
         if updated:
             self.emit_delta()
@@ -355,14 +523,15 @@ class DynamicsTab(QtWidgets.QWidget):
 
 
 class OrientationSnapDialog(QtWidgets.QDialog):
-    def __init__(self, axis: str, angles, parent=None):
+    def __init__(self, axis: str, angles, parent=None, default_angles=None):
         super().__init__(parent)
         self.setObjectName("OrientationSnapDialog")
         self.setWindowTitle(f"Crans d’orientation — axe {axis}")
         self.setModal(True)
         self.resize(420, 360)
 
-        self._default_angles = list(POPULAR_ORIENTATION_ANGLES)
+        base_defaults = default_angles if default_angles is not None else POPULAR_ORIENTATION_ANGLES
+        self._default_angles = [int(round(a)) for a in base_defaults]
         self._steps = {self._step_from_deg(int(round(a))) for a in angles}
         self.values = []
         self.selected_deg = None

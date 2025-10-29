@@ -190,7 +190,12 @@ class SubProfileManager:
             for name in store.keys():
                 cat_map.setdefault(name, self.CATEGORY_CUSTOM)
 
+        changed = False
         if self._write_defaults():
+            changed = True
+        if self._migrate_distribution_payloads():
+            changed = True
+        if changed:
             self._write()
 
     def _write(self) -> None:
@@ -203,6 +208,30 @@ class SubProfileManager:
             json.dumps(serialisable, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+
+    def _migrate_distribution_payloads(self) -> bool:
+        store = self._sections.get("distribution")
+        if not isinstance(store, dict):
+            return False
+        changed = False
+        for name, payload in list(store.items()):
+            if not isinstance(payload, dict):
+                continue
+            if "distribution" in payload and isinstance(payload["distribution"], dict):
+                flattened = self._sanitize_profile(payload["distribution"])
+                store[name] = flattened
+                changed = True
+            elif any(key in payload for key in ("mask", "distribution")):
+                # Remove unexpected wrappers while preserving existing scalar keys.
+                store[name] = self._sanitize_profile(
+                    {
+                        key: value
+                        for key, value in payload.items()
+                        if key not in {"mask"}
+                    }
+                )
+                changed = True
+        return changed
 
     def _record_category(self, section: str, name: str, category: str) -> None:
         self._categories.setdefault(section, {})[name] = category

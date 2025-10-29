@@ -30,6 +30,7 @@
       schwarz_scale:1.0, schwarz_iso:0.0,
       heart_scale:1.0,
       polyhedron_data:"",
+      poly_layers:1,
       poly_link_steps:0,
       metaballs_centers:"0,0,0",
       metaballs_radii:"0.6",
@@ -706,6 +707,30 @@
     return points.concat(extras);
   }
 
+  function expandPolyLayers(points, layers){
+    if (!Array.isArray(points)) return [];
+    const count = Math.max(1, layers|0);
+    const out = [];
+    if (count <= 1){
+      for (const p of points){
+        out.push({ x:p.x||0, y:p.y||0, z:p.z||0 });
+      }
+      return out;
+    }
+    for (let layer=1; layer<=count; layer++){
+      const t = layer / count;
+      for (const p of points){
+        out.push({ x:(p.x||0)*t, y:(p.y||0)*t, z:(p.z||0)*t });
+      }
+    }
+    return out;
+  }
+
+  function buildPolyGeometry(points, g){
+    const layered = expandPolyLayers(points, g.poly_layers);
+    return linkPolyPoints(layered, g.poly_link_steps);
+  }
+
   function gen_blob(g){
     const latSteps = Math.max(3, g.lat|0);
     const lonSteps = Math.max(3, g.lon|0);
@@ -999,14 +1024,14 @@
     mobius: g => gen_strip_twist({...g, strip_w:g.mobius_w, strip_n:1}),
     strip_twist: g => gen_strip_twist(g),
     klein_bottle: g => gen_klein_bottle(g),
-    icosahedron: g => linkPolyPoints(scaleVectors(platonic.icosahedron(), g.R), g.poly_link_steps),
-    dodecahedron: g => linkPolyPoints(scaleVectors(platonic.dodecahedron(), g.R), g.poly_link_steps),
-    octahedron: g => linkPolyPoints(scaleVectors(platonic.octahedron(), g.R), g.poly_link_steps),
-    tetrahedron: g => linkPolyPoints(scaleVectors(platonic.tetrahedron(), g.R), g.poly_link_steps),
-    cube: g => linkPolyPoints(scaleVectors(platonic.cube(), g.R), g.poly_link_steps),
-    truncated_icosa: g => linkPolyPoints(gen_truncated_icosa(g), g.poly_link_steps),
-    stellated_icosa: g => linkPolyPoints(gen_stellated_icosa(g), g.poly_link_steps),
-    polyhedron: g => linkPolyPoints(parsePolyhedronData(g.polyhedron_data, g.R), g.poly_link_steps),
+    icosahedron: g => buildPolyGeometry(scaleVectors(platonic.icosahedron(), g.R), g),
+    dodecahedron: g => buildPolyGeometry(scaleVectors(platonic.dodecahedron(), g.R), g),
+    octahedron: g => buildPolyGeometry(scaleVectors(platonic.octahedron(), g.R), g),
+    tetrahedron: g => buildPolyGeometry(scaleVectors(platonic.tetrahedron(), g.R), g),
+    cube: g => buildPolyGeometry(scaleVectors(platonic.cube(), g.R), g),
+    truncated_icosa: g => buildPolyGeometry(gen_truncated_icosa(g), g),
+    stellated_icosa: g => buildPolyGeometry(gen_stellated_icosa(g), g),
+    polyhedron: g => buildPolyGeometry(parsePolyhedronData(g.polyhedron_data, g.R), g),
     blob: g => gen_blob(g),
     gyroid: g => gen_gyroid(g),
     schwarz_P: g => gen_schwarz(g, "P"),
@@ -1493,8 +1518,37 @@
         phaseFactor = clamp01((mod.y / Math.max(1e-6, R) + 1) * 0.5);
       } else if (phaseMode === "checkerboard"){
         phaseFactor = (i % 2) ? 0.5 : 0.0;
+      } else if (phaseMode === "alternate_rings"){
+        const R = state.geometry.R || 1;
+        const latNorm = clamp01((mod.y / Math.max(1e-6, R) + 1) * 0.5);
+        const band = Math.floor(latNorm * 6);
+        phaseFactor = (band % 2) ? 0.5 : 0.0;
+      } else if (phaseMode === "lat_lon_checker"){
+        const R = state.geometry.R || 1;
+        const latNorm = clamp01((mod.y / Math.max(1e-6, R) + 1) * 0.5);
+        const phi = Math.atan2(mod.z, mod.x);
+        let lonNorm = (phi / (2*Math.PI)) % 1;
+        if (lonNorm < 0) lonNorm += 1;
+        const latBand = Math.floor(latNorm * 6);
+        const lonBand = Math.floor(lonNorm * 12);
+        phaseFactor = ((latBand + lonBand) % 2) ? 0.5 : 0.0;
       } else if (phaseMode === "random"){
         phaseFactor = randForIndex(seed || i, 77);
+      } else if (phaseMode === "noise3d"){
+        const n = valueNoise3(mod.x*0.9 + 5.1, mod.y*0.9 + 7.7, mod.z*0.9 + 9.9);
+        phaseFactor = clamp01(0.5 + 0.5*n);
+      } else if (phaseMode === "golden_spiral"){
+        let g = (i * 0.6180339887498949) % 1;
+        if (g < 0) g += 1;
+        phaseFactor = g;
+      } else if (phaseMode === "cluster_wave"){
+        const clusters = Math.max(1, (state.distribution && state.distribution.clusterCount) || 1);
+        if (clusters <= 1){
+          phaseFactor = 0;
+        } else {
+          const clusterIndex = Math.abs(seed || i) % clusters;
+          phaseFactor = clusterIndex / (clusters - 1);
+        }
       }
       const pulse = 1 + pulseA*Math.sin(pulseW*now*0.001 + pulsePhi0 + 2*Math.PI*phaseFactor);
 

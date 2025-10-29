@@ -375,13 +375,14 @@ class DistributionTab(QtWidgets.QWidget):
     def collect(self) -> dict:
         return self.collect_distribution()
 
-    def _collect_subprofile_payload(self) -> dict:
-        return {
-            "distribution": self.collect_distribution(),
-            "mask": self.collect_mask(),
-        }
+    def set_defaults(self, distribution_cfg=None, mask_cfg=None):
+        if isinstance(distribution_cfg, dict) and (
+            "distribution" in distribution_cfg or "mask" in distribution_cfg
+        ) and mask_cfg is None:
+            combined = distribution_cfg
+            distribution_cfg = combined.get("distribution", {})
+            mask_cfg = combined.get("mask")
 
-    def set_defaults(self, distribution_cfg, mask_cfg=None):
         distribution_cfg = distribution_cfg or {}
         mask_cfg = mask_cfg or {}
         d = DEFAULTS["distribution"]
@@ -452,27 +453,24 @@ class DistributionTab(QtWidgets.QWidget):
 
     # ------------------------------------------------------------------ helpers
     def attach_subprofile_manager(self, manager):
-        defaults_payload = {
-            "distribution": DEFAULTS["distribution"],
-            "mask": DEFAULTS["mask"],
-        }
         self._subprofile_panel.bind(
             manager=manager,
             section="distribution",
-            defaults=defaults_payload,
-            collect_cb=self._collect_subprofile_payload,
-            apply_cb=self._apply_subprofile_payload,
+            defaults=DEFAULTS["distribution"],
+            collect_cb=self.collect,
+            apply_cb=self._apply_distribution_subprofile,
             on_change=self.emit_delta,
         )
         self._sync_subprofile_state()
 
-    def _apply_subprofile_payload(self, payload):
-        payload = payload or {}
-        self.set_defaults(payload.get("distribution"), payload.get("mask"))
+    def _apply_distribution_subprofile(self, payload):
+        if not isinstance(payload, dict):
+            payload = {}
+        self.set_defaults(payload)
 
     def _sync_subprofile_state(self):
         if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
-            self._subprofile_panel.sync_from_data(self._collect_subprofile_payload())
+            self._subprofile_panel.sync_from_data(self.collect())
 
     def _set_row_visible(self, key: str, visible: bool):
         row_widget = self.rows.get(key)
