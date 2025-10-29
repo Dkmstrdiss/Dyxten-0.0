@@ -65,6 +65,9 @@
       sampler:"direct",
       dmin:0,
       dmin_px:0,
+      orientXDeg:0,
+      orientYDeg:0,
+      orientZDeg:0,
       maskMode:"none",
       maskSoftness:0.2,
       maskAnimate:0,
@@ -1277,6 +1280,28 @@
     if (pulse){
       const scale = 1 + 0.3 * pulse * Math.sin(t * 2 * Math.PI);
       x *= scale; y *= scale; z *= scale;
+    }
+
+    const ox = toRad(dist.orientXDeg || 0);
+    if (ox){
+      const c = Math.cos(ox), s = Math.sin(ox);
+      const Y = c * y - s * z;
+      const Z = s * y + c * z;
+      y = Y; z = Z;
+    }
+    const oy = toRad(dist.orientYDeg || 0);
+    if (oy){
+      const c = Math.cos(oy), s = Math.sin(oy);
+      const X = c * x + s * z;
+      const Z = -s * x + c * z;
+      x = X; z = Z;
+    }
+    const oz = toRad(dist.orientZDeg || 0);
+    if (oz){
+      const c = Math.cos(oz), s = Math.sin(oz);
+      const X = c * x - s * y;
+      const Y = s * x + c * y;
+      x = X; y = Y;
     }
 
     return { x, y, z };

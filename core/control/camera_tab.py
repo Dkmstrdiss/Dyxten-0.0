@@ -61,27 +61,6 @@ class CameraTab(QtWidgets.QWidget):
             with QtCore.QSignalBlocker(widget):
                 widget.setValue(cast(value))
 
-    # ------------------------------------------------------------------ utils
-    def _install_angle_snap(self, slider: QtWidgets.QSlider, targets):
-        if not targets:
-            return
-        slider.setTickInterval(15)
-        slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self._snap_targets[slider] = sorted(set(int(v) for v in targets))
-        slider.sliderReleased.connect(lambda: self._snap_slider(slider))
-        slider.actionTriggered.connect(lambda *_: self._snap_slider(slider))
-
-    def _snap_slider(self, slider: QtWidgets.QSlider):
-        targets = self._snap_targets.get(slider)
-        if not targets:
-            return
-        value = slider.value()
-        snap = min(targets, key=lambda t: abs(t - value))
-        if snap != value:
-            with QtCore.QSignalBlocker(slider):
-                slider.setValue(snap)
-            self.emit_delta()
-
     def set_tilt_to_max(self):
         target = self.sl_camTilt.maximum()
         if self.sl_camTilt.value() == target:
@@ -89,3 +68,10 @@ class CameraTab(QtWidgets.QWidget):
         with QtCore.QSignalBlocker(self.sl_camTilt):
             self.sl_camTilt.setValue(target)
         self.emit_delta()
+
+    # Ancienne méthode conservée pour compatibilité : elle ne fait plus rien
+    # mais reste présente afin d'éviter les erreurs si du code externe tente
+    # encore de l'appeler après les régressions signalées.
+    def _install_angle_snap(self, *_args, **_kwargs):  # pragma: no cover - compat
+        """Méthode laissée volontairement vide (aucun snap sur les sliders)."""
+        return
