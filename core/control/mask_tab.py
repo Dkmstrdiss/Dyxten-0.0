@@ -1,6 +1,6 @@
 
 from PyQt5 import QtWidgets, QtCore
-from .widgets import row
+from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
 
 class MaskTab(QtWidgets.QWidget):
@@ -8,7 +8,17 @@ class MaskTab(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         d = DEFAULTS["mask"]
-        fl = QtWidgets.QFormLayout(self)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
+
+        self._subprofile_panel = SubProfilePanel("Sous-profil masque")
+        outer.addWidget(self._subprofile_panel)
+
+        container = QtWidgets.QWidget()
+        fl = QtWidgets.QFormLayout(container)
+        fl.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(container)
         self.chk_enabled = QtWidgets.QCheckBox(); self.chk_enabled.setChecked(d["enabled"])
         self.cb_mode = QtWidgets.QComboBox(); self.cb_mode.addItems(["none","north_cap","south_cap","equatorial_band","longitudinal_band"]); self.cb_mode.setCurrentText(d["mode"])
         self.sp_angle = QtWidgets.QDoubleSpinBox(); self.sp_angle.setRange(0.0,90.0); self.sp_angle.setSingleStep(1.0); self.sp_angle.setValue(d["angleDeg"])
@@ -29,6 +39,7 @@ class MaskTab(QtWidgets.QWidget):
             if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
             elif isinstance(w, QtWidgets.QComboBox): w.currentIndexChanged.connect(self.emit_delta)
             else: w.valueChanged.connect(self.emit_delta)
+        self._sync_subprofile_state()
     def collect(self):
         return dict(enabled=self.chk_enabled.isChecked(), mode=self.cb_mode.currentText(), angleDeg=self.sp_angle.value(),
                     bandHalfDeg=self.sp_band.value(), lonCenterDeg=self.sp_lonC.value(), lonWidthDeg=self.sp_lonW.value(),
@@ -52,5 +63,21 @@ class MaskTab(QtWidgets.QWidget):
             self.sp_soft.setValue(float(cfg.get("softDeg", d["softDeg"])))
         with QtCore.QSignalBlocker(self.chk_invert):
             self.chk_invert.setChecked(bool(cfg.get("invert", d["invert"])))
+        self._sync_subprofile_state()
     def set_enabled(self, context: dict): pass
-    def emit_delta(self, *a): self.changed.emit({"mask": self.collect()})
+    def emit_delta(self, *a):
+        self._sync_subprofile_state()
+        self.changed.emit({"mask": self.collect()})
+    def attach_subprofile_manager(self, manager):
+        self._subprofile_panel.bind(
+            manager=manager,
+            section="mask",
+            defaults=DEFAULTS["mask"],
+            collect_cb=self.collect,
+            apply_cb=self.set_defaults,
+            on_change=self.emit_delta,
+        )
+        self._sync_subprofile_state()
+    def _sync_subprofile_state(self):
+        if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
+            self._subprofile_panel.sync_from_data(self.collect())

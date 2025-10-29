@@ -1,10 +1,7 @@
 from PyQt5 import QtWidgets, QtCore
 
-from .widgets import row
+from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
-
-
-POPULAR_ORIENTATION_ANGLES = [-180, -135, -120, -90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90, 120, 135, 180]
 
 
 class DistributionTab(QtWidgets.QWidget):
@@ -15,11 +12,19 @@ class DistributionTab(QtWidgets.QWidget):
         d = DEFAULTS["distribution"]
         m = DEFAULTS["mask"]
 
-        form = QtWidgets.QFormLayout(self)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
+
+        self._subprofile_panel = SubProfilePanel("Sous-profil distribution")
+        outer.addWidget(self._subprofile_panel)
+
+        container = QtWidgets.QWidget()
+        form = QtWidgets.QFormLayout(container)
         form.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(container)
 
         self.rows = {}
-        self._snap_targets = {}
 
         # Distribution options -------------------------------------------------
         self.cb_density_mode = QtWidgets.QComboBox()
@@ -67,42 +72,6 @@ class DistributionTab(QtWidgets.QWidget):
             self.sp_dmin_px,
             TOOLTIPS["distribution.dmin_px"],
             lambda: self.sp_dmin_px.setValue(d["dmin_px"]),
-        )
-
-        self.sl_orient_x = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sl_orient_x.setRange(-180, 180)
-        self.sl_orient_x.setValue(d["orientXDeg"])
-        self._install_angle_snap(self.sl_orient_x, POPULAR_ORIENTATION_ANGLES)
-        self.rows["orientXDeg"] = row(
-            form,
-            "Orientation X (°)",
-            self.sl_orient_x,
-            TOOLTIPS["distribution.orientXDeg"],
-            lambda: self.sl_orient_x.setValue(d["orientXDeg"]),
-        )
-
-        self.sl_orient_y = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sl_orient_y.setRange(-180, 180)
-        self.sl_orient_y.setValue(d["orientYDeg"])
-        self._install_angle_snap(self.sl_orient_y, POPULAR_ORIENTATION_ANGLES)
-        self.rows["orientYDeg"] = row(
-            form,
-            "Orientation Y (°)",
-            self.sl_orient_y,
-            TOOLTIPS["distribution.orientYDeg"],
-            lambda: self.sl_orient_y.setValue(d["orientYDeg"]),
-        )
-
-        self.sl_orient_z = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.sl_orient_z.setRange(-180, 180)
-        self.sl_orient_z.setValue(d["orientZDeg"])
-        self._install_angle_snap(self.sl_orient_z, POPULAR_ORIENTATION_ANGLES)
-        self.rows["orientZDeg"] = row(
-            form,
-            "Orientation Z (°)",
-            self.sl_orient_z,
-            TOOLTIPS["distribution.orientZDeg"],
-            lambda: self.sl_orient_z.setValue(d["orientZDeg"]),
         )
 
         self.cb_dist_mask_mode = QtWidgets.QComboBox()
@@ -330,9 +299,6 @@ class DistributionTab(QtWidgets.QWidget):
             self.cb_sampler,
             self.sp_dmin,
             self.sp_dmin_px,
-            self.sl_orient_x,
-            self.sl_orient_y,
-            self.sl_orient_z,
             self.cb_dist_mask_mode,
             self.sp_dist_mask_soft,
             self.sp_dist_mask_animate,
@@ -373,6 +339,7 @@ class DistributionTab(QtWidgets.QWidget):
         self.cb_mask_visual_mode.currentIndexChanged.connect(self._update_row_states)
 
         self._update_row_states()
+        self._sync_subprofile_state()
 
     # ------------------------------------------------------------------ public
     def collect_distribution(self) -> dict:
@@ -381,9 +348,6 @@ class DistributionTab(QtWidgets.QWidget):
             sampler=self.cb_sampler.currentText(),
             dmin=self.sp_dmin.value(),
             dmin_px=self.sp_dmin_px.value(),
-            orientXDeg=self.sl_orient_x.value(),
-            orientYDeg=self.sl_orient_y.value(),
-            orientZDeg=self.sl_orient_z.value(),
             maskMode=self.cb_dist_mask_mode.currentText(),
             maskSoftness=self.sp_dist_mask_soft.value(),
             maskAnimate=self.sp_dist_mask_animate.value(),
@@ -411,6 +375,12 @@ class DistributionTab(QtWidgets.QWidget):
     def collect(self) -> dict:
         return self.collect_distribution()
 
+    def _collect_subprofile_payload(self) -> dict:
+        return {
+            "distribution": self.collect_distribution(),
+            "mask": self.collect_mask(),
+        }
+
     def set_defaults(self, distribution_cfg, mask_cfg=None):
         distribution_cfg = distribution_cfg or {}
         mask_cfg = mask_cfg or {}
@@ -422,9 +392,6 @@ class DistributionTab(QtWidgets.QWidget):
             self.cb_sampler: distribution_cfg.get("sampler", d["sampler"]),
             self.sp_dmin: distribution_cfg.get("dmin", d["dmin"]),
             self.sp_dmin_px: distribution_cfg.get("dmin_px", d["dmin_px"]),
-            self.sl_orient_x: distribution_cfg.get("orientXDeg", d["orientXDeg"]),
-            self.sl_orient_y: distribution_cfg.get("orientYDeg", d["orientYDeg"]),
-            self.sl_orient_z: distribution_cfg.get("orientZDeg", d["orientZDeg"]),
             self.cb_dist_mask_mode: distribution_cfg.get("maskMode", d["maskMode"]),
             self.sp_dist_mask_soft: distribution_cfg.get("maskSoftness", d["maskSoftness"]),
             self.sp_dist_mask_animate: distribution_cfg.get("maskAnimate", d["maskAnimate"]),
@@ -469,20 +436,44 @@ class DistributionTab(QtWidgets.QWidget):
                     widget.setValue(float(value))
 
         self._update_row_states()
+        self._sync_subprofile_state()
 
     def set_enabled(self, context: dict):
         pass
 
     def emit_delta(self, *args):
         self._update_row_states()
-        self.changed.emit(
-            {
-                "distribution": self.collect_distribution(),
-                "mask": self.collect_mask(),
-            }
-        )
+        payload = {
+            "distribution": self.collect_distribution(),
+            "mask": self.collect_mask(),
+        }
+        self._sync_subprofile_state()
+        self.changed.emit(payload)
 
     # ------------------------------------------------------------------ helpers
+    def attach_subprofile_manager(self, manager):
+        defaults_payload = {
+            "distribution": DEFAULTS["distribution"],
+            "mask": DEFAULTS["mask"],
+        }
+        self._subprofile_panel.bind(
+            manager=manager,
+            section="distribution",
+            defaults=defaults_payload,
+            collect_cb=self._collect_subprofile_payload,
+            apply_cb=self._apply_subprofile_payload,
+            on_change=self.emit_delta,
+        )
+        self._sync_subprofile_state()
+
+    def _apply_subprofile_payload(self, payload):
+        payload = payload or {}
+        self.set_defaults(payload.get("distribution"), payload.get("mask"))
+
+    def _sync_subprofile_state(self):
+        if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
+            self._subprofile_panel.sync_from_data(self._collect_subprofile_payload())
+
     def _set_row_visible(self, key: str, visible: bool):
         row_widget = self.rows.get(key)
         if row_widget is None:
@@ -537,22 +528,8 @@ class DistributionTab(QtWidgets.QWidget):
         self._set_row_visible("maskInvert", render_enabled and show_invert)
         self.chk_mask_invert.setEnabled(render_enabled and show_invert)
 
-    def _install_angle_snap(self, slider: QtWidgets.QSlider, targets):
-        if not targets:
-            return
-        slider.setTickInterval(15)
-        slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
-        self._snap_targets[slider] = sorted(set(int(v) for v in targets))
-        slider.sliderReleased.connect(lambda: self._snap_slider(slider))
-        slider.actionTriggered.connect(lambda *_: self._snap_slider(slider))
+    def _install_angle_snap(self, *_args, **_kwargs):  # pragma: no cover - compat
+        """Méthode conservée pour compatibilité avec d’anciens profils."""
 
-    def _snap_slider(self, slider: QtWidgets.QSlider):
-        targets = self._snap_targets.get(slider)
-        if not targets:
-            return
-        value = slider.value()
-        snap = min(targets, key=lambda t: abs(t - value))
-        if snap != value:
-            with QtCore.QSignalBlocker(slider):
-                slider.setValue(snap)
-            self.emit_delta()
+    def _snap_slider(self, *_args, **_kwargs):  # pragma: no cover - compat
+        """Méthode conservée pour compatibilité avec d’anciens profils."""

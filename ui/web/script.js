@@ -30,6 +30,7 @@
       schwarz_scale:1.0, schwarz_iso:0.0,
       heart_scale:1.0,
       polyhedron_data:"",
+      poly_link_steps:0,
       metaballs_centers:"0,0,0",
       metaballs_radii:"0.6",
       metaballs_iso:1.0,
@@ -59,15 +60,14 @@
       noiseScale:1.0, noiseSpeed:0.0,
       pxModMode:"none", pxModAmp:0, pxModFreq:0, pxModPhaseDeg:0
     },
-    dynamics: { rotX:0, rotY:0, rotZ:0, pulseA:0, pulseW:1, pulsePhaseDeg:0, rotPhaseMode:"none", rotPhaseDeg:0 },
+    dynamics: { rotX:0, rotY:0, rotZ:0, rotXMax:360, rotYMax:360, rotZMax:360,
+      orientXDeg:0, orientYDeg:0, orientZDeg:0,
+      pulseA:0, pulseW:1, pulsePhaseDeg:0, rotPhaseMode:"none", rotPhaseDeg:0 },
     distribution: {
       densityMode:"uniform",
       sampler:"direct",
       dmin:0,
       dmin_px:0,
-      orientXDeg:0,
-      orientYDeg:0,
-      orientZDeg:0,
       maskMode:"none",
       maskSoftness:0.2,
       maskAnimate:0,
@@ -614,6 +614,8 @@
       [3,9,4],[3,4,2],[3,2,6],[3,6,8],[3,8,9],
       [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]
     ];
+    const mix = (a,b,t) => a + (b-a)*t;
+    const ratio = Math.min(0.45, Math.max(0.05, g.trunc_ratio ?? 0.333));
     for(const [a,b,c] of faces){
       const add = (u,v) => {
         const key = u<v ? `${u}-${v}` : `${v}-${u}`;
@@ -626,8 +628,8 @@
       const [a,b] = key.split("-").map(n=>parseInt(n,10));
       const va = icoVerts[a];
       const vb = icoVerts[b];
-      const p1 = [(2*va[0]+vb[0])/3,(2*va[1]+vb[1])/3,(2*va[2]+vb[2])/3];
-      const p2 = [(2*vb[0]+va[0])/3,(2*vb[1]+va[1])/3,(2*vb[2]+va[2])/3];
+      const p1 = [mix(va[0], vb[0], ratio), mix(va[1], vb[1], ratio), mix(va[2], vb[2], ratio)];
+      const p2 = [mix(vb[0], va[0], ratio), mix(vb[1], va[1], ratio), mix(vb[2], va[2], ratio)];
       pts.push(normScale(p1, g.R));
       pts.push(normScale(p2, g.R));
     }
@@ -642,10 +644,11 @@
       [4,9,5],[2,4,11],[6,2,10],[8,6,7],[9,8,1]
     ];
     const verts = platonic.icosahedron();
+    const spike = Math.min(2.5, Math.max(0.8, g.stellated_scale ?? 1.4));
     const centers = faces.map(face=>{
       const A=verts[face[0]], B=verts[face[1]], C=verts[face[2]];
       const cx=(A[0]+B[0]+C[0])/3, cy=(A[1]+B[1]+C[1])/3, cz=(A[2]+B[2]+C[2])/3;
-      return normScale([cx,cy,cz], g.R * 1.4);
+      return normScale([cx,cy,cz], g.R * spike);
     });
     return centers.map(p=>({x:p[0],y:p[1],z:p[2]}));
   }
@@ -659,6 +662,48 @@
       }
     }catch(err){ console.warn("Invalid polyhedron data", err); }
     return [];
+  }
+
+  function linkPolyPoints(points, steps){
+    const count = Math.max(0, steps|0);
+    if (!Array.isArray(points) || points.length < 2 || count <= 0) return points;
+    let minDist = Infinity;
+    for (let i=0;i<points.length;i++){
+      const a = points[i];
+      for (let j=i+1;j<points.length;j++){
+        const b = points[j];
+        const dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 1e-5 && dist < minDist) minDist = dist;
+      }
+    }
+    if (!Number.isFinite(minDist) || minDist <= 0) return points;
+    const threshold = minDist * 1.2;
+    const extras = [];
+    const seen = new Set();
+    for (let i=0;i<points.length;i++){
+      const a = points[i];
+      for (let j=i+1;j<points.length;j++){
+        const b = points[j];
+        const dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist <= threshold){
+          const key = i+"-"+j;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          for (let s=1;s<=count;s++){
+            const t = s/(count+1);
+            extras.push({
+              x: a.x + (b.x - a.x)*t,
+              y: a.y + (b.y - a.y)*t,
+              z: a.z + (b.z - a.z)*t,
+            });
+          }
+        }
+      }
+    }
+    if (!extras.length) return points;
+    return points.concat(extras);
   }
 
   function gen_blob(g){
@@ -954,14 +999,14 @@
     mobius: g => gen_strip_twist({...g, strip_w:g.mobius_w, strip_n:1}),
     strip_twist: g => gen_strip_twist(g),
     klein_bottle: g => gen_klein_bottle(g),
-    icosahedron: g => scaleVectors(platonic.icosahedron(), g.R),
-    dodecahedron: g => scaleVectors(platonic.dodecahedron(), g.R),
-    octahedron: g => scaleVectors(platonic.octahedron(), g.R),
-    tetrahedron: g => scaleVectors(platonic.tetrahedron(), g.R),
-    cube: g => scaleVectors(platonic.cube(), g.R),
-    truncated_icosa: g => gen_truncated_icosa(g),
-    stellated_icosa: g => gen_stellated_icosa(g),
-    polyhedron: g => parsePolyhedronData(g.polyhedron_data, g.R),
+    icosahedron: g => linkPolyPoints(scaleVectors(platonic.icosahedron(), g.R), g.poly_link_steps),
+    dodecahedron: g => linkPolyPoints(scaleVectors(platonic.dodecahedron(), g.R), g.poly_link_steps),
+    octahedron: g => linkPolyPoints(scaleVectors(platonic.octahedron(), g.R), g.poly_link_steps),
+    tetrahedron: g => linkPolyPoints(scaleVectors(platonic.tetrahedron(), g.R), g.poly_link_steps),
+    cube: g => linkPolyPoints(scaleVectors(platonic.cube(), g.R), g.poly_link_steps),
+    truncated_icosa: g => linkPolyPoints(gen_truncated_icosa(g), g.poly_link_steps),
+    stellated_icosa: g => linkPolyPoints(gen_stellated_icosa(g), g.poly_link_steps),
+    polyhedron: g => linkPolyPoints(parsePolyhedronData(g.polyhedron_data, g.R), g.poly_link_steps),
     blob: g => gen_blob(g),
     gyroid: g => gen_gyroid(g),
     schwarz_P: g => gen_schwarz(g, "P"),
@@ -1200,6 +1245,7 @@
   function applySampler(points){
     if (!Array.isArray(points)) return [];
     const dist = state.distribution || {};
+    const dyn = state.dynamics || {};
     let working = points.slice();
     const minDist = Math.max(0, dist.dmin || 0);
     const sampler = dist.sampler || "direct";
@@ -1216,6 +1262,7 @@
 
   function applyPointModifiers(bp, seed, now){
     const dist = state.distribution || {};
+    const dyn = state.dynamics || {};
     const baseR = Math.max(Math.hypot(bp.x, bp.y, bp.z), 1e-6);
     const R = state.geometry.R || baseR;
     const t = now * 0.001;
@@ -1282,21 +1329,24 @@
       x *= scale; y *= scale; z *= scale;
     }
 
-    const ox = toRad(dist.orientXDeg || 0);
+    const oxDeg = dyn.orientXDeg !== undefined ? dyn.orientXDeg : (dist.orientXDeg || 0);
+    const ox = toRad(oxDeg || 0);
     if (ox){
       const c = Math.cos(ox), s = Math.sin(ox);
       const Y = c * y - s * z;
       const Z = s * y + c * z;
       y = Y; z = Z;
     }
-    const oy = toRad(dist.orientYDeg || 0);
+    const oyDeg = dyn.orientYDeg !== undefined ? dyn.orientYDeg : (dist.orientYDeg || 0);
+    const oy = toRad(oyDeg || 0);
     if (oy){
       const c = Math.cos(oy), s = Math.sin(oy);
       const X = c * x + s * z;
       const Z = -s * x + c * z;
       x = X; z = Z;
     }
-    const oz = toRad(dist.orientZDeg || 0);
+    const ozDeg = dyn.orientZDeg !== undefined ? dyn.orientZDeg : (dist.orientZDeg || 0);
+    const oz = toRad(ozDeg || 0);
     if (oz){
       const c = Math.cos(oz), s = Math.sin(oz);
       const X = c * x - s * y;
@@ -1428,11 +1478,23 @@
       if (!keepByDistribution(mod, seed, now)) continue;
 
       // phase rot/pulse
+      const phaseMode = state.dynamics.rotPhaseMode || "none";
       let phaseFactor = 0;
-      if (state.dynamics.rotPhaseMode==="by_index"){
+      if (phaseMode === "by_index"){
         phaseFactor = basePoints.length>1 ? i/(basePoints.length-1) : 0;
-      } else if (state.dynamics.rotPhaseMode==="by_radius"){
+      } else if (phaseMode === "by_radius"){
         const R = state.geometry.R || 1; phaseFactor = clamp01(Math.hypot(mod.x,mod.z)/Math.max(1e-6,R));
+      } else if (phaseMode === "by_longitude"){
+        const phi = Math.atan2(mod.z, mod.x);
+        const norm = (phi / (2*Math.PI)) % 1;
+        phaseFactor = norm < 0 ? norm + 1 : norm;
+      } else if (phaseMode === "by_latitude"){
+        const R = state.geometry.R || 1;
+        phaseFactor = clamp01((mod.y / Math.max(1e-6, R) + 1) * 0.5);
+      } else if (phaseMode === "checkerboard"){
+        phaseFactor = (i % 2) ? 0.5 : 0.0;
+      } else if (phaseMode === "random"){
+        phaseFactor = randForIndex(seed || i, 77);
       }
       const pulse = 1 + pulseA*Math.sin(pulseW*now*0.001 + pulsePhi0 + 2*Math.PI*phaseFactor);
 

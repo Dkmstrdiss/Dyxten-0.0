@@ -1,10 +1,10 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 
 try:
-    from .widgets import row
+    from .widgets import row, SubProfilePanel
     from .config import DEFAULTS
 except ImportError:
-    from core.control.widgets import row
+    from core.control.widgets import row, SubProfilePanel
     from core.control.config import DEFAULTS
 
 
@@ -32,7 +32,17 @@ class AppearanceTab(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         d = DEFAULTS["appearance"]
-        fl = QtWidgets.QFormLayout(self)
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
+
+        self._subprofile_panel = SubProfilePanel("Sous-profil apparence")
+        outer.addWidget(self._subprofile_panel)
+
+        container = QtWidgets.QWidget()
+        fl = QtWidgets.QFormLayout(container)
+        fl.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(container)
         self.rows = {}
 
         # Couleur unique + picker
@@ -125,6 +135,7 @@ class AppearanceTab(QtWidgets.QWidget):
         self.cb_palette.currentIndexChanged.connect(self.sync_enabled)
         self.cb_pxMode.currentIndexChanged.connect(self.sync_enabled)
         self.sync_enabled()  # grise ce qu’il faut
+        self._sync_subprofile_state()
 
     def sync_enabled(self, emit=True):
         palette = self.cb_palette.currentText()
@@ -172,7 +183,9 @@ class AppearanceTab(QtWidgets.QWidget):
         if label is not None:
             label.setVisible(visible)
 
-    def emit_delta(self): self.changed.emit({"appearance": self.collect()})
+    def emit_delta(self):
+        self._sync_subprofile_state()
+        self.changed.emit({"appearance": self.collect()})
 
     def collect(self):
         return dict(
@@ -190,6 +203,17 @@ class AppearanceTab(QtWidgets.QWidget):
             pxModMode=self.cb_pxMode.currentText(), pxModAmp=self.sp_pxAmp.value(),
             pxModFreq=self.sp_pxFreq.value(), pxModPhaseDeg=self.sp_pxPhase.value(),
         )
+
+    def attach_subprofile_manager(self, manager):
+        self._subprofile_panel.bind(
+            manager=manager,
+            section="appearance",
+            defaults=DEFAULTS["appearance"],
+            collect_cb=self.collect,
+            apply_cb=self.set_defaults,
+            on_change=self.emit_delta,
+        )
+        self._sync_subprofile_state()
 
     def set_defaults(self, cfg):
         cfg = cfg or {}
@@ -235,6 +259,11 @@ class AppearanceTab(QtWidgets.QWidget):
             self.sp_pxPhase.setValue(float(val("pxModPhaseDeg")))
 
         self.sync_enabled(emit=False)
+        self._sync_subprofile_state()
+
+    def _sync_subprofile_state(self):
+        if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
+            self._subprofile_panel.sync_from_data(self.collect())
 
     def pick_color(self):
         c = open_color_dialog(self, QtGui.QColor(self.ed_color.text().strip() or "#00C8FF"), "Couleur")

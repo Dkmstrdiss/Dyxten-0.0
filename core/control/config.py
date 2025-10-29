@@ -9,6 +9,8 @@ DEFAULTS = dict(
         R_major=1.2, r_minor=0.45,
         eps1=1.0, eps2=1.0, ax=1.0, ay=1.0, az=1.0,
         geo_level=1, mobius_w=0.4,
+        trunc_ratio=0.333,
+        stellated_scale=1.4,
         arch_a=0.0, arch_b=0.6, theta_max=6.28318,
         log_a=0.2, log_b=0.15,
         rose_k=4.0,
@@ -33,6 +35,7 @@ DEFAULTS = dict(
         metaballs_radii="0.6",
         metaballs_iso=1.0,
         polyhedron_data="",
+        poly_link_steps=0,
         df_ops="sphere(1.0)",
         sf3_m1=3.0, sf3_m2=3.0, sf3_m3=3.0,
         sf3_n1=0.5, sf3_n2=0.5, sf3_n3=0.5,
@@ -60,17 +63,18 @@ DEFAULTS = dict(
         pxModMode="none", pxModAmp=0.0, pxModFreq=0.0, pxModPhaseDeg=0.0,
     ),
     dynamics=dict(
-        rotX=0.0, rotY=0.0, rotZ=0.0, pulseA=0.0, pulseW=1.0,
-        pulsePhaseDeg=0.0, rotPhaseDeg=0.0, rotPhaseMode="none"
+        rotX=0.0, rotY=0.0, rotZ=0.0,
+        rotXMax=360.0, rotYMax=360.0, rotZMax=360.0,
+        orientXDeg=0.0, orientYDeg=0.0, orientZDeg=0.0,
+        pulseA=0.0, pulseW=1.0,
+        pulsePhaseDeg=0.0, rotPhaseDeg=0.0, rotPhaseMode="none",
+        orientationSnapAngles=[-180, -135, -120, -90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90, 120, 135, 180]
     ),
     distribution=dict(
         densityMode="uniform",
         sampler="direct",
         dmin=0.0,
         dmin_px=0.0,
-        orientXDeg=0,
-        orientYDeg=0,
-        orientZDeg=0,
         maskMode="none",
         maskSoftness=0.2,
         maskAnimate=0.0,
@@ -91,199 +95,388 @@ DEFAULTS = dict(
     system=dict(Nmax=50000, dprClamp=2.0, depthSort=True, transparent=True)
 )
 
-PROFILE_PRESETS = {
-    "Aurora Sphérique": dict(
-        camera=dict(camRadius=4.8, camHeightDeg=32, camTiltDeg=-12, omegaDegPerSec=10, fov=650),
-        geometry=dict(topology="fibo_sphere", R=1.15, N=15000, phi_g=2.39996),
-        appearance=dict(
-            palette="gradient_linear",
-            colors="#4CC9F0@0,#4895EF@0.35,#560BAD@1",
-            opacity=0.88,
-            px=2.6,
-            blendMode="screen",
-        ),
-        dynamics=dict(rotY=9.5, rotPhaseMode="by_radius", rotPhaseDeg=120.0),
-        distribution=dict(sampler="blue_noise", dmin=0.04, orientYDeg=18, orientZDeg=12, noiseDistortion=0.14),
-    ),
-    "Anneau Néon": dict(
-        camera=dict(camRadius=5.5, camHeightDeg=45, camTiltDeg=-18, omegaDegPerSec=14, fov=540),
-        geometry=dict(topology="torus", R=1.0, lat=96, lon=128, R_major=1.8, r_minor=0.38),
-        appearance=dict(
-            palette="stripe_longitude",
-            colors="#00F5D4@0,#560BAD@0.5,#F72585@1",
-            opacity=0.92,
-            px=2.2,
-        ),
-        dynamics=dict(rotX=4.0, rotZ=8.0, rotPhaseMode="by_index", rotPhaseDeg=80.0),
-        distribution=dict(densityMode="centered", sampler="blue_noise", dmin=0.05, orientZDeg=45),
-    ),
-    "Spirale Galactique": dict(
-        camera=dict(camRadius=6.0, camHeightDeg=70, camTiltDeg=-58, omegaDegPerSec=6, fov=720),
-        geometry=dict(
-            topology="archimede_spiral",
-            R=2.4,
-            N=12000,
-            arch_a=0.08,
-            arch_b=0.23,
-            theta_max=18.0,
-        ),
-        appearance=dict(palette="gradient_radial", colors="#F9C74F@0,#F9844A@0.45,#F94144@1", opacity=0.9, px=1.8),
-        dynamics=dict(rotZ=14.0),
-        distribution=dict(densityMode="edges", sampler="weighted_sampling", orientZDeg=-15, noiseWarp=0.22),
-    ),
-    "Constellation Libre": dict(
-        camera=dict(camRadius=7.0, camHeightDeg=38, camTiltDeg=-8, omegaDegPerSec=4, fov=520),
-        geometry=dict(topology="random_geometric_graph", R=1.5, rgg_nodes=520, rgg_radius=0.32),
-        appearance=dict(palette="random_from_list", colors="#FFFFFF@0,#A0C4FF@0.5,#BDB2FF@1", opacity=0.75, px=2.0),
-        dynamics=dict(rotY=6.0, rotZ=2.0),
-        distribution=dict(densityMode="uniform", sampler="direct", orientYDeg=12, orientZDeg=24, fieldFlow=0.18),
-    ),
-    "Ruban Möbius": dict(
-        camera=dict(camRadius=4.2, camHeightDeg=28, camTiltDeg=-22, omegaDegPerSec=12, fov=560),
-        geometry=dict(topology="mobius", R=1.0, lat=64, lon=256, mobius_w=0.55),
-        appearance=dict(palette="gradient_linear", colors="#FFE066@0,#FAB005@0.5,#FF922B@1", opacity=0.95, px=2.4),
-        dynamics=dict(rotX=6.0, rotY=4.5, rotPhaseMode="by_index", rotPhaseDeg=60.0),
-        distribution=dict(densityMode="uniform", sampler="blue_noise", orientXDeg=15, orientZDeg=30, clusterSpread=0.12),
-    ),
-    "Nuage Organique": dict(
-        camera=dict(camRadius=4.6, camHeightDeg=34, camTiltDeg=-16, omegaDegPerSec=9, fov=600),
-        geometry=dict(topology="blob", R=1.15, lat=96, lon=160, blob_noise_amp=0.42, blob_noise_scale=2.6),
-        appearance=dict(palette="by_noise", colors="#7BF1A8@0,#43AA8B@1", opacity=0.82, px=2.8, noiseScale=0.6, noiseSpeed=0.7),
-        dynamics=dict(rotX=3.0, rotY=5.0, rotPhaseMode="by_radius", rotPhaseDeg=140.0, pulseA=0.12, pulseW=1.4),
-        distribution=dict(densityMode="noise_field", sampler="weighted_sampling", dmin=0.02, noiseDistortion=0.28, noiseWarp=0.35),
-    ),
-    "Gyroid Chromatique": dict(
-        camera=dict(camRadius=5.2, camHeightDeg=36, camTiltDeg=-10, omegaDegPerSec=11, fov=560),
-        geometry=dict(topology="gyroid", R=1.1, N=18000, gyroid_scale=1.5, gyroid_thickness=0.08, gyroid_c=0.2),
-        appearance=dict(palette="directional", h0=210.0, dh=120.0, wh=6.0, opacity=0.78, px=2.1),
-        dynamics=dict(rotX=5.0, rotY=9.0, rotPhaseMode="by_radius", rotPhaseDeg=180.0),
-        distribution=dict(densityMode="uniform", sampler="blue_noise", dmin=0.03, orientXDeg=-25, orientZDeg=25, maskMode="north_cap", maskSoftness=0.4),
-        mask=dict(enabled=True, mode="north_cap", angleDeg=42.0, softDeg=16.0, invert=False),
-    ),
-    "Fleur Polaire": dict(
-        camera=dict(camRadius=4.0, camHeightDeg=64, camTiltDeg=-52, omegaDegPerSec=7, fov=640),
-        geometry=dict(topology="rose_curve", R=2.2, N=8000, rose_k=6.0, theta_max=16.0),
-        appearance=dict(palette="gradient_radial", colors="#FFBE0B@0,#FB5607@0.5,#FF006E@1", opacity=0.88, px=1.6),
-        dynamics=dict(rotZ=18.0),
-        distribution=dict(densityMode="edges", sampler="weighted_sampling", orientXDeg=12, orientZDeg=-18, densityPulse=0.32),
-    ),
-    "Cyclone Orbital": dict(
-        camera=dict(camRadius=6.2, camHeightDeg=48, camTiltDeg=-20, omegaDegPerSec=5, fov=600),
-        geometry=dict(topology="stream_on_torus", R=1.0, stream_N=36, stream_steps=260, R_major=1.5, r_minor=0.42),
-        appearance=dict(palette="every_other", colors="#90E0EF@0,#03045E@1", opacity=0.85, px=1.9),
-        dynamics=dict(rotX=12.0, rotZ=6.0, rotPhaseMode="by_index", rotPhaseDeg=45.0),
-        distribution=dict(densityMode="centered", sampler="direct", orientYDeg=-35, orientZDeg=40, fieldFlow=0.24),
-    ),
-    "Hélice Pulsar": dict(
-        camera=dict(camRadius=4.4, camHeightDeg=30, camTiltDeg=-8, omegaDegPerSec=16, fov=520),
-        geometry=dict(topology="helix", R=1.0, N=1600, helix_r=0.55, helix_pitch=0.32, helix_turns=5.0),
-        appearance=dict(palette="gradient_linear", colors="#FFE066@0,#FAA307@0.5,#FF6200@1", opacity=0.94, px=2.0),
-        dynamics=dict(rotX=20.0, rotY=4.0, rotPhaseMode="by_index", rotPhaseDeg=30.0),
-        distribution=dict(densityMode="uniform", sampler="direct", orientXDeg=12, orientYDeg=18, orientZDeg=90),
-    ),
-    "Klein Nocturne": dict(
-        camera=dict(camRadius=5.8, camHeightDeg=34, camTiltDeg=-18, omegaDegPerSec=8, fov=540),
-        geometry=dict(topology="klein_bottle", R=1.0, lat=96, lon=128, R_major=1.6, r_minor=0.33),
-        appearance=dict(palette="gradient_linear", colors="#7209B7@0,#4361EE@0.6,#4895EF@1", opacity=0.83, px=2.1),
-        dynamics=dict(rotY=7.5, rotZ=5.0, rotPhaseMode="by_radius", rotPhaseDeg=150.0),
-        distribution=dict(densityMode="uniform", sampler="blue_noise", orientXDeg=-18, orientZDeg=32, repelForce=0.12),
-    ),
-    "Nœud Prismatique": dict(
-        camera=dict(camRadius=5.0, camHeightDeg=38, camTiltDeg=-15, omegaDegPerSec=13, fov=560),
-        geometry=dict(
-            topology="torus_knot",
-            R=1.0,
-            N=8000,
-            R_major=1.4,
-            r_minor=0.36,
-            torus_knot_p=3,
-            torus_knot_q=5,
-        ),
-        appearance=dict(palette="every_kth", colors="#3A86FF@0,#8338EC@0.5,#FF006E@1", paletteK=5, opacity=0.9, px=1.8),
-        dynamics=dict(rotX=10.0, rotY=6.0, rotPhaseMode="by_index", rotPhaseDeg=72.0),
-        distribution=dict(densityMode="centered", sampler="blue_noise", dmin=0.045, orientYDeg=22, orientZDeg=60),
-    ),
-    "Graphe Astral": dict(
-        camera=dict(camRadius=6.6, camHeightDeg=40, camTiltDeg=-10, omegaDegPerSec=5, fov=520),
-        geometry=dict(topology="geodesic_graph", R=1.35, geo_graph_level=4),
-        appearance=dict(palette="by_lat", h0=180.0, dh=160.0, wh=4.0, opacity=0.8, px=2.2),
-        dynamics=dict(rotX=6.0, rotZ=6.0, rotPhaseMode="by_radius", rotPhaseDeg=200.0),
-        distribution=dict(densityMode="uniform", sampler="direct", orientXDeg=10, orientYDeg=-14, orientZDeg=28, clusterCount=5, clusterSpread=0.24),
-    ),
-    "Réseau Hexa": dict(
-        camera=dict(camRadius=6.0, camHeightDeg=68, camTiltDeg=-54, omegaDegPerSec=4, fov=680),
-        geometry=dict(topology="hex_packing_plane", R=2.2, hex_step=0.26, hex_nx=18, hex_ny=14),
-        appearance=dict(palette="stripe_longitude", colors="#2EC4B6@0,#FFBF69@0.5,#FF9F1C@1", opacity=0.92, px=1.6),
-        dynamics=dict(rotZ=10.0),
-        distribution=dict(densityMode="edges", sampler="weighted_sampling", orientXDeg=90, orientZDeg=0, dmin_px=6.0),
-    ),
-    "Tore Liquide": dict(
-        camera=dict(camRadius=5.4, camHeightDeg=38, camTiltDeg=-18, omegaDegPerSec=9, fov=600),
-        geometry=dict(topology="double_torus", R=1.05, lat=96, lon=128, R_major=1.7, R_major2=2.2, r_minor=0.32),
-        appearance=dict(palette="gradient_linear", colors="#06D6A0@0,#118AB2@0.5,#073B4C@1", opacity=0.86, px=2.4),
-        dynamics=dict(rotX=3.5, rotY=7.0, rotZ=4.5, rotPhaseMode="by_radius", rotPhaseDeg=120.0),
-        distribution=dict(densityMode="uniform", sampler="blue_noise", dmin=0.038, orientXDeg=-22, orientYDeg=10, orientZDeg=48, densityPulse=0.18),
-    ),
-    "Superquadrique Prism": dict(
-        camera=dict(camRadius=4.9, camHeightDeg=28, camTiltDeg=-6, omegaDegPerSec=11, fov=520),
-        geometry=dict(topology="superquadric", R=1.2, lat=96, lon=96, eps1=0.5, eps2=0.5, ax=1.0, ay=0.7, az=1.3),
-        appearance=dict(palette="gradient_linear", colors="#FFD166@0,#EF476F@0.5,#8338EC@1", opacity=0.9, px=2.3),
-        dynamics=dict(rotX=4.0, rotY=8.0, rotPhaseMode="by_index", rotPhaseDeg=50.0),
-        distribution=dict(densityMode="centered", sampler="weighted_sampling", orientXDeg=-18, orientYDeg=22, orientZDeg=30, repelForce=0.16),
-    ),
-    "Vague Viviani": dict(
-        camera=dict(camRadius=4.2, camHeightDeg=36, camTiltDeg=-12, omegaDegPerSec=15, fov=500),
-        geometry=dict(topology="viviani_curve", R=1.0, N=3600, viviani_a=1.2),
-        appearance=dict(palette="gradient_linear", colors="#9BF6FF@0,#72EFDD@0.5,#80FFDB@1", opacity=0.87, px=1.8),
-        dynamics=dict(rotX=14.0, rotY=4.0, rotPhaseMode="by_index", rotPhaseDeg=36.0),
-        distribution=dict(densityMode="uniform", sampler="direct", orientXDeg=24, orientYDeg=-30, orientZDeg=60, maskMode="band", maskSoftness=0.35),
-        mask=dict(enabled=True, mode="band", bandHalfDeg=28.0, angleDeg=64.0, softDeg=18.0, invert=False),
-    ),
-    "Flux LIC": dict(
-        camera=dict(camRadius=5.8, camHeightDeg=44, camTiltDeg=-20, omegaDegPerSec=7, fov=620),
-        geometry=dict(topology="line_integral_convolution_sphere", R=1.0, lic_N=18, lic_steps=260, lic_h=0.06),
-        appearance=dict(palette="directional", h0=120.0, dh=220.0, wh=5.5, opacity=0.82, px=2.0),
-        dynamics=dict(rotX=2.5, rotY=12.0, rotPhaseMode="by_radius", rotPhaseDeg=210.0),
-        distribution=dict(densityMode="noise_field", sampler="weighted_sampling", orientXDeg=-30, orientYDeg=18, orientZDeg=36, noiseWarp=0.4, fieldFlow=0.3),
-    ),
-    "Champ Directionnel": dict(
-        camera=dict(camRadius=5.0, camHeightDeg=26, camTiltDeg=-8, omegaDegPerSec=6, fov=500),
-        geometry=dict(topology="weighted_sphere", R=1.05, N=14000, weight_map="sin(theta)*cos(2*phi)"),
-        appearance=dict(palette="directional", h0=45.0, dh=180.0, wh=3.5, opacity=0.84, px=2.4),
-        dynamics=dict(rotY=10.0, rotPhaseMode="by_radius", rotPhaseDeg=160.0),
-        distribution=dict(densityMode="uniform", sampler="weighted_sampling", orientXDeg=8, orientYDeg=-18, orientZDeg=22, densityPulse=0.26),
-    ),
-    "Voronoï Pop": dict(
-        camera=dict(camRadius=6.4, camHeightDeg=62, camTiltDeg=-48, omegaDegPerSec=5, fov=700),
-        geometry=dict(topology="voronoi_seeds", R=2.0, voronoi_N=120, voronoi_bbox="-1.2,1.2,-1.2,1.2"),
-        appearance=dict(palette="random_from_list", colors="#FF595E@0,#FFCA3A@0.5,#8AC926@1,#1982C4@1", opacity=0.93, px=1.5),
-        dynamics=dict(rotZ=16.0),
-        distribution=dict(densityMode="edges", sampler="direct", orientXDeg=90, orientZDeg=-45, clusterCount=8, clusterSpread=0.3, dmin_px=8.0),
-    ),
-}
+PROFILE_PRESETS = {}
 
-PROFILE_PRESET_DESCRIPTIONS = {
-    "Aurora Sphérique": "Fibonacci dense baignée de teintes froides et d’une rotation douce.",
-    "Anneau Néon": "Tore lumineux à bandes contrastées pour des rotations rapides.",
-    "Spirale Galactique": "Grande spirale plane inspirée des bras galactiques.",
-    "Constellation Libre": "Graphe aléatoire léger rappelant un ciel étoilé moderne.",
-    "Ruban Möbius": "Ruban torsadé coloré avec progression tonale chaude.",
-    "Nuage Organique": "Masse organique bruitée aux transitions vertes.",
-    "Gyroid Chromatique": "Surface triplement périodique filtrée par un masque polaire.",
-    "Fleur Polaire": "Rosace polaire éclatante idéale pour les compositions florales.",
-    "Cyclone Orbital": "Flux autour d’un tore soulignant la dynamique spiralée.",
-    "Hélice Pulsar": "Courbe hélicoïdale nerveuse et très mobile.",
-    "Klein Nocturne": "Immersion de Klein soulignée par des bleus profonds.",
-    "Nœud Prismatique": "Nœud torique vibrant à alternance chromatique.",
-    "Graphe Astral": "Réseau géodésique coloré suivant les latitudes.",
-    "Réseau Hexa": "Pavage hexagonal lumineux vu en plongée.",
-    "Tore Liquide": "Double tore fluide avec palette turquoise sombre.",
-    "Superquadrique Prism": "Superquadrique étirée aux reflets chauds et froids.",
-    "Vague Viviani": "Boucle de Viviani avec bande de masque animée.",
-    "Flux LIC": "Tracés LIC enveloppants accentués par un gradient directionnel.",
-    "Champ Directionnel": "Sphère pondérée orientée par un gradient chromatique.",
-    "Voronoï Pop": "Motif Voronoï saturé pour des compositions graphiques.",
-}
+
+PROFILE_PRESET_DESCRIPTIONS = {}
+
+
+SUBPROFILE_PRESETS = dict(
+    camera=[
+        dict(
+            category="Angles classiques",
+            items={
+                "Orbite lente": dict(
+                    camRadius=4.5,
+                    camHeightDeg=22,
+                    camTiltDeg=-5,
+                    omegaDegPerSec=8,
+                    fov=520,
+                ),
+                "Équatorial équilibré": dict(
+                    camRadius=5.0,
+                    camHeightDeg=0,
+                    camTiltDeg=0,
+                    omegaDegPerSec=18,
+                    fov=560,
+                ),
+            },
+        ),
+        dict(
+            category="Mouvements dynamiques",
+            items={
+                "Panoramique rapide": dict(
+                    camRadius=6.0,
+                    camHeightDeg=45,
+                    camTiltDeg=-20,
+                    omegaDegPerSec=40,
+                    fov=680,
+                ),
+                "Spirale orbitale": dict(
+                    camRadius=4.2,
+                    camHeightDeg=55,
+                    camTiltDeg=-25,
+                    omegaDegPerSec=32,
+                    fov=640,
+                ),
+            },
+        ),
+        dict(
+            category="Focus rapproché",
+            items={
+                "Macro orbitale": dict(
+                    camRadius=2.4,
+                    camHeightDeg=12,
+                    camTiltDeg=-8,
+                    omegaDegPerSec=12,
+                    fov=420,
+                ),
+            },
+        ),
+    ],
+    geometry=[
+        dict(
+            category="Sphères & nuages",
+            items={
+                "Sphère dorée": dict(
+                    topology="vogel_sphere_spiral",
+                    N=3200,
+                    vogel_k=2.3999632,
+                    R=1.3,
+                ),
+                "Sphère bruitée": dict(
+                    topology="noisy_sphere",
+                    R=1.1,
+                    lat=96,
+                    lon=96,
+                    noisy_amp=0.25,
+                    noisy_freq=3.5,
+                    noisy_gain=1.4,
+                    noisy_omega=35.0,
+                ),
+            },
+        ),
+        dict(
+            category="Tores & rubans",
+            items={
+                "Tore étroit": dict(
+                    topology="torus",
+                    R_major=1.0,
+                    r_minor=0.2,
+                    lon=96,
+                    lat=48,
+                ),
+                "Nœud torique": dict(
+                    topology="torus_knot",
+                    R=1.0,
+                    N=2400,
+                    R_major=1.1,
+                    r_minor=0.3,
+                    torus_knot_p=3,
+                    torus_knot_q=5,
+                ),
+            },
+        ),
+        dict(
+            category="Polyèdres & graphes",
+            items={
+                "Polyèdre filaire": dict(
+                    topology="polyhedron",
+                    poly_link_steps=6,
+                    geo_level=2,
+                ),
+                "Graphe géodésique": dict(
+                    topology="geodesic_graph",
+                    R=1.1,
+                    geo_graph_level=3,
+                    poly_link_steps=4,
+                ),
+            },
+        ),
+        dict(
+            category="Courbes & flux",
+            items={
+                "Hélice aérienne": dict(
+                    topology="helix",
+                    R=1.0,
+                    N=1800,
+                    helix_r=0.55,
+                    helix_pitch=0.45,
+                    helix_turns=5.0,
+                ),
+            },
+        ),
+    ],
+    appearance=[
+        dict(
+            category="Éclats lumineux",
+            items={
+                "Néon": dict(
+                    color="#00f5ff",
+                    opacity=0.85,
+                    palette="uniform",
+                    px=1.4,
+                    blendMode="screen",
+                ),
+                "Or bleu": dict(
+                    colors="#1a9dff@0,#8cf9ff@0.6,#fff4d6@1",
+                    palette="gradient_linear",
+                    opacity=0.78,
+                    px=1.6,
+                    blendMode="lighter",
+                ),
+            },
+        ),
+        dict(
+            category="Pastels & dégradés",
+            items={
+                "Pastel": dict(
+                    colors="#ff9ad5@0,#8dd6ff@1",
+                    palette="gradient_linear",
+                    opacity=0.65,
+                    px=2.5,
+                ),
+                "Aurore boréale": dict(
+                    colors="#5ee7ff@0,#a77dff@0.5,#ffe2ff@1",
+                    palette="gradient_radial",
+                    opacity=0.72,
+                    px=2.2,
+                    alphaDepth=0.12,
+                ),
+            },
+        ),
+        dict(
+            category="Contrastes & profondeur",
+            items={
+                "Fumée contrastée": dict(
+                    color="#fefefe",
+                    palette="every_other",
+                    paletteK=2,
+                    px=2.8,
+                    opacity=0.58,
+                    blendMode="multiply",
+                    alphaDepth=0.2,
+                ),
+            },
+        ),
+    ],
+    dynamics=[
+        dict(
+            category="Rotations orchestrées",
+            items={
+                "Rotation lente": dict(
+                    rotX=12.0,
+                    rotY=0.0,
+                    rotZ=18.0,
+                    rotPhaseMode="by_index",
+                    rotPhaseDeg=24.0,
+                ),
+                "Rotation opposée": dict(
+                    rotX=-35.0,
+                    rotY=28.0,
+                    rotZ=60.0,
+                    rotPhaseMode="by_latitude",
+                    rotPhaseDeg=45.0,
+                ),
+            },
+        ),
+        dict(
+            category="Respirations",
+            items={
+                "Respiration ample": dict(
+                    pulseA=0.55,
+                    pulseW=1.5,
+                    pulsePhaseDeg=90.0,
+                    rotPhaseMode="by_radius",
+                    rotPhaseDeg=60.0,
+                ),
+                "Respiration pulsée": dict(
+                    pulseA=0.38,
+                    pulseW=2.2,
+                    pulsePhaseDeg=140.0,
+                    rotPhaseMode="checkerboard",
+                    rotPhaseDeg=50.0,
+                ),
+            },
+        ),
+        dict(
+            category="Phases avancées",
+            items={
+                "Mosaïque déphasée": dict(
+                    rotX=18.0,
+                    rotY=18.0,
+                    rotZ=0.0,
+                    pulseA=0.22,
+                    pulseW=1.0,
+                    pulsePhaseDeg=45.0,
+                    rotPhaseMode="by_longitude",
+                    rotPhaseDeg=120.0,
+                ),
+            },
+        ),
+    ],
+    distribution=[
+        dict(
+            category="Uniformes",
+            items={
+                "Uniforme doux": dict(
+                    densityMode="uniform",
+                    sampler="direct",
+                    dmin=0.1,
+                    dmin_px=2.0,
+                    repelForce=0.25,
+                ),
+            },
+        ),
+        dict(
+            category="Masques & bandes",
+            items={
+                "Vagues": dict(
+                    maskMode="band",
+                    maskSoftness=0.35,
+                    densityPulse=0.45,
+                    noiseWarp=0.25,
+                    maskAnimate=0.25,
+                ),
+                "Bandes pulsées": dict(
+                    densityMode="edges",
+                    maskMode="random_patch",
+                    maskAnimate=0.42,
+                    maskSoftness=0.28,
+                    densityPulse=0.52,
+                ),
+            },
+        ),
+        dict(
+            category="Clusters & champs",
+            items={
+                "Clusters": dict(
+                    densityMode="centered",
+                    clusterCount=5,
+                    clusterSpread=0.35,
+                    sampler="weighted_sampling",
+                ),
+                "Flux vectoriel": dict(
+                    densityMode="noise_field",
+                    fieldFlow=2.4,
+                    noiseWarp=0.32,
+                    repelForce=0.18,
+                    sampler="weighted_sampling",
+                ),
+            },
+        ),
+    ],
+    mask=[
+        dict(
+            category="Bandes",
+            items={
+                "Équateur": dict(
+                    enabled=True,
+                    mode="equatorial_band",
+                    bandHalfDeg=18.0,
+                    softDeg=12.0,
+                    invert=False,
+                ),
+                "Ceinture double": dict(
+                    enabled=True,
+                    mode="equatorial_band",
+                    bandHalfDeg=26.0,
+                    softDeg=18.0,
+                    invert=True,
+                ),
+            },
+        ),
+        dict(
+            category="Calottes",
+            items={
+                "Hémisphère nord": dict(
+                    enabled=True,
+                    mode="north_cap",
+                    angleDeg=40.0,
+                    softDeg=18.0,
+                    invert=False,
+                ),
+                "Calotte douce": dict(
+                    enabled=True,
+                    mode="south_cap",
+                    angleDeg=55.0,
+                    softDeg=24.0,
+                    invert=False,
+                ),
+            },
+        ),
+        dict(
+            category="Fenêtres",
+            items={
+                "Fenêtre longitudinale": dict(
+                    enabled=True,
+                    mode="longitudinal_band",
+                    lonCenterDeg=45.0,
+                    lonWidthDeg=30.0,
+                    softDeg=15.0,
+                    invert=False,
+                ),
+            },
+        ),
+    ],
+    system=[
+        dict(
+            category="Performance",
+            items={
+                "Performance": dict(
+                    Nmax=30000,
+                    dprClamp=1.0,
+                    depthSort=False,
+                    transparent=False,
+                ),
+                "Mobile": dict(
+                    Nmax=18000,
+                    dprClamp=1.0,
+                    depthSort=False,
+                    transparent=False,
+                ),
+            },
+        ),
+        dict(
+            category="Qualité & rendu",
+            items={
+                "Ultra": dict(
+                    Nmax=80000,
+                    dprClamp=2.0,
+                    depthSort=True,
+                    transparent=True,
+                ),
+                "Studio": dict(
+                    Nmax=90000,
+                    dprClamp=2.0,
+                    depthSort=True,
+                    transparent=False,
+                ),
+            },
+        ),
+    ],
+)
+
 
 TOOLTIPS = {
     "camera.camRadius":"Détermine la distance entre la caméra et le centre de la scène.",
@@ -306,6 +499,8 @@ TOOLTIPS = {
     "geometry.az":"Étire la superquadrique sur l’axe Z.",
     "geometry.geo_level":"Affinage du maillage de l’icosaèdre.",
     "geometry.mobius_w":"Largeur du ruban pour la bande de Möbius.",
+    "geometry.trunc_ratio":"Fraction d’arête conservée avant le biseau des sommets de l’icosaèdre tronqué.",
+    "geometry.stellated_scale":"Allongement des pointes projetées à partir des faces de l’icosaèdre.",
     "geometry.arch_a":"Contrôle le rayon de départ de la spirale d’Archimède.",
     "geometry.arch_b":"Définit l’écartement entre les spires de la spirale d’Archimède.",
     "geometry.theta_max":"Angle total parcouru par les spirales planes.",
@@ -347,6 +542,7 @@ TOOLTIPS = {
     "geometry.schwarz_iso":"Valeur iso utilisée pour l’extraction de la surface de Schwarz.",
     "geometry.heart_scale":"Échelle globale de la forme de cœur implicite.",
     "geometry.polyhedron_data":"Définition personnalisée d’un polyèdre (JSON vertices/faces).",
+    "geometry.poly_link_steps":"Nombre de points interpolés sur chaque arête pour tracer des segments entre les sommets du polyèdre.",
     "geometry.metaballs_centers":"Liste des centres des métaballes (x,y,z séparés par des virgules).",
     "geometry.metaballs_radii":"Rayons associés aux métaballes (séparés par des virgules).",
     "geometry.metaballs_iso":"Seuil iso-surface pour les métaballes.",
@@ -409,16 +605,16 @@ TOOLTIPS = {
     "dynamics.rotZ":"Fait tourner le nuage autour de l’axe longitudinal Z.",
     "dynamics.pulseA":"Amplitude de l’effet de respiration.",
     "dynamics.pulseW":"Vitesse de l’effet de respiration.",
-    "dynamics.pulsePhaseDeg":"Décalage initial de l’animation de respiration.",
-    "dynamics.rotPhaseMode":"Répartit un décalage de rotation selon l’index ou le rayon des particules.",
-    "dynamics.rotPhaseDeg":"Amplitude maximale du décalage de rotation.",
+    "dynamics.pulsePhaseDeg":"Déphasage initial de l’animation de respiration.",
+    "dynamics.rotPhaseMode":"Répartit un déphasage commun (rotations et respiration) selon l’index, le rayon, la longitude, la latitude, un damier ou un aléa reproductible.",
+    "dynamics.rotPhaseDeg":"Amplitude maximale du déphasage appliqué.",
     "distribution.densityMode":"Contrôle la pondération globale des points (uniforme, centre, bord, bruit).",
     "distribution.sampler":"Méthode de sous-échantillonnage à appliquer sur la géométrie générée.",
     "distribution.dmin":"Impose une distance minimale en 3D pour limiter les amas de points.",
     "distribution.dmin_px":"Évite que deux particules ne se projettent trop proches l’une de l’autre.",
-    "distribution.orientXDeg":"Incline la distribution autour de l’axe X en la replaçant sur des angles prédéfinis.",
-    "distribution.orientYDeg":"Pivote la distribution autour de l’axe vertical Y avec des angles usuels.",
-    "distribution.orientZDeg":"Tourne la distribution autour de l’axe Z en la calant sur des orientations clés.",
+    "dynamics.orientXDeg":"Incline la distribution autour de l’axe X en utilisant les crans configurables.",
+    "dynamics.orientYDeg":"Pivote la distribution autour de l’axe vertical Y en s’alignant sur les crans définis.",
+    "dynamics.orientZDeg":"Tourne la distribution autour de l’axe Z en s’accrochant aux angles personnalisés.",
     "distribution.maskMode":"Applique un masque spatial (calotte, bande, zone aléatoire).",
     "distribution.maskSoftness":"Élargit la transition du masque pour un bord plus doux.",
     "distribution.maskAnimate":"Anime le masque pour faire se déplacer la zone visible.",

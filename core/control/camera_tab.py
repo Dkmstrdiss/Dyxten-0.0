@@ -1,5 +1,5 @@
 from PyQt5 import QtWidgets, QtCore
-from .widgets import row
+from .widgets import row, SubProfilePanel
 from .config import DEFAULTS
 
 
@@ -12,7 +12,18 @@ class CameraTab(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         d = DEFAULTS["camera"]
-        fl = QtWidgets.QFormLayout(self)
+
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(8)
+
+        self._subprofile_panel = SubProfilePanel("Sous-profil caméra")
+        outer.addWidget(self._subprofile_panel)
+
+        form_container = QtWidgets.QWidget()
+        fl = QtWidgets.QFormLayout(form_container)
+        fl.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(form_container)
 
         self._snap_targets = {}
 
@@ -36,6 +47,7 @@ class CameraTab(QtWidgets.QWidget):
             w.valueChanged.connect(self.emit_delta)
 
     def emit_delta(self, *a):
+        self._sync_subprofile_state()
         self.changed.emit({"camera": self.collect()})
 
     def collect(self):
@@ -60,6 +72,7 @@ class CameraTab(QtWidgets.QWidget):
         for widget, cast, value in mappings:
             with QtCore.QSignalBlocker(widget):
                 widget.setValue(cast(value))
+        self._sync_subprofile_state()
 
     def set_tilt_to_max(self):
         target = self.sl_camTilt.maximum()
@@ -75,3 +88,19 @@ class CameraTab(QtWidgets.QWidget):
     def _install_angle_snap(self, *_args, **_kwargs):  # pragma: no cover - compat
         """Méthode laissée volontairement vide (aucun snap sur les sliders)."""
         return
+
+    # ----------------------------------------------------------------- profil
+    def attach_subprofile_manager(self, manager):
+        self._subprofile_panel.bind(
+            manager=manager,
+            section="camera",
+            defaults=DEFAULTS["camera"],
+            collect_cb=self.collect,
+            apply_cb=self.set_defaults,
+            on_change=self.emit_delta,
+        )
+        self._sync_subprofile_state()
+
+    def _sync_subprofile_state(self):
+        if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
+            self._subprofile_panel.sync_from_data(self.collect())

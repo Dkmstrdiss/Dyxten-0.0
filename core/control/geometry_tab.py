@@ -1,25 +1,43 @@
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
 
-from .widgets import row
+from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
 
-
-TOPOLOGIES = [
-    "disk_phyllotaxis", "archimede_spiral", "log_spiral", "rose_curve", "superformula_2D",
-    "density_warp_disk", "poisson_disk", "lissajous_disk",
-    "uv_sphere", "fibo_sphere", "geodesic_sphere", "geodesic", "vogel_sphere_spiral", "superquadric",
-    "superellipsoid", "half_sphere", "noisy_sphere", "spherical_harmonics", "weighted_sphere",
-    "torus", "double_torus", "horn_torus", "spindle_torus", "torus_knot", "mobius",
-    "strip_twist", "klein_bottle",
-    "icosahedron", "dodecahedron", "octahedron", "tetrahedron", "cube",
-    "truncated_icosa", "stellated_icosa", "polyhedron",
-    "blob", "gyroid", "schwarz_P", "schwarz_D", "heart_implicit", "metaballs",
-    "distance_field_shape", "superformula_3D",
-    "helix", "lissajous3D", "viviani_curve",
-    "line_integral_convolution_sphere", "stream_on_torus", "geodesic_graph", "random_geometric_graph",
-    "concentric_rings", "hex_packing_plane", "voronoi_seeds"
+TOPOLOGY_CATEGORIES = [
+    ("Plans & spirales", [
+        "disk_phyllotaxis", "archimede_spiral", "log_spiral", "rose_curve",
+        "superformula_2D", "density_warp_disk", "poisson_disk", "lissajous_disk",
+    ]),
+    ("Sphères & dérivés", [
+        "uv_sphere", "fibo_sphere", "geodesic_sphere", "geodesic",
+        "vogel_sphere_spiral", "superquadric", "superellipsoid", "half_sphere",
+        "noisy_sphere", "spherical_harmonics", "weighted_sphere",
+    ]),
+    ("Tores & rubans", [
+        "torus", "double_torus", "horn_torus", "spindle_torus",
+        "torus_knot", "mobius", "strip_twist", "klein_bottle",
+    ]),
+    ("Polyèdres", [
+        "icosahedron", "dodecahedron", "octahedron", "tetrahedron", "cube",
+        "truncated_icosa", "stellated_icosa", "polyhedron",
+    ]),
+    ("Formes implicites", [
+        "blob", "gyroid", "schwarz_P", "schwarz_D", "heart_implicit",
+        "metaballs", "distance_field_shape", "superformula_3D",
+    ]),
+    ("Courbes & trajectoires", [
+        "helix", "lissajous3D", "viviani_curve",
+    ]),
+    ("Flux & graphes", [
+        "line_integral_convolution_sphere", "stream_on_torus",
+        "geodesic_graph", "random_geometric_graph",
+    ]),
+    ("Grilles & répartitions", [
+        "concentric_rings", "hex_packing_plane", "voronoi_seeds",
+    ]),
 ]
 
+TOPOLOGIES = [name for _label, names in TOPOLOGY_CATEGORIES for name in names]
 
 TOPOLOGY_PARAMS = {
     "disk_phyllotaxis": ["R", "N", "phi_g"],
@@ -52,14 +70,14 @@ TOPOLOGY_PARAMS = {
     "strip_twist": ["R", "lat", "lon", "strip_w", "strip_n"],
     "klein_bottle": ["R", "lat", "lon", "R_major", "r_minor"],
 
-    "icosahedron": ["R"],
-    "dodecahedron": ["R"],
-    "octahedron": ["R"],
-    "tetrahedron": ["R"],
-    "cube": ["R"],
-    "truncated_icosa": ["R"],
-    "stellated_icosa": ["R"],
-    "polyhedron": ["R", "polyhedron_data"],
+    "icosahedron": ["R", "poly_link_steps"],
+    "dodecahedron": ["R", "poly_link_steps"],
+    "octahedron": ["R", "poly_link_steps"],
+    "tetrahedron": ["R", "poly_link_steps"],
+    "cube": ["R", "poly_link_steps"],
+    "truncated_icosa": ["R", "trunc_ratio", "poly_link_steps"],
+    "stellated_icosa": ["R", "stellated_scale", "poly_link_steps"],
+    "polyhedron": ["R", "polyhedron_data", "poly_link_steps"],
 
     "blob": ["R", "lat", "lon", "blob_noise_amp", "blob_noise_scale"],
     "gyroid": ["R", "N", "gyroid_scale", "gyroid_thickness", "gyroid_c"],
@@ -163,6 +181,8 @@ PARAM_SPECS = {
     "az": dict(type="double", label="Étirer Z", tip="geometry.az", min=0.1, max=5.0, step=0.05, decimals=3),
     "geo_level": dict(type="int", label="Niveau géodésique", tip="geometry.geo_level", min=0, max=6),
     "mobius_w": dict(type="double", label="Largeur du ruban", tip="geometry.mobius_w", min=0.05, max=2.0, step=0.01, decimals=3),
+    "trunc_ratio": dict(type="double", label="Facteur de tronquage", tip="geometry.trunc_ratio", min=0.05, max=0.45, step=0.01, decimals=3),
+    "stellated_scale": dict(type="double", label="Allongement des pointes", tip="geometry.stellated_scale", min=0.8, max=2.5, step=0.01, decimals=3),
 
     "arch_a": dict(type="double", label="Archimède a", tip="geometry.arch_a", min=0.0, max=5.0, step=0.05, decimals=3),
     "arch_b": dict(type="double", label="Archimède b", tip="geometry.arch_b", min=0.0, max=5.0, step=0.05, decimals=3),
@@ -207,6 +227,7 @@ PARAM_SPECS = {
     "schwarz_iso": dict(type="double", label="Schwarz iso", tip="geometry.schwarz_iso", min=-2.0, max=2.0, step=0.01, decimals=3),
     "heart_scale": dict(type="double", label="Échelle cœur", tip="geometry.heart_scale", min=0.1, max=5.0, step=0.05, decimals=3),
     "polyhedron_data": dict(type="text", label="Polyèdre JSON", tip="geometry.polyhedron_data"),
+    "poly_link_steps": dict(type="int", label="Segments de liaison", tip="geometry.poly_link_steps", min=0, max=64),
     "metaballs_centers": dict(type="text", label="Centres métaballes", tip="geometry.metaballs_centers"),
     "metaballs_radii": dict(type="text", label="Rayons métaballes", tip="geometry.metaballs_radii"),
     "metaballs_iso": dict(type="double", label="Iso métaballes", tip="geometry.metaballs_iso", min=0.0, max=5.0, step=0.05, decimals=3),
@@ -260,7 +281,10 @@ class GeometryTab(QtWidgets.QWidget):
 
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        outer.setSpacing(8)
+
+        self._subprofile_panel = SubProfilePanel("Sous-profil géométrie")
+        outer.addWidget(self._subprofile_panel)
 
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -290,7 +314,7 @@ class GeometryTab(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         scroll.setWidget(container)
-        outer.addWidget(scroll)
+        outer.addWidget(scroll, 1)
 
         desc_frame = QtWidgets.QFrame()
         desc_frame.setObjectName("TopologyDescriptionFrame")
@@ -326,10 +350,15 @@ class GeometryTab(QtWidgets.QWidget):
         self.param_rows = {}
 
         self.cb_topology = QtWidgets.QComboBox()
-        self.cb_topology.addItems(TOPOLOGIES)
-        self.cb_topology.setCurrentText(defaults.get("topology", TOPOLOGIES[0]))
+        self.cb_topology.setModel(QtGui.QStandardItemModel(self.cb_topology))
+        self.cb_topology.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.cb_topology.setView(QtWidgets.QListView())
+        self.cb_topology.view().setSpacing(2)
+        self._populate_topology_combo()
+        default_topology = defaults.get("topology", TOPOLOGIES[0])
+        self._select_topology(default_topology)
         row(layout, "Forme de base", self.cb_topology, TOOLTIPS["geometry.topology"],
-            lambda: self.cb_topology.setCurrentText(defaults.get("topology", TOPOLOGIES[0])))
+            lambda: self._reset_topology_choice(default_topology))
 
         for name, spec in PARAM_SPECS.items():
             widget = self._create_widget(name, spec, defaults)
@@ -343,8 +372,68 @@ class GeometryTab(QtWidgets.QWidget):
 
         self.cb_topology.currentIndexChanged.connect(self.on_topology_changed)
         self._apply_topology_state(emit=False)
+        self._sync_subprofile_state()
 
     # ------------------------------------------------------------------ utils
+    def _populate_topology_combo(self):
+        model: QtGui.QStandardItemModel = self.cb_topology.model()  # type: ignore[assignment]
+        model.clear()
+        header_font = QtGui.QFont(self.font())
+        header_font.setBold(True)
+        for label, names in TOPOLOGY_CATEGORIES:
+            header = QtGui.QStandardItem(label)
+            header.setFlags(QtCore.Qt.NoItemFlags)
+            header.setFont(header_font)
+            header.setForeground(QtGui.QBrush(QtGui.QColor(76, 94, 111)))
+            header.setBackground(QtGui.QBrush(QtGui.QColor(238, 242, 247)))
+            model.appendRow(header)
+            for name in names:
+                item = QtGui.QStandardItem(name)
+                item.setEditable(False)
+                item.setData(name, QtCore.Qt.UserRole)
+                model.appendRow(item)
+
+    def _first_selectable_index(self) -> int:
+        model: QtGui.QStandardItemModel = self.cb_topology.model()  # type: ignore[assignment]
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if not item:
+                continue
+            data = item.data(QtCore.Qt.UserRole)
+            if data:
+                return row
+        return -1
+
+    def _select_topology(self, name: str):
+        model: QtGui.QStandardItemModel = self.cb_topology.model()  # type: ignore[assignment]
+        target = -1
+        for row in range(model.rowCount()):
+            item = model.item(row)
+            if not item:
+                continue
+            data = item.data(QtCore.Qt.UserRole)
+            if data == name:
+                target = row
+                break
+        if target == -1:
+            target = self._first_selectable_index()
+        if target != -1:
+            with QtCore.QSignalBlocker(self.cb_topology):
+                self.cb_topology.setCurrentIndex(target)
+
+    def _current_topology(self) -> str:
+        data = self.cb_topology.currentData(QtCore.Qt.UserRole)
+        if isinstance(data, str) and data in TOPOLOGIES:
+            return data
+        text = self.cb_topology.currentText()
+        if text in TOPOLOGIES:
+            return text
+        return TOPOLOGIES[0]
+
+    def _reset_topology_choice(self, name: str):
+        self._select_topology(name)
+        self.emit_delta()
+
     def _create_widget(self, name, spec, defaults):
         if spec["type"] == "double":
             w = QtWidgets.QDoubleSpinBox()
@@ -387,7 +476,7 @@ class GeometryTab(QtWidgets.QWidget):
 
     # ---------------------------------------------------------------- interface
     def _apply_topology_state(self, emit=True):
-        topology = self.cb_topology.currentText()
+        topology = self._current_topology()
         active = set(self._active_param_names(topology))
         for name, row_widget in self.param_rows.items():
             visible = name in active
@@ -404,9 +493,10 @@ class GeometryTab(QtWidgets.QWidget):
 
     def on_topology_changed(self, *args):
         self._apply_topology_state(True)
+        self._sync_subprofile_state()
 
     def collect(self):
-        data = {"topology": self.cb_topology.currentText()}
+        data = {"topology": self._current_topology()}
         for name, widget in self.param_widgets.items():
             if isinstance(widget, QtWidgets.QDoubleSpinBox):
                 data[name] = widget.value()
@@ -416,16 +506,27 @@ class GeometryTab(QtWidgets.QWidget):
                 data[name] = widget.text()
         return data
 
+    def attach_subprofile_manager(self, manager):
+        self._subprofile_panel.bind(
+            manager=manager,
+            section="geometry",
+            defaults=DEFAULTS["geometry"],
+            collect_cb=self.collect,
+            apply_cb=self.set_defaults,
+            on_change=self.emit_delta,
+        )
+        self._sync_subprofile_state()
+
     def _active_param_names(self, topology=None):
         if topology is None:
-            topology = self.cb_topology.currentText()
+            topology = self._current_topology()
         return TOPOLOGY_PARAMS.get(topology, [])
 
     def set_defaults(self, cfg):
         cfg = cfg or {}
         defaults = DEFAULTS["geometry"]
-        with QtCore.QSignalBlocker(self.cb_topology):
-            self.cb_topology.setCurrentText(cfg.get("topology", defaults.get("topology", TOPOLOGIES[0])))
+        target = cfg.get("topology", defaults.get("topology", TOPOLOGIES[0]))
+        self._select_topology(target)
         for name, widget in self.param_widgets.items():
             val = cfg.get(name, defaults.get(name))
             with QtCore.QSignalBlocker(widget):
@@ -436,11 +537,13 @@ class GeometryTab(QtWidgets.QWidget):
                 else:
                     widget.setText(str(val or ""))
         self._apply_topology_state(emit=False)
+        self._sync_subprofile_state()
 
     def set_enabled(self, context: dict):
         pass
 
     def emit_delta(self, *args):
+        self._sync_subprofile_state()
         self.changed.emit({"geometry": self.collect()})
 
     def _update_description(self, topology: str):
@@ -448,3 +551,7 @@ class GeometryTab(QtWidgets.QWidget):
         if not text:
             text = "Sélectionnez une topologie pour afficher son descriptif."
         self._desc_label.setText(text)
+
+    def _sync_subprofile_state(self):
+        if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
+            self._subprofile_panel.sync_from_data(self.collect())

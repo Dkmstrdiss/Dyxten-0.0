@@ -15,7 +15,7 @@ try:
     from .dynamics_tab import DynamicsTab
     from .distribution_tab import DistributionTab
     from .system_tab import SystemTab
-    from .profile_manager import ProfileManager
+    from .profile_manager import ProfileManager, SubProfileManager
 except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.config import DEFAULTS, PROFILE_PRESET_DESCRIPTIONS  # type: ignore
     from core.control.camera_tab import CameraTab  # type: ignore
@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.dynamics_tab import DynamicsTab  # type: ignore
     from core.control.distribution_tab import DistributionTab  # type: ignore
     from core.control.system_tab import SystemTab  # type: ignore
-    from core.control.profile_manager import ProfileManager  # type: ignore
+    from core.control.profile_manager import ProfileManager, SubProfileManager  # type: ignore
 
 
 FLAT_TOPOLOGIES = {
@@ -48,6 +48,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Dyxten — Control v2")
         self.view_win = view_win
         self.profile_mgr = ProfileManager()
+        self.subprofile_mgr = SubProfileManager()
         self._loading_profile = False
         self._updating_profiles = False
         self._dirty = False
@@ -210,6 +211,13 @@ class ControlWindow(QtWidgets.QMainWindow):
         ]:
             tab.changed.connect(self.on_delta)
 
+        self.tab_camera.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_geometry.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_appearance.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_dynamics.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_distribution.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_system.attach_subprofile_manager(self.subprofile_mgr)
+
         self.tab_geometry.topologyChanged.connect(self.on_topology_changed)
 
         self.tabs.addTab(self.tab_camera, "Caméra")
@@ -300,6 +308,7 @@ class ControlWindow(QtWidgets.QMainWindow):
                 key: (value.copy() if isinstance(value, dict) else value)
                 for key, value in profile.items()
             }
+            self._migrate_state(self.state)
             self.tab_camera.set_defaults(self.state.get("camera"))
             self.tab_geometry.set_defaults(self.state.get("geometry"))
             self.tab_appearance.set_defaults(self.state.get("appearance"))
@@ -508,6 +517,19 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.view_win.view.page().runJavaScript(js)
         except Exception:  # pragma: no cover - garde-fou plateforme
             pass
+
+    def _migrate_state(self, state: dict):
+        dynamics = state.setdefault("dynamics", {})
+        distribution = state.get("distribution", {})
+        for axis in ("X", "Y", "Z"):
+            key = f"orient{axis}Deg"
+            if key in distribution and key not in dynamics:
+                dynamics[key] = distribution.pop(key)
+        defaults = DEFAULTS["dynamics"]
+        for axis in ("X", "Y", "Z"):
+            max_key = f"rot{axis}Max"
+            if max_key not in dynamics:
+                dynamics[max_key] = defaults.get(max_key, 360.0)
 
     # ----------------------------------------------------------------- thème & bannière
     def _apply_theme(self):
