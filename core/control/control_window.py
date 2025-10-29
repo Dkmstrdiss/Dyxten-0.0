@@ -14,7 +14,6 @@ try:
     from .appearance_tab import AppearanceTaba
     from .dynamics_tab import DynamicsTab
     from .distribution_tab import DistributionTab
-    from .mask_tab import MaskTab
     from .system_tab import SystemTab
     from .profile_manager import ProfileManager
 except ImportError:  # pragma: no cover - compatibilité exécution directe
@@ -24,9 +23,23 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.appearance_tab import AppearanceTab  # type: ignore
     from core.control.dynamics_tab import DynamicsTab  # type: ignore
     from core.control.distribution_tab import DistributionTab  # type: ignore
-    from core.control.mask_tab import MaskTab  # type: ignore
     from core.control.system_tab import SystemTab  # type: ignore
     from core.control.profile_manager import ProfileManager  # type: ignore
+
+
+FLAT_TOPOLOGIES = {
+    "disk_phyllotaxis",
+    "archimede_spiral",
+    "log_spiral",
+    "rose_curve",
+    "superformula_2D",
+    "density_warp_disk",
+    "poisson_disk",
+    "lissajous_disk",
+    "concentric_rings",
+    "hex_packing_plane",
+    "voronoi_seeds",
+}
 
 
 class ControlWindow(QtWidgets.QMainWindow):
@@ -185,7 +198,6 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_appearance = AppearanceTab()
         self.tab_dynamics = DynamicsTab()
         self.tab_distribution = DistributionTab()
-        self.tab_mask = MaskTab()
         self.tab_system = SystemTab()
 
         for tab in [
@@ -194,7 +206,6 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_appearance,
             self.tab_dynamics,
             self.tab_distribution,
-            self.tab_mask,
             self.tab_system,
         ]:
             tab.changed.connect(self.on_delta)
@@ -206,7 +217,6 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.tab_appearance, "Apparence")
         self.tabs.addTab(self.tab_dynamics, "Dynamique")
         self.tabs.addTab(self.tab_distribution, "Distribution")
-        self.tabs.addTab(self.tab_mask, "Masques")
         self.tabs.addTab(self.tab_system, "Système")
 
         bar = self.tabs.tabBar()
@@ -294,8 +304,10 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_geometry.set_defaults(self.state.get("geometry"))
             self.tab_appearance.set_defaults(self.state.get("appearance"))
             self.tab_dynamics.set_defaults(self.state.get("dynamics"))
-            self.tab_distribution.set_defaults(self.state.get("distribution"))
-            self.tab_mask.set_defaults(self.state.get("mask"))
+            self.tab_distribution.set_defaults(
+                self.state.get("distribution"),
+                self.state.get("mask"),
+            )
             self.tab_system.set_defaults(self.state.get("system"))
         finally:
             self._loading_profile = False
@@ -316,8 +328,8 @@ class ControlWindow(QtWidgets.QMainWindow):
             geometry=self.tab_geometry.collect(),
             appearance=self.tab_appearance.collect(),
             dynamics=self.tab_dynamics.collect(),
-            distribution=self.tab_distribution.collect(),
-            mask=self.tab_mask.collect(),
+            distribution=self.tab_distribution.collect_distribution(),
+            mask=self.tab_distribution.collect_mask(),
             system=self.tab_system.collect(),
         )
 
@@ -468,7 +480,8 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.push_params()
 
     def on_topology_changed(self, topo: str):  # pragma: no cover - extension future
-        pass
+        if topo in FLAT_TOPOLOGIES:
+            self.tab_camera.set_tilt_to_max()
 
     def push_params(self):
         js = (

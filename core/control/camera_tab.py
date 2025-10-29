@@ -2,6 +2,10 @@ from PyQt5 import QtWidgets, QtCore
 from .widgets import row
 from .config import DEFAULTS
 
+
+POPULAR_AXES_ANGLES = [-90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90]
+POPULAR_SPIN_ANGLES = [0, 15, 30, 45, 60, 90, 120, 150, 180]
+
 class CameraTab(QtWidgets.QWidget):
     changed = QtCore.pyqtSignal(dict)
 
@@ -10,11 +14,17 @@ class CameraTab(QtWidgets.QWidget):
         d = DEFAULTS["camera"]
         fl = QtWidgets.QFormLayout(self)
 
+        self._snap_targets = {}
+
         self.sp_camRadius = QtWidgets.QDoubleSpinBox(); self.sp_camRadius.setRange(0.1, 20.0); self.sp_camRadius.setSingleStep(0.1); self.sp_camRadius.setValue(d["camRadius"])
         self.sl_camHeight = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_camHeight.setRange(-90,90); self.sl_camHeight.setValue(d["camHeightDeg"])
         self.sl_camTilt   = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_camTilt.setRange(-90,90); self.sl_camTilt.setValue(d["camTiltDeg"])
         self.sl_omega     = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_omega.setRange(0,180); self.sl_omega.setValue(d["omegaDegPerSec"])
         self.sp_fov       = QtWidgets.QSpinBox(); self.sp_fov.setRange(50,2000); self.sp_fov.setValue(d["fov"])
+
+        self._install_angle_snap(self.sl_camHeight, POPULAR_AXES_ANGLES)
+        self._install_angle_snap(self.sl_camTilt, POPULAR_AXES_ANGLES)
+        self._install_angle_snap(self.sl_omega, POPULAR_SPIN_ANGLES)
 
         row(fl, "Distance à la scène", self.sp_camRadius, "Éloigne ou rapproche la caméra du centre de la scène.")
         row(fl, "Hauteur de vue (°)", self.sl_camHeight, "Monte ou descend la caméra sur son orbite.")
@@ -50,3 +60,32 @@ class CameraTab(QtWidgets.QWidget):
         for widget, cast, value in mappings:
             with QtCore.QSignalBlocker(widget):
                 widget.setValue(cast(value))
+
+    # ------------------------------------------------------------------ utils
+    def _install_angle_snap(self, slider: QtWidgets.QSlider, targets):
+        if not targets:
+            return
+        slider.setTickInterval(15)
+        slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+        self._snap_targets[slider] = sorted(set(int(v) for v in targets))
+        slider.sliderReleased.connect(lambda: self._snap_slider(slider))
+        slider.actionTriggered.connect(lambda *_: self._snap_slider(slider))
+
+    def _snap_slider(self, slider: QtWidgets.QSlider):
+        targets = self._snap_targets.get(slider)
+        if not targets:
+            return
+        value = slider.value()
+        snap = min(targets, key=lambda t: abs(t - value))
+        if snap != value:
+            with QtCore.QSignalBlocker(slider):
+                slider.setValue(snap)
+            self.emit_delta()
+
+    def set_tilt_to_max(self):
+        target = self.sl_camTilt.maximum()
+        if self.sl_camTilt.value() == target:
+            return
+        with QtCore.QSignalBlocker(self.sl_camTilt):
+            self.sl_camTilt.setValue(target)
+        self.emit_delta()
