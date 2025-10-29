@@ -340,6 +340,10 @@ def row(form: QtWidgets.QFormLayout, label: str, widget: QtWidgets.QWidget, tip:
     lbl.setObjectName("FormLabel")
     form.addRow(lbl, w)
     w._form_label = lbl  # type: ignore[attr-defined]
+    try:
+        widget.setProperty("dyxten_form_label", label)
+    except Exception:
+        pass
     return w
 
 def vec_row(spins):

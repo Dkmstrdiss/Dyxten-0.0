@@ -2,6 +2,7 @@ from PyQt5 import QtWidgets, QtCore
 
 from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
+from .link_registry import register_linkable_widget
 
 
 class DistributionTab(QtWidgets.QWidget):
@@ -337,6 +338,26 @@ class DistributionTab(QtWidgets.QWidget):
         self.cb_density_mode.currentIndexChanged.connect(self._update_row_states)
         self.chk_mask_enabled.stateChanged.connect(self._update_row_states)
         self.cb_mask_visual_mode.currentIndexChanged.connect(self._update_row_states)
+
+        for widget, section, key in [
+            (self.sp_dmin, "distribution", "dmin"),
+            (self.sp_dmin_px, "distribution", "dmin_px"),
+            (self.sp_dist_mask_soft, "distribution", "maskSoftness"),
+            (self.sp_dist_mask_animate, "distribution", "maskAnimate"),
+            (self.sp_noise_distortion, "distribution", "noiseDistortion"),
+            (self.sp_density_pulse, "distribution", "densityPulse"),
+            (self.sp_cluster_count, "distribution", "clusterCount"),
+            (self.sp_cluster_spread, "distribution", "clusterSpread"),
+            (self.sp_repel_force, "distribution", "repelForce"),
+            (self.sp_noise_warp, "distribution", "noiseWarp"),
+            (self.sp_field_flow, "distribution", "fieldFlow"),
+            (self.sp_mask_angle, "mask", "angleDeg"),
+            (self.sp_mask_band, "mask", "bandHalfDeg"),
+            (self.sp_mask_lon_center, "mask", "lonCenterDeg"),
+            (self.sp_mask_lon_width, "mask", "lonWidthDeg"),
+            (self.sp_mask_soft_deg, "mask", "softDeg"),
+        ]:
+            register_linkable_widget(widget, section=section, key=key, tab="Distribution")
 
         self._update_row_states()
         self._sync_subprofile_state()

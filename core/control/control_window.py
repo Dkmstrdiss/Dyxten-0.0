@@ -15,6 +15,7 @@ try:
     from .dynamics_tab import DynamicsTab
     from .distribution_tab import DistributionTab
     from .system_tab import SystemTab
+    from .link_controller_tab import LinkControllerTab
     from .profile_manager import ProfileManager, SubProfileManager
 except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.config import DEFAULTS, PROFILE_PRESET_DESCRIPTIONS  # type: ignore
@@ -24,6 +25,7 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.dynamics_tab import DynamicsTab  # type: ignore
     from core.control.distribution_tab import DistributionTab  # type: ignore
     from core.control.system_tab import SystemTab  # type: ignore
+    from core.control.link_controller_tab import LinkControllerTab  # type: ignore
     from core.control.profile_manager import ProfileManager, SubProfileManager  # type: ignore
 
 
@@ -200,6 +202,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_dynamics = DynamicsTab()
         self.tab_distribution = DistributionTab()
         self.tab_system = SystemTab()
+        self.tab_controller = LinkControllerTab()
 
         for tab in [
             self.tab_camera,
@@ -208,6 +211,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_dynamics,
             self.tab_distribution,
             self.tab_system,
+            self.tab_controller,
         ]:
             tab.changed.connect(self.on_delta)
 
@@ -217,6 +221,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_dynamics.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_distribution.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_system.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_controller.attach_subprofile_manager(self.subprofile_mgr)
 
         self.tab_geometry.topologyChanged.connect(self.on_topology_changed)
 
@@ -226,6 +231,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.tab_dynamics, "Dynamique")
         self.tabs.addTab(self.tab_distribution, "Distribution")
         self.tabs.addTab(self.tab_system, "Système")
+        self.tabs.addTab(self.tab_controller, "Link to Controller")
 
         bar = self.tabs.tabBar()
         bar.setExpanding(True)                 # <— onglets étirés sur la largeur disponible
@@ -318,6 +324,7 @@ class ControlWindow(QtWidgets.QMainWindow):
                 self.state.get("mask"),
             )
             self.tab_system.set_defaults(self.state.get("system"))
+            self.tab_controller.set_defaults(self.state.get("controller"))
         finally:
             self._loading_profile = False
         self.current_profile = name
@@ -340,6 +347,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             distribution=self.tab_distribution.collect_distribution(),
             mask=self.tab_distribution.collect_mask(),
             system=self.tab_system.collect(),
+            controller=self.tab_controller.collect(),
         )
 
     def save_profile(self):

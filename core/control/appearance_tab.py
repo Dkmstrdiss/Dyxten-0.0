@@ -3,9 +3,11 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 try:
     from .widgets import row, SubProfilePanel
     from .config import DEFAULTS
+    from .link_registry import register_linkable_widget
 except ImportError:
-    from core.control.widgets import row, SubProfilePanel
-    from core.control.config import DEFAULTS
+    from core.control.widgets import row, SubProfilePanel  # type: ignore
+    from core.control.config import DEFAULTS  # type: ignore
+    from core.control.link_registry import register_linkable_widget  # type: ignore
 
 
 def open_color_dialog(parent, initial: QtGui.QColor, title: str) -> QtGui.QColor:
@@ -136,6 +138,21 @@ class AppearanceTab(QtWidgets.QWidget):
 
         self.cb_palette.currentIndexChanged.connect(self.sync_enabled)
         self.cb_pxMode.currentIndexChanged.connect(self.sync_enabled)
+        for widget, key in [
+            (self.sp_opacity, "opacity"),
+            (self.sp_px, "px"),
+            (self.sp_paletteK, "paletteK"),
+            (self.sp_alphaDepth, "alphaDepth"),
+            (self.sp_h0, "h0"),
+            (self.sp_dh, "dh"),
+            (self.sp_wh, "wh"),
+            (self.sp_noiseScale, "noiseScale"),
+            (self.sp_noiseSpeed, "noiseSpeed"),
+            (self.sp_pxAmp, "pxModAmp"),
+            (self.sp_pxFreq, "pxModFreq"),
+            (self.sp_pxPhase, "pxModPhaseDeg"),
+        ]:
+            register_linkable_widget(widget, section="appearance", key=key, tab="Apparence")
         self.sync_enabled()  # grise ce qu’il faut
         self._sync_subprofile_state()
 

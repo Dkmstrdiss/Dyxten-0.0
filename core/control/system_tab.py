@@ -2,6 +2,7 @@
 from PyQt5 import QtWidgets, QtCore
 from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
+from .link_registry import register_linkable_widget
 
 class SystemTab(QtWidgets.QWidget):
     changed = QtCore.pyqtSignal(dict)
@@ -31,6 +32,8 @@ class SystemTab(QtWidgets.QWidget):
         for w in [self.sp_Nmax,self.sp_dpr,self.chk_depthSort,self.chk_transparent]:
             if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
             else: w.valueChanged.connect(self.emit_delta)
+        register_linkable_widget(self.sp_Nmax, section="system", key="Nmax", tab="Système")
+        register_linkable_widget(self.sp_dpr, section="system", key="dprClamp", tab="Système")
         self._sync_subprofile_state()
     def collect(self):
         return dict(Nmax=self.sp_Nmax.value(), dprClamp=self.sp_dpr.value(),

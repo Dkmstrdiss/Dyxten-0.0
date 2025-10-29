@@ -94,7 +94,19 @@ DEFAULTS = dict(
         bandHalfDeg=20.0, lonCenterDeg=0.0, lonWidthDeg=30.0,
         softDeg=10.0, invert=False
     ),
-    system=dict(Nmax=50000, dprClamp=2.0, depthSort=True, transparent=True)
+    system=dict(Nmax=50000, dprClamp=2.0, depthSort=True, transparent=True),
+    controller=dict(
+        enabled=False,
+        waveform="sine",
+        amplitude=0.5,
+        frequency=0.5,
+        phaseDeg=0.0,
+        offset=0.0,
+        smoothing=0.5,
+        pushToTalk=False,
+        selected=[],
+        audioGain=1.0,
+    ),
 )
 
 PROFILE_PRESETS = {}
@@ -1215,5 +1227,14 @@ TOOLTIPS = {
     "system.Nmax":"Nombre maximum de particules autorisées simultanément.",
     "system.dprClamp":"Limite la résolution utilisée pour protéger les performances.",
     "system.depthSort":"Trie les particules pour un affichage correct avec la transparence.",
-    "system.transparent":"Permet de rendre la fenêtre de prévisualisation transparente."
+    "system.transparent":"Permet de rendre la fenêtre de prévisualisation transparente.",
+    "controller.enabled":"Active ou désactive la modulation automatique des contrôles liés.",
+    "controller.waveform":"Choisit la forme du signal appliqué aux paramètres liés.",
+    "controller.amplitude":"Détermine l’intensité relative de la modulation autour du centre.",
+    "controller.frequency":"Nombre d’oscillations complètes par seconde pour le signal choisi.",
+    "controller.phaseDeg":"Décalage initial appliqué à la forme d’onde en degrés.",
+    "controller.offset":"Décale le point central utilisé pour la modulation (fraction de la plage).",
+    "controller.smoothing":"Interpole entre les valeurs successives pour adoucir la modulation.",
+    "controller.pushToTalk":"Lorsque activé, la modulation n’est envoyée que pendant l’appui sur le bouton push-to-talk.",
+    "controller.audioGain":"Amplifie ou atténue le niveau audio utilisé comme signal de contrôle.",
 }

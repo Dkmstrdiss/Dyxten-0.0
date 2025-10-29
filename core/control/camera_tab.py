@@ -1,6 +1,7 @@
 from PyQt5 import QtWidgets, QtCore
 from .widgets import row, SubProfilePanel
 from .config import DEFAULTS
+from .link_registry import register_linkable_widget
 
 
 POPULAR_AXES_ANGLES = [-90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90]
@@ -45,6 +46,12 @@ class CameraTab(QtWidgets.QWidget):
 
         for w in [self.sp_camRadius,self.sl_camHeight,self.sl_camTilt,self.sl_omega,self.sp_fov]:
             w.valueChanged.connect(self.emit_delta)
+
+        register_linkable_widget(self.sp_camRadius, section="camera", key="camRadius", tab="Caméra")
+        register_linkable_widget(self.sl_camHeight, section="camera", key="camHeightDeg", tab="Caméra")
+        register_linkable_widget(self.sl_camTilt, section="camera", key="camTiltDeg", tab="Caméra")
+        register_linkable_widget(self.sl_omega, section="camera", key="omegaDegPerSec", tab="Caméra")
+        register_linkable_widget(self.sp_fov, section="camera", key="fov", tab="Caméra")
 
     def emit_delta(self, *a):
         self._sync_subprofile_state()

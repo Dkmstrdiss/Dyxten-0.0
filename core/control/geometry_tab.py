@@ -2,6 +2,7 @@ from PyQt5 import QtWidgets, QtCore, QtGui
 
 from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
+from .link_registry import register_linkable_widget
 
 TOPOLOGY_CATEGORIES = [
     ("Plans & spirales", [
@@ -370,6 +371,8 @@ class GeometryTab(QtWidgets.QWidget):
             self.param_widgets[name] = widget
             self.param_rows[name] = row_widget
             self._connect_widget(name, widget, spec)
+            if spec.get("type") in {"double", "int"}:
+                register_linkable_widget(widget, section="geometry", key=name, tab="Géométrie")
 
         self.cb_topology.currentIndexChanged.connect(self.on_topology_changed)
         self._apply_topology_state(emit=False)

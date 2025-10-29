@@ -11,6 +11,7 @@ from .widgets import (
     SUBPROFILE_HEADER_ROLE,
 )
 from .config import DEFAULTS, TOOLTIPS
+from .link_registry import register_linkable_widget
 
 POPULAR_ORIENTATION_ANGLES = [-180, -135, -120, -90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90, 120, 135, 180]
 DEFAULT_PHASE_SNAP_ANGLES = [0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 360]
@@ -77,10 +78,18 @@ class DynamicsTab(QtWidgets.QWidget):
         self.rotX = SliderWithMax(d.get("rotX", 0.0), d.get("rotXMax", 360.0))
         self.rotY = SliderWithMax(d.get("rotY", 0.0), d.get("rotYMax", 360.0))
         self.rotZ = SliderWithMax(d.get("rotZ", 0.0), d.get("rotZMax", 360.0))
-        self.sp_pulseA = QtWidgets.QDoubleSpinBox(); self.sp_pulseA.setRange(0.0,1.0); self.sp_pulseA.setSingleStep(0.01); self.sp_pulseA.setValue(d["pulseA"])
-        self.sp_pulseW = QtWidgets.QDoubleSpinBox(); self.sp_pulseW.setRange(0.0,20.0); self.sp_pulseW.setSingleStep(0.1); self.sp_pulseW.setDecimals(3); self.sp_pulseW.setValue(d["pulseW"])
-        self.sp_pulsePhase = QtWidgets.QDoubleSpinBox(); self.sp_pulsePhase.setRange(0.0,360.0); self.sp_pulsePhase.setValue(d["pulsePhaseDeg"])
+        self.sp_pulseA = QtWidgets.QDoubleSpinBox()
+        self.sp_pulseA.setRange(0.0, 1.0)
+        self.sp_pulseA.setSingleStep(0.01)
+        self.sp_pulseA.setValue(float(d.get("pulseA", 0.0)))
 
+        self.sp_pulseW = QtWidgets.QDoubleSpinBox()
+        self.sp_pulseW.setRange(0.0, 20.0)
+        self.sp_pulseW.setValue(float(d.get("pulseW", 0.0)))
+
+        self.sp_pulsePhase = QtWidgets.QDoubleSpinBox()
+        self.sp_pulsePhase.setRange(0.0, 360.0)
+        self.sp_pulsePhase.setValue(float(d.get("pulsePhaseDeg", 0.0)))
         self.cb_rotPhaseMode = QtWidgets.QComboBox()
         self.cb_rotPhaseMode.setModel(QtGui.QStandardItemModel(self.cb_rotPhaseMode))
         self.cb_rotPhaseMode.setView(QtWidgets.QListView())
@@ -89,42 +98,9 @@ class DynamicsTab(QtWidgets.QWidget):
         self.cb_rotPhaseMode.view().setItemDelegate(delegate)
         self._populate_phase_modes()
         self._set_combo_value(self.cb_rotPhaseMode, d.get("rotPhaseMode", "none"))
-
-        self._phase_snap_angles = [
-            int(v) for v in d.get("phaseSnapAngles", DEFAULT_PHASE_SNAP_ANGLES)
-        ] or list(DEFAULT_PHASE_SNAP_ANGLES)
-        self._snap_targets = {}
-        self._snap_timers = {}
-
-        self.phase_amp_dial = QtWidgets.QDial()
-        self.phase_amp_dial.setRange(0, 360)
-        self.phase_amp_dial.setNotchesVisible(True)
-        self.phase_amp_dial.setWrapping(False)
-        self.phase_amp_dial.setSingleStep(1)
-        phase_default = int(d.get("rotPhaseDeg", 0.0))
-        self.phase_amp_dial.setValue(phase_default)
-        self._install_angle_snap(self.phase_amp_dial, self._phase_snap_angles)
-
-        self._phase_label = QtWidgets.QLabel(f"{phase_default:+d}°")
-        self._phase_label.setAlignment(QtCore.Qt.AlignCenter)
-        self._phase_label.setMinimumWidth(48)
-        self._phase_label.setObjectName("DialValueLabel")
-
-        self._phase_snap_btn = QtWidgets.QToolButton()
-        self._phase_snap_btn.setText("⚙")
-        self._phase_snap_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self._phase_snap_btn.setToolTip(
-            "Configurer les crans d’accroche en multiples de π pour l’amplitude du déphasage."
-        )
-        self._phase_snap_btn.setFixedSize(26, 26)
-        self._phase_snap_btn.setStyleSheet(
-            "QToolButton{border:1px solid #7aa7c7;border-radius:13px;padding:0;"
-            "background:#e6f2fb;color:#2b6ea8;font-weight:bold;}"
-            "QToolButton:hover{background:#d8ecfa;}"
-        )
-        self._phase_snap_btn.clicked.connect(
-            lambda checked=False: self._configure_phase_snap_targets()
-        )
+        self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox()
+        self.sp_rotPhaseDeg.setRange(0.0, 360.0)
+        self.sp_rotPhaseDeg.setValue(float(d.get("rotPhaseDeg", 0.0)))
         self.rows["rotX"] = row(fl, "Rotation X (°/s)", self.rotX, TOOLTIPS["dynamics.rotX"], lambda: self._reset_rotation("X"))
         self.rows["rotY"] = row(fl, "Rotation Y (°/s)", self.rotY, TOOLTIPS["dynamics.rotY"], lambda: self._reset_rotation("Y"))
         self.rows["rotZ"] = row(fl, "Rotation Z (°/s)", self.rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self._reset_rotation("Z"))
@@ -207,6 +183,7 @@ class DynamicsTab(QtWidgets.QWidget):
 
             key = f"orient{axis}Deg"
             tip_key = f"dynamics.orient{axis}Deg"
+            dial.setProperty("dyxten_form_label", f"Orientation {axis} (°)")
             self.rows[key] = row(
                 fl,
                 f"Orientation {axis} (°)",
@@ -230,6 +207,21 @@ class DynamicsTab(QtWidgets.QWidget):
         for control in (self.rotX, self.rotY, self.rotZ):
             control.valueChanged.connect(self.emit_delta)
             control.maxChanged.connect(self.emit_delta)
+
+        register_linkable_widget(self.rotX, section="dynamics", key="rotX", tab="Dynamique")
+        register_linkable_widget(self.rotY, section="dynamics", key="rotY", tab="Dynamique")
+        register_linkable_widget(self.rotZ, section="dynamics", key="rotZ", tab="Dynamique")
+        register_linkable_widget(self.sp_pulseA, section="dynamics", key="pulseA", tab="Dynamique")
+        register_linkable_widget(self.sp_pulseW, section="dynamics", key="pulseW", tab="Dynamique")
+        register_linkable_widget(self.sp_pulsePhase, section="dynamics", key="pulsePhaseDeg", tab="Dynamique")
+        register_linkable_widget(self.sp_rotPhaseDeg, section="dynamics", key="rotPhaseDeg", tab="Dynamique")
+        for axis in ("X", "Y", "Z"):
+            register_linkable_widget(
+                self.orient_dials[axis],
+                section="dynamics",
+                key=f"orient{axis}Deg",
+                tab="Dynamique",
+            )
 
         self.cb_rotPhaseMode.currentIndexChanged.connect(self._update_row_states)
         self._update_row_states()
