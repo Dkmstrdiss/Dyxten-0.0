@@ -364,6 +364,14 @@ class SubProfileManager:
         self._record_category(section, clean_name, self.CATEGORY_CUSTOM)
         self._write()
 
+    def set_default(self, section: str, payload: dict) -> None:
+        """Override the default payload for a section."""
+
+        store = self._sections.setdefault(section, {})
+        store[self.DEFAULT_NAME] = self._sanitize_profile(payload)
+        self._record_category(section, self.DEFAULT_NAME, self.CATEGORY_DEFAULT)
+        self._write()
+
     def delete(self, section: str, name: str) -> None:
         if name == self.DEFAULT_NAME:
             raise ValueError("Default sub-profile cannot be deleted")

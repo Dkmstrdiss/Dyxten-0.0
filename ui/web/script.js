@@ -207,6 +207,27 @@
   }
   window.addEventListener("resize", resize);
 
+  function drawDebugOverlay(width, height){
+    const area = width * height;
+    if (!Number.isFinite(area) || area <= 0){
+      return;
+    }
+    const radiusFromArea = Math.sqrt(area / (3 * Math.PI));
+    const maxRadius = Math.max(0, Math.min(width, height) / 2 - 8);
+    const radius = Math.min(radiusFromArea, maxRadius);
+    if (!(radius > 0)){
+      return;
+    }
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.85)";
+    ctx.beginPath();
+    ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // --------- Génération géométrie
   let basePoints = [];
 
@@ -1860,6 +1881,8 @@
         ctx.beginPath(); ctx.arc(p.sx,p.sy,p.r,0,Math.PI*2); ctx.fill();
       }
     }
+
+    drawDebugOverlay(w, h);
 
     requestAnimationFrame(frame);
   }

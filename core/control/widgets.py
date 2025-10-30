@@ -80,6 +80,8 @@ class SubProfilePanel(QtWidgets.QFrame):
         menu = QtWidgets.QMenu(self)
         self.act_save = menu.addAction("Sauver le sous-profil", self._on_save)
         self.act_save_as = menu.addAction("Créer un nouveau…", self._on_save_as)
+        self.act_set_default = menu.addAction("Définir comme défaut", self._on_set_default)
+        menu.addSeparator()
         self.act_rename = menu.addAction("Renommer…", self._on_rename)
         self.act_delete = menu.addAction("Supprimer", self._on_delete)
         self.btn_menu.setMenu(menu)
@@ -252,6 +254,22 @@ class SubProfilePanel(QtWidgets.QFrame):
             return
         self.refresh(select=name)
 
+    def _on_set_default(self):
+        if self._manager is None or self._collect_cb is None:
+            return
+        try:
+            payload = self._collect_cb()
+        except Exception as exc:  # pragma: no cover - defensive, feedback utilisateur
+            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
+            return
+        try:
+            self._manager.set_default(self._section, payload)
+        except Exception as exc:  # pragma: no cover - feedback utilisateur
+            QtWidgets.QMessageBox.warning(self, "Erreur", str(exc))
+            return
+        self.refresh(select=self._active_name)
+        self.sync_from_data(payload)
+
     def _on_rename(self):
         if self._manager is None or not self._active_name:
             return
@@ -312,6 +330,7 @@ class SubProfilePanel(QtWidgets.QFrame):
         if self.btn_menu.menu() is not None:
             self.act_save.setEnabled(has_manager)
             self.act_save_as.setEnabled(has_manager)
+            self.act_set_default.setEnabled(has_manager and callable(self._collect_cb))
             self.act_rename.setEnabled(can_edit)
             self.act_delete.setEnabled(can_edit)
         self.btn_menu.setEnabled(has_manager)
