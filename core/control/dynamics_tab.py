@@ -1,5 +1,6 @@
 import math
 from functools import partial
+from typing import Optional
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 
@@ -74,6 +75,7 @@ class DynamicsTab(QtWidgets.QWidget):
         self._orientation_snap_angles = [
             int(v) for v in d.get("orientationSnapAngles", POPULAR_ORIENTATION_ANGLES)
         ] or list(POPULAR_ORIENTATION_ANGLES)
+        self._phase_snap_angles = list(d.get("phaseSnapAngles", []))
 
         self.rotX = SliderWithMax(d.get("rotX", 0.0), d.get("rotXMax", 360.0))
         self.rotY = SliderWithMax(d.get("rotY", 0.0), d.get("rotYMax", 360.0))
@@ -98,34 +100,7 @@ class DynamicsTab(QtWidgets.QWidget):
         self.cb_rotPhaseMode.view().setItemDelegate(delegate)
         self._populate_phase_modes()
         self._set_combo_value(self.cb_rotPhaseMode, d.get("rotPhaseMode", "none"))
-        self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox()
-        self.sp_rotPhaseDeg.setRange(0.0, 360.0)
-        self.sp_rotPhaseDeg.setValue(float(d.get("rotPhaseDeg", 0.0)))
-        self.phase_amp_dial = QtWidgets.QDial()
-        self.phase_amp_dial.setRange(0, 360)
-        self.phase_amp_dial.setNotchesVisible(True)
-        self.phase_amp_dial.setWrapping(False)
-        self.phase_amp_dial.setSingleStep(5)
-        self.phase_amp_dial.setPageStep(15)
-        self.phase_amp_dial.setValue(int(round(self.sp_rotPhaseDeg.value())))
-        self.phase_amp_dial.setProperty("dyxten_form_label", "Amplitude du déphasage (°)")
-        self.phase_amp_label = QtWidgets.QLabel(
-            f"{int(round(self.sp_rotPhaseDeg.value()))}°"
-        )
-        self.phase_amp_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.phase_amp_label.setObjectName("DialValueLabel")
-
-        phase_container = QtWidgets.QWidget()
-        phase_layout = QtWidgets.QHBoxLayout(phase_container)
-        phase_layout.setContentsMargins(0, 0, 0, 0)
-        phase_layout.setSpacing(6)
-        phase_layout.addWidget(self.phase_amp_dial, 1)
-        phase_side = QtWidgets.QVBoxLayout()
-        phase_side.setContentsMargins(0, 0, 0, 0)
-        phase_side.setSpacing(4)
-        phase_side.addWidget(self.phase_amp_label, alignment=QtCore.Qt.AlignCenter)
-        phase_side.addWidget(self.sp_rotPhaseDeg)
-        phase_layout.addLayout(phase_side, 0)
+        phase_container = self._create_phase_controls(parent=None, defaults=d)
         self.rows["rotX"] = row(fl, "Rotation X (°/s)", self.rotX, TOOLTIPS["dynamics.rotX"], lambda: self._reset_rotation("X"))
         self.rows["rotY"] = row(fl, "Rotation Y (°/s)", self.rotY, TOOLTIPS["dynamics.rotY"], lambda: self._reset_rotation("Y"))
         self.rows["rotZ"] = row(fl, "Rotation Z (°/s)", self.rotZ, TOOLTIPS["dynamics.rotZ"], lambda: self._reset_rotation("Z"))
@@ -280,10 +255,7 @@ class DynamicsTab(QtWidgets.QWidget):
         snap_cfg = cfg.get("orientationSnapAngles", d.get("orientationSnapAngles", POPULAR_ORIENTATION_ANGLES))
         self._orientation_snap_angles = [int(v) for v in snap_cfg] or list(POPULAR_ORIENTATION_ANGLES)
         self._apply_snap_targets()
-
-        phase_snap_cfg = cfg.get("phaseSnapAngles", d.get("phaseSnapAngles", DEFAULT_PHASE_SNAP_ANGLES))
-        self._phase_snap_angles = [int(v) for v in phase_snap_cfg] or list(DEFAULT_PHASE_SNAP_ANGLES)
-        self._apply_phase_snap_targets()
+        self._phase_snap_angles = list(cfg.get("phaseSnapAngles", d.get("phaseSnapAngles", [])))
 
         self.rotX.setMaximum(float(cfg.get("rotXMax", d.get("rotXMax", 360.0))))
         self.rotY.setMaximum(float(cfg.get("rotYMax", d.get("rotYMax", 360.0))))
@@ -336,6 +308,45 @@ class DynamicsTab(QtWidgets.QWidget):
     def _sync_subprofile_state(self):
         if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
             self._subprofile_panel.sync_from_data(self.collect())
+
+    def _create_phase_controls(
+        self, parent: Optional[QtWidgets.QWidget], defaults: dict
+    ) -> QtWidgets.QWidget:
+        container = QtWidgets.QWidget(parent)
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.sp_rotPhaseDeg = QtWidgets.QDoubleSpinBox(container)
+        self.sp_rotPhaseDeg.setRange(0.0, 360.0)
+        self.sp_rotPhaseDeg.setValue(float(defaults.get("rotPhaseDeg", 0.0)))
+
+        self.phase_amp_dial = QtWidgets.QDial(container)
+        self.phase_amp_dial.setRange(0, 360)
+        self.phase_amp_dial.setNotchesVisible(True)
+        self.phase_amp_dial.setWrapping(False)
+        self.phase_amp_dial.setSingleStep(5)
+        self.phase_amp_dial.setPageStep(15)
+        self.phase_amp_dial.setValue(int(round(self.sp_rotPhaseDeg.value())))
+        self.phase_amp_dial.setProperty("dyxten_form_label", "Amplitude du déphasage (°)")
+
+        layout.addWidget(self.phase_amp_dial, 1)
+
+        self.phase_amp_label = QtWidgets.QLabel(
+            f"{int(round(self.sp_rotPhaseDeg.value()))}°",
+            container,
+        )
+        self.phase_amp_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.phase_amp_label.setObjectName("DialValueLabel")
+
+        side = QtWidgets.QVBoxLayout()
+        side.setContentsMargins(0, 0, 0, 0)
+        side.setSpacing(4)
+        side.addWidget(self.phase_amp_label, alignment=QtCore.Qt.AlignCenter)
+        side.addWidget(self.sp_rotPhaseDeg)
+        layout.addLayout(side, 0)
+
+        return container
 
     def _set_combo_value(self, combo: QtWidgets.QComboBox, value: str, fallback=None):
         if combo is None:
