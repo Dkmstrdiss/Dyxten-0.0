@@ -183,11 +183,11 @@ def _rand_for_index(index: int, salt: int = 0) -> float:
 def _default_state() -> Dict[str, dict]:
     return {
         "camera": {
-            "camRadius": 3.2,
+            "camRadius": 20.0,
             "camHeightDeg": 15,
             "camTiltDeg": 0,
             "omegaDegPerSec": 20,
-            "fov": 600,
+            "fov": 50,
         },
         "geometry": {
             "topology": "torus",
@@ -576,15 +576,23 @@ class DyxtenEngine:
         self._start_time = time.perf_counter()
         self._last_ms = 0.0
         self._cam_theta_deg = 0.0
-        self._transparent = True
         self._width = 1
         self._height = 1
+        self._last_base_count = -1
+        self._last_item_count = -1
+        self._last_visible_count = -1
+        self._last_avg_alpha = ""
+        self._last_bounds = ""
+        self._last_step_note = ""
         self.rebuild_geometry()
 
     # ------------------------------------------------------------------ helpers
     @property
     def now_ms(self) -> float:
         return (time.perf_counter() - self._start_time) * 1000.0
+
+    def _debug(self, message: str) -> None:
+        print(f"[Dyxten][DEBUG] {message}", flush=True)
 
     def merge_state(self, payload: Mapping[str, object]) -> None:
         for key, value in payload.items():
@@ -621,6 +629,11 @@ class DyxtenEngine:
             points = _gen_uv_sphere(geo, cap)
         if not points:
             self.base_points = []
+            if self._last_base_count != 0:
+                self._debug(
+                    "rebuild_geometry produced 0 points (topology=%s, cap=%s, geo=%s)" % (topology, cap or "none", dict(geo))
+                )
+                self._last_base_count = 0
             return
         cx = sum(p.x for p in points) / len(points)
         cy = sum(p.y for p in points) / len(points)
@@ -631,6 +644,13 @@ class DyxtenEngine:
         if dmin > 0:
             centered = _enforce_min_distance(centered, dmin)
         self.base_points = centered
+        count = len(centered)
+        if count != self._last_base_count:
+            self._debug(
+                "rebuild_geometry generated %d points (topology=%s, cap=%s, dmin=%s)"
+                % (count, topology, cap or "none", dmin)
+            )
+            self._last_base_count = count
 
     # ---------------------------------------------------------------- animation helpers
     def _apply_point_modifiers(self, base: Point3D, seed: int, now_ms: float) -> Point3D:
@@ -830,6 +850,7 @@ class DyxtenEngine:
         cam_tilt = to_rad(float(cam.get("camTiltDeg", 0.0) or 0.0))
         cam_radius = float(cam.get("camRadius", 3.2) or 3.2)
         fov = float(cam.get("fov", 600) or 600)
+        fov = clamp(float(fov), 1.0, 5000.0)
 
         cos_theta = math.cos(cam_theta)
         sin_theta = math.sin(cam_theta)
@@ -839,6 +860,7 @@ class DyxtenEngine:
         sin_tilt = math.sin(cam_tilt)
 
         scale = 0.45 * min(width, height)
+        focal = scale * (600.0 / fov)
         cx = width / 2
         cy = height / 2
 
@@ -853,6 +875,9 @@ class DyxtenEngine:
         dist = self.state.get("distribution", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
         cell = max(1.0, dmin_px) if dmin_px > 0 else 1.0
+        if not self.base_points:
+            return []
+
         for idx, base in enumerate(self.base_points):
             mod = self._apply_point_modifiers(base, idx, now)
             if not self._keep_point(mod, idx, now):
@@ -899,9 +924,9 @@ class DyxtenEngine:
             Zc3 += cam_radius
             if Zc3 <= 0.01:
                 continue
-            inv = fov / Zc3
-            sx = cx + Xc3 * inv * scale
-            sy = cy + Yc3 * inv * scale
+            inv = focal / Zc3
+            sx = cx + Xc3 * inv
+            sy = cy + Yc3 * inv
             if not (math.isfinite(sx) and math.isfinite(sy)):
                 continue
 
@@ -958,6 +983,55 @@ class DyxtenEngine:
 
         if self.state.get("system", {}).get("depthSort", True):
             items.sort(key=lambda it: it.depth, reverse=True)
+        count = len(items)
+        if count == 0:
+            note = "step produced 0 items"
+            visible = 0
+            bounds = "none"
+            avg_alpha = "0.000"
+        else:
+            note = ""
+            visible = sum(1 for it in items if it.alpha > 0.001)
+            min_x = min(it.sx for it in items)
+            max_x = max(it.sx for it in items)
+            min_y = min(it.sy for it in items)
+            max_y = max(it.sy for it in items)
+            bounds = f"x=[{min_x:.1f},{max_x:.1f}] y=[{min_y:.1f},{max_y:.1f}]"
+            avg_alpha = f"{(sum(it.alpha for it in items) / count):.3f}"
+        if (
+            count != self._last_item_count
+            or note != self._last_step_note
+            or visible != self._last_visible_count
+            or avg_alpha != self._last_avg_alpha
+            or bounds != self._last_bounds
+        ):
+            self._debug(
+                "step rendered %d items (%d visible) from %d base points (width=%d height=%d cam_radius=%.3f fov=%.1f avg_alpha=%s screen=%s)"
+                % (
+                    count,
+                    visible,
+                    len(self.base_points),
+                    width,
+                    height,
+                    cam_radius,
+                    fov,
+                    avg_alpha,
+                    bounds,
+                )
+            )
+            if count == 0:
+                self._debug(
+                    "\tstate snapshot: distribution=%s appearance.opacity=%s"
+                    % (
+                        dict(self.state.get("distribution", {})),
+                        self.state.get("appearance", {}).get("opacity", 1.0),
+                    )
+                )
+            self._last_item_count = count
+            self._last_step_note = note
+            self._last_visible_count = visible
+            self._last_avg_alpha = avg_alpha
+            self._last_bounds = bounds
         return items
 
 

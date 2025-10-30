@@ -5,7 +5,7 @@ from ..donut import default_donut_config
 
 
 DEFAULTS = dict(
-    camera=dict(camRadius=3.2, camHeightDeg=15, camTiltDeg=0, omegaDegPerSec=20, fov=600),
+    camera=dict(camRadius=20.0, camHeightDeg=15, camTiltDeg=0, omegaDegPerSec=20, fov=50),
     geometry=dict(
         topology="torus",
         R=1.0, lat=64, lon=64, N=4096, phi_g=3.88322,

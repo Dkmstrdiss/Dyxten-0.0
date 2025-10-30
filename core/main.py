@@ -38,7 +38,6 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
 def _fail_fast_verify():
     import core.control.control_window as cw
     path = Path(cw.__file__).resolve()
-    print("Loaded control_window:", path)
     if not hasattr(cw, "ControlWindow"):
         raise SystemExit("FATAL: ControlWindow introuvable dans control_window.py")
     txt = path.read_text(encoding="utf-8", errors="ignore")
@@ -64,6 +63,7 @@ class ViewWindow(QtWidgets.QMainWindow):
         self._button_layer.setAttribute(Qt.WA_NoSystemBackground, True)
         self._button_layer.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self._button_layer.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._button_layer.setAutoFillBackground(False)
         self._button_layer.setGeometry(self.view.rect())
         self._button_layer.raise_()
         self._donut_buttons: list[QtWidgets.QPushButton] = []
@@ -106,6 +106,8 @@ class ViewWindow(QtWidgets.QMainWindow):
             central.setAttribute(Qt.WA_NoSystemBackground, enabled)
             central.setAttribute(Qt.WA_TranslucentBackground, enabled)
             central.setStyleSheet(bg_style)
+        if self._button_layer is not None:
+            self._button_layer.setStyleSheet(bg_style)
         self.view.setAttribute(Qt.WA_StyledBackground, True)
         self.view.setAttribute(Qt.WA_NoSystemBackground, enabled)
         self.view.setAttribute(Qt.WA_TranslucentBackground, enabled)
