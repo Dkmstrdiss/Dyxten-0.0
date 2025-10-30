@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
+import math
 import sys
 from pathlib import Path
 from PyQt5 import QtCore, QtWidgets, QtGui
-from PyQt5.QtCore import Qt, QUrl
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QSurfaceFormat
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEngineSettings, QWebEnginePage
 
 # --- autorise l'exécution directe ---
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,11 +16,23 @@ try:
 except ImportError:
     from core.control.control_window import ControlWindow  # exécution directe
 
-HTML = ROOT / "ui" / "web" / "index.html"
+try:
+    from .view import DyxtenViewWidget  # type: ignore
+except ImportError:  # pragma: no cover
+    from core.view import DyxtenViewWidget  # type: ignore
+
+try:
+    from .donut import default_donut_config, sanitize_donut_state
+except ImportError:  # pragma: no cover
+    from core.donut import default_donut_config, sanitize_donut_state
 
 fmt = QSurfaceFormat()
 fmt.setAlphaBufferSize(8)
 QSurfaceFormat.setDefaultFormat(fmt)
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 def _fail_fast_verify():
@@ -35,15 +47,10 @@ def _fail_fast_verify():
 
 
 class ViewWindow(QtWidgets.QMainWindow):
-    def __init__(self, html_path: Path, screen: QtGui.QScreen):
+    def __init__(self, screen: QtGui.QScreen):
         super().__init__(None)
         self._target_screen = screen
-        self.view = QWebEngineView(self)
-        self.view.setPage(QWebEnginePage(self.view))
-        s = self.view.settings()
-        s.setAttribute(QWebEngineSettings.LocalContentCanAccessFileUrls, True)
-        s.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, False)
-        s.setAttribute(QWebEngineSettings.JavascriptEnabled, True)
+        self.view = DyxtenViewWidget(self)
 
         w = QtWidgets.QWidget()
         w.setAttribute(Qt.WA_NoSystemBackground, True)
@@ -53,7 +60,16 @@ class ViewWindow(QtWidgets.QMainWindow):
         lay.addWidget(self.view)
         self.setCentralWidget(w)
 
-        self.view.load(QUrl.fromLocalFile(str(html_path.resolve())))
+        self._button_layer = QtWidgets.QWidget(self.view)
+        self._button_layer.setAttribute(Qt.WA_NoSystemBackground, True)
+        self._button_layer.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self._button_layer.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._button_layer.setGeometry(self.view.rect())
+        self._button_layer.raise_()
+        self._donut_buttons: list[QtWidgets.QPushButton] = []
+        self._donut_config = default_donut_config()
+        self.update_donut_buttons(self._donut_config)
+
         self._apply_screen_geometry(screen)
         QtWidgets.QShortcut(Qt.Key_Escape, self, activated=self.close)
         self._transparent = None
@@ -95,17 +111,73 @@ class ViewWindow(QtWidgets.QMainWindow):
         self.view.setAttribute(Qt.WA_TranslucentBackground, enabled)
         self.view.setStyleSheet(bg_style)
         try:
-            page = self.view.page()
+            self.view.set_transparent(enabled)
         except Exception:
-            page = None
-        if page is not None:
-            try:
-                alpha = 0 if enabled else 255
-                page.setBackgroundColor(QtGui.QColor(0, 0, 0, alpha))
-            except Exception:
-                pass
+            pass
         self.view.update()
         self.update()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._button_layer.setGeometry(self.view.rect())
+        self._layout_buttons()
+
+    def update_donut_buttons(self, donut: dict) -> None:
+        self._donut_config = sanitize_donut_state(donut)
+        descriptors = self._donut_config.get("buttons", [])
+        if len(self._donut_buttons) != len(descriptors):
+            for btn in self._donut_buttons:
+                btn.deleteLater()
+            self._donut_buttons = []
+            for descriptor in descriptors:
+                button = QtWidgets.QPushButton(self._button_layer)
+                button.setFixedSize(56, 56)
+                button.setStyleSheet(
+                    """
+                    QPushButton {
+                        border-radius: 28px;
+                        border: 1px solid rgba(255,255,255,0.3);
+                        background: rgba(12,18,27,0.65);
+                        color: #f5f6ff;
+                        font-family: 'Segoe UI', sans-serif;
+                        font-size: 13px;
+                        font-weight: 600;
+                        letter-spacing: 0.04em;
+                        text-transform: uppercase;
+                        padding: 4px 10px;
+                    }
+                    QPushButton:hover { background: rgba(0,200,255,0.65); border-color: rgba(0,200,255,0.85); }
+                    QPushButton:pressed { background: rgba(0,140,200,0.85); }
+                    """
+                )
+                button.show()
+                self._donut_buttons.append(button)
+        for idx, (button, descriptor) in enumerate(zip(self._donut_buttons, descriptors)):
+            if isinstance(descriptor, dict):
+                label = descriptor.get("label")
+                ident = descriptor.get("id")
+            else:
+                label = None
+                ident = None
+            button.setText((label or f"Bouton {idx + 1}").strip())
+            button.setProperty("buttonId", ident if isinstance(ident, int) else idx + 1)
+        self._layout_buttons()
+
+    def _layout_buttons(self) -> None:
+        if not self._donut_buttons:
+            return
+        rect = self.view.rect()
+        cx = rect.width() / 2
+        cy = rect.height() / 2
+        ratio = float(self._donut_config.get("radiusRatio", 0.35) or 0.35)
+        ratio = _clamp(ratio, 0.05, 0.9)
+        radius = min(rect.width(), rect.height()) * ratio
+        count = len(self._donut_buttons)
+        for index, button in enumerate(self._donut_buttons):
+            angle = (index / count) * 2 * math.pi - math.pi / 2
+            x = cx + radius * math.cos(angle)
+            y = cy + radius * math.sin(angle)
+            button.move(int(x - button.width() / 2), int(y - button.height() / 2))
 
 
 def main():
@@ -116,7 +188,7 @@ def main():
     screens = QtGui.QGuiApplication.screens()
     primary = QtGui.QGuiApplication.primaryScreen()
     second = screens[1] if len(screens) > 1 else primary
-    view_win = ViewWindow(HTML, second)
+    view_win = ViewWindow(second)
     view_win.show()
     _ = ControlWindow(app, second, view_win)
     sys.exit(app.exec_())

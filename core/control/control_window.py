@@ -1,6 +1,5 @@
 # core/control/control_window.py
 import copy
-import json
 from typing import Optional
 
 from PyQt5 import QtWidgets, QtCore, QtGui
@@ -57,8 +56,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self._loading_profile = False
         self._updating_profiles = False
         self._dirty = False
-        self._view_ready = False
-        self._pending_js: Optional[str] = None
+        self._view_ready = True
         self.state = {"donut": default_donut_config()}
         self.current_profile = ProfileManager.DEFAULT_PROFILE
 
@@ -179,18 +177,6 @@ class ControlWindow(QtWidgets.QMainWindow):
         status.setObjectName("StatusBar")
         status.setSizeGripEnabled(False)
         self.setStatusBar(status)
-
-        view = getattr(self.view_win, "view", None)
-        if view is not None:
-            try:
-                view.loadFinished.connect(self._on_view_ready)
-            except Exception:  # pragma: no cover - garde-fou plateforme
-                pass
-            try:
-                if hasattr(view, "isLoading") and not view.isLoading():
-                    QtCore.QTimer.singleShot(0, lambda: self._on_view_ready(True))
-            except Exception:  # pragma: no cover - garde-fou plateforme
-                pass
 
         # Onglets
         self.tabs = QtWidgets.QTabWidget()
@@ -508,30 +494,23 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_camera.set_tilt_to_max()
 
     def push_params(self):
-        js = (
-            "window.setDyxtenParams = window.setDyxtenParams || function(_){};"
-            f"window.setDyxtenParams({json.dumps(self.state, ensure_ascii=False)});"
-        )
-        if not self._view_ready:
-            self._pending_js = js
+        view = getattr(self.view_win, "view", None)
+        if view is None:
             return
-        self._run_js(js)
+        try:
+            view.set_params(self.state)
+        except Exception:
+            return
+        try:
+            self.view_win.update_donut_buttons(view.current_donut())
+        except Exception:
+            pass
 
     def _on_view_ready(self, ok: bool):
-        if not ok:
-            self.statusBar().showMessage("Impossible de charger l’aperçu web", 5000)
-            return
-        self._view_ready = True
-        if self._pending_js:
-            pending = self._pending_js
-            self._pending_js = None
-            self._run_js(pending)
-
-    def _run_js(self, js: str):
-        try:
-            self.view_win.view.page().runJavaScript(js)
-        except Exception:  # pragma: no cover - garde-fou plateforme
-            pass
+        # Legacy method kept for compatibility with existing profiles. The view
+        # is always ready in the Python renderer so we simply push parameters.
+        if ok:
+            self.push_params()
 
     def _migrate_state(self, state: dict):
         dynamics = state.setdefault("dynamics", {})
