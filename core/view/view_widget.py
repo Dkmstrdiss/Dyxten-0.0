@@ -81,6 +81,23 @@ def to_rad(deg: float) -> float:
     return deg * math.pi / 180.0
 
 
+def _map_blend_mode(name: str | None) -> QtGui.QPainter.CompositionMode:
+    mode = (name or "").lower()
+    mapping = {
+        "source": QtGui.QPainter.CompositionMode_Source,
+        "normal": QtGui.QPainter.CompositionMode_SourceOver,
+        "source-over": QtGui.QPainter.CompositionMode_SourceOver,
+        "screen": QtGui.QPainter.CompositionMode_Screen,
+        "lighten": QtGui.QPainter.CompositionMode_Lighten,
+        "lighter": QtGui.QPainter.CompositionMode_Plus,
+        "multiply": QtGui.QPainter.CompositionMode_Multiply,
+        "add": QtGui.QPainter.CompositionMode_Plus,
+        "additive": QtGui.QPainter.CompositionMode_Plus,
+        "plus": QtGui.QPainter.CompositionMode_Plus,
+    }
+    return mapping.get(mode, QtGui.QPainter.CompositionMode_SourceOver)
+
+
 # ---------------------------------------------------------------------------
 # Utility helpers translated from the JavaScript implementation
 
@@ -877,6 +894,7 @@ class DyxtenEngine:
 
             Xc3 = cos_tilt * Xc - sin_tilt * Yc2
             Yc3 = sin_tilt * Xc + cos_tilt * Yc2
+            Zc3 = Zc2
 
             Zc3 += cam_radius
             if Zc3 <= 0.01:
@@ -965,6 +983,14 @@ class DyxtenViewWidget(QtWidgets.QWidget):
         self.engine.set_params(payload)
         appearance = self.engine.state.get("appearance", {})
         self._shape = appearance.get("shape", "circle")
+        system = self.engine.state.get("system", {})
+        transparent_flag = system.get("transparent")
+        if transparent_flag is None:
+            transparent = True
+        else:
+            transparent = bool(transparent_flag)
+        if transparent != self._transparent:
+            self.set_transparent(transparent)
         if previous_shape != self._shape:
             self.update()
 
@@ -975,17 +1001,28 @@ class DyxtenViewWidget(QtWidgets.QWidget):
         self._transparent = bool(enabled)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, enabled)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, enabled)
+        self.setAutoFillBackground(not enabled)
         self.update()
 
     # ------------------------------------------------------------------ Qt events
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        if not self._transparent:
+        painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+        if self._transparent:
+            painter.setBackgroundMode(QtCore.Qt.TransparentMode)
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_Source)
+            painter.fillRect(self.rect(), QtCore.Qt.transparent)
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+        else:
             painter.fillRect(self.rect(), QtGui.QColor("black"))
         width = max(1, self.width())
         height = max(1, self.height())
         items = self.engine.step(width, height)
+        blend_mode = (
+            self.engine.state.get("appearance", {}).get("blendMode", "source-over")
+        )
+        painter.setCompositionMode(_map_blend_mode(blend_mode))
         for item in items:
             color = QtGui.QColor(item.color)
             color.setAlphaF(clamp01(item.alpha))
