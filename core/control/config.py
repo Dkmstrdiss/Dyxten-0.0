@@ -1,10 +1,13 @@
 
 from PyQt5 import QtCore
 
+from ..donut import default_donut_config
+
+
 DEFAULTS = dict(
     camera=dict(camRadius=3.2, camHeightDeg=15, camTiltDeg=0, omegaDegPerSec=20, fov=600),
     geometry=dict(
-        topology="uv_sphere",
+        topology="torus",
         R=1.0, lat=64, lon=64, N=4096, phi_g=3.88322,
         R_major=1.2, r_minor=0.45,
         eps1=1.0, eps2=1.0, ax=1.0, ay=1.0, az=1.0,
@@ -95,6 +98,7 @@ DEFAULTS = dict(
         softDeg=10.0, invert=False
     ),
     system=dict(Nmax=50000, dprClamp=2.0, depthSort=True, transparent=True),
+    donut=default_donut_config(),
     controller=dict(
         tracks=[
             dict(

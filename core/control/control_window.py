@@ -1,4 +1,5 @@
 # core/control/control_window.py
+import copy
 import json
 from typing import Optional
 
@@ -17,6 +18,7 @@ try:
     from .system_tab import SystemTab
     from .link_controller_tab import LinkControllerTab
     from .profile_manager import ProfileManager, SubProfileManager
+    from ..donut import default_donut_config, sanitize_donut_state
 except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.config import DEFAULTS, PROFILE_PRESET_DESCRIPTIONS  # type: ignore
     from core.control.camera_tab import CameraTab  # type: ignore
@@ -27,6 +29,7 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.system_tab import SystemTab  # type: ignore
     from core.control.link_controller_tab import LinkControllerTab  # type: ignore
     from core.control.profile_manager import ProfileManager, SubProfileManager  # type: ignore
+    from core.donut import default_donut_config, sanitize_donut_state  # type: ignore
 
 
 FLAT_TOPOLOGIES = {
@@ -56,7 +59,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self._dirty = False
         self._view_ready = False
         self._pending_js: Optional[str] = None
-        self.state = {}
+        self.state = {"donut": default_donut_config()}
         self.current_profile = ProfileManager.DEFAULT_PROFILE
 
         self._apply_theme()
@@ -348,6 +351,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             mask=self.tab_distribution.collect_mask(),
             system=self.tab_system.collect(),
             controller=self.tab_controller.collect(),
+            donut=copy.deepcopy(self.state.get("donut", default_donut_config())),
         )
 
     def save_profile(self):
@@ -485,6 +489,9 @@ class ControlWindow(QtWidgets.QMainWindow):
 
     def on_delta(self, delta: dict):
         for key, value in delta.items():
+            if key == "donut":
+                self.state["donut"] = sanitize_donut_state(value)
+                continue
             if isinstance(value, dict):
                 self.state.setdefault(key, {}).update(value)
             else:
@@ -538,6 +545,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             max_key = f"rot{axis}Max"
             if max_key not in dynamics:
                 dynamics[max_key] = defaults.get(max_key, 360.0)
+        state["donut"] = sanitize_donut_state(state.get("donut"))
 
     # ----------------------------------------------------------------- thème & bannière
     def _apply_theme(self):

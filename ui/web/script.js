@@ -1,11 +1,64 @@
 (function(){
+  const DEFAULT_BUTTON_COUNT = 10;
+  const DEFAULT_RADIUS_RATIO = 0.35;
+
+  function makeDefaultButtons(){
+    return Array.from({ length: DEFAULT_BUTTON_COUNT }, (_, idx) => ({
+      id: idx + 1,
+      label: `Bouton ${idx + 1}`,
+    }));
+  }
+
+  function normalizeDonut(payload){
+    const config = {
+      buttons: makeDefaultButtons(),
+      radiusRatio: DEFAULT_RADIUS_RATIO,
+    };
+    if (!payload || typeof payload !== "object"){
+      return config;
+    }
+
+    if (Array.isArray(payload.buttons)){
+      const sanitized = [];
+      for (let i = 0; i < payload.buttons.length && sanitized.length < DEFAULT_BUTTON_COUNT; i++){
+        const entry = payload.buttons[i];
+        const slot = sanitized.length + 1;
+        if (entry && typeof entry === "object"){
+          const rawLabel = entry.label ?? entry.text ?? entry.name ?? "";
+          const label = String(rawLabel || `Bouton ${slot}`).trim() || `Bouton ${slot}`;
+          const rawId = entry.id;
+          const id = Number.isInteger(rawId) ? rawId : slot;
+          sanitized.push({ id, label });
+        } else if (typeof entry === "string"){
+          const label = entry.trim() || `Bouton ${slot}`;
+          sanitized.push({ id: slot, label });
+        } else if (entry == null){
+          sanitized.push({ id: slot, label: `Bouton ${slot}` });
+        }
+      }
+      while (sanitized.length < DEFAULT_BUTTON_COUNT){
+        const slot = sanitized.length + 1;
+        sanitized.push({ id: slot, label: `Bouton ${slot}` });
+      }
+      config.buttons = sanitized;
+    }
+
+    const rawRadius = payload.radiusRatio;
+    const radius = typeof rawRadius === "number" ? rawRadius : parseFloat(rawRadius);
+    if (Number.isFinite(radius)){
+      config.radiusRatio = Math.min(0.9, Math.max(0.05, radius));
+    }
+
+    return config;
+  }
+
   // API immédiatement dispo
   window.setDyxtenParams = window.setDyxtenParams || function(_) {};
 
   const state = {
     camera: { camRadius:3.2, camHeightDeg:15, camTiltDeg:0, omegaDegPerSec:20, fov:600 },
     geometry: {
-      topology:"uv_sphere",
+      topology:"torus",
       R:1.0, lat:64, lon:64, N:4096, phi_g:3.883222,
       R_major:1.2, R_major2:0.8, r_minor:0.45,
       eps1:1.0, eps2:1.0, ax:1.0, ay:1.0, az:1.0,
@@ -82,17 +135,75 @@
       pr:"uniform_area"
     },
     mask: { enabled:false, mode:"none", angleDeg:30, bandHalfDeg:20, lonCenterDeg:0, lonWidthDeg:30, softDeg:10, invert:false },
-    system: { Nmax:50000, dprClamp:2.0, depthSort:true, transparent:true }
+    system: { Nmax:50000, dprClamp:2.0, depthSort:true, transparent:true },
+    donut: normalizeDonut(),
   };
 
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d", { alpha: true });
+
+  const buttonLayer = (() => {
+    const existing = document.getElementById("donut-buttons");
+    if (existing) return existing;
+    const created = document.createElement("div");
+    created.id = "donut-buttons";
+    document.body.appendChild(created);
+    return created;
+  })();
+  let donutButtons = [];
+
+  function layoutButtons(){
+    if (!donutButtons.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const ratio = state.donut ? Math.min(0.9, Math.max(0.05, state.donut.radiusRatio || DEFAULT_RADIUS_RATIO)) : DEFAULT_RADIUS_RATIO;
+    const radius = Math.min(rect.width, rect.height) * ratio;
+    const count = donutButtons.length;
+    for (let i = 0; i < count; i++){
+      const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + radius * Math.cos(angle);
+      const y = cy + radius * Math.sin(angle);
+      const btn = donutButtons[i];
+      btn.style.left = `${x}px`;
+      btn.style.top = `${y}px`;
+    }
+  }
+
+  function rebuildButtons(){
+    state.donut = normalizeDonut(state.donut);
+    const descriptors = state.donut.buttons || makeDefaultButtons();
+    if (donutButtons.length !== descriptors.length){
+      buttonLayer.innerHTML = "";
+      donutButtons = descriptors.map((descriptor, idx) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "donut-button";
+        const label = descriptor && typeof descriptor.label === "string" ? descriptor.label : `Bouton ${idx + 1}`;
+        const id = descriptor && descriptor.id !== undefined ? descriptor.id : idx + 1;
+        btn.textContent = label;
+        btn.dataset.buttonId = String(id);
+        buttonLayer.appendChild(btn);
+        return btn;
+      });
+    } else {
+      for (let i = 0; i < donutButtons.length; i++){
+        const descriptor = descriptors[i] || {};
+        const btn = donutButtons[i];
+        btn.textContent = typeof descriptor.label === "string" ? descriptor.label : `Bouton ${i + 1}`;
+        const id = descriptor.id !== undefined ? descriptor.id : i + 1;
+        btn.dataset.buttonId = String(id);
+      }
+    }
+    layoutButtons();
+  }
 
   function resize(){
     const dpr = Math.max(1, Math.min(state.system.dprClamp || 2, window.devicePixelRatio || 1));
     canvas.width  = Math.floor(window.innerWidth  * dpr);
     canvas.height = Math.floor(window.innerHeight * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    layoutButtons();
   }
   window.addEventListener("resize", resize);
 
@@ -1063,6 +1174,28 @@
       pts = generators.uv_sphere(g);
     }
     if (!Array.isArray(pts)) pts = [];
+    if (pts.length){
+      let sx = 0;
+      let sy = 0;
+      let sz = 0;
+      for (const p of pts){
+        sx += p.x || 0;
+        sy += p.y || 0;
+        sz += p.z || 0;
+      }
+      const inv = 1 / pts.length;
+      const cx = sx * inv;
+      const cy = sy * inv;
+      const cz = sz * inv;
+      if (Math.hypot(cx, cy, cz) > 1e-6){
+        for (let i = 0; i < pts.length; i++){
+          const p = pts[i];
+          p.x = (p.x || 0) - cx;
+          p.y = (p.y || 0) - cy;
+          p.z = (p.z || 0) - cz;
+        }
+      }
+    }
     pts = pts.map((p, idx) => ({ x:p.x||0, y:p.y||0, z:p.z||0, seed: idx }));
     pts = applySampler(pts);
     basePoints = pts.map((p, idx) => ({ x:p.x, y:p.y, z:p.z, seed: p.seed ?? idx }));
@@ -1732,13 +1865,34 @@
   }
 
   window.setDyxtenParams = function(obj){
+    if (!obj || typeof obj !== "object") return;
+    let donutChanged = false;
     for (const k of Object.keys(obj)){
-      if (state[k] && typeof obj[k] === "object") Object.assign(state[k], obj[k]);
+      const value = obj[k];
+      if (k === "donut"){
+        state.donut = normalizeDonut(value);
+        donutChanged = true;
+        continue;
+      }
+      if (
+        state[k] && typeof state[k] === "object" && !Array.isArray(state[k]) &&
+        value && typeof value === "object" && !Array.isArray(value)
+      ){
+        Object.assign(state[k], value);
+      } else {
+        state[k] = value;
+      }
+    }
+    if (donutChanged){
+      rebuildButtons();
     }
     if (state.system.transparent){ document.documentElement.style.background="transparent"; document.body.style.background="transparent"; }
     else { document.documentElement.style.background="#000"; document.body.style.background="#000"; }
     rebuildGeometry();
   };
 
-  resize(); rebuildGeometry(); requestAnimationFrame(frame);
+  resize();
+  rebuildButtons();
+  rebuildGeometry();
+  requestAnimationFrame(frame);
 })();
