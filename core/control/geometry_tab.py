@@ -166,6 +166,85 @@ TOPOLOGY_DESCRIPTIONS = {
 }
 
 
+def _param_group(name: str) -> str:
+    global_params = {
+        "R",
+        "lat",
+        "lon",
+        "N",
+        "phi_g",
+        "R_major",
+        "R_major2",
+        "r_minor",
+        "eps1",
+        "eps2",
+        "ax",
+        "ay",
+        "az",
+        "geo_level",
+        "mobius_w",
+        "trunc_ratio",
+        "stellated_scale",
+        "arch_a",
+        "arch_b",
+        "theta_max",
+        "log_a",
+        "log_b",
+        "rose_k",
+        "vogel_k",
+        "se_n1",
+        "se_n2",
+        "half_height",
+    }
+    if name in global_params:
+        return "Paramètres globaux"
+    if name.startswith("sf2_") or name.startswith("sf3_") or name == "sf3_scale":
+        return "Superformules"
+    if name in {"density_pdf", "poisson_dmin", "lissajous_a", "lissajous_b", "lissajous_phase", "weight_map"}:
+        return "Répartitions paramétriques"
+    if name in {
+        "helix_r",
+        "helix_pitch",
+        "helix_turns",
+        "lissajous3d_Ax",
+        "lissajous3d_Ay",
+        "lissajous3d_Az",
+        "lissajous3d_wx",
+        "lissajous3d_wy",
+        "lissajous3d_wz",
+        "lissajous3d_phi",
+        "viviani_a",
+        "stream_N",
+        "stream_steps",
+        "lic_N",
+        "lic_steps",
+        "lic_h",
+        "torus_knot_p",
+        "torus_knot_q",
+        "strip_w",
+        "strip_n",
+    }:
+        return "Courbes & flux"
+    if name.startswith("noisy_") or name.startswith("blob_") or name.startswith("gyroid_") or name.startswith("schwarz_") or name.startswith("metaballs_") or name in {"heart_scale", "df_ops"}:
+        return "Surfaces implicites & bruit"
+    if name.startswith("poly") or name.startswith("geo_") or name in {
+        "poly_layers",
+        "poly_link_steps",
+        "polyhedron_data",
+        "rings_count",
+        "ring_points",
+        "hex_step",
+        "hex_nx",
+        "hex_ny",
+        "voronoi_N",
+        "voronoi_bbox",
+        "rgg_nodes",
+        "rgg_radius",
+    }:
+        return "Polyèdres & graphes"
+    return "Autres paramètres"
+
+
 PARAM_SPECS = {
     "R": dict(type="double", label="Taille générale", tip="geometry.R", min=0.05, max=10.0, step=0.05, decimals=3),
     "lat": dict(type="int", label="Anneaux horizontaux", tip="geometry.lat", min=3, max=1024),
@@ -350,6 +429,8 @@ class GeometryTab(QtWidgets.QWidget):
 
         self.param_widgets = {}
         self.param_rows = {}
+        self._group_widgets = {}
+        self._param_groups = {}
 
         self.cb_topology = QtWidgets.QComboBox()
         self.cb_topology.setModel(QtGui.QStandardItemModel(self.cb_topology))
@@ -363,6 +444,8 @@ class GeometryTab(QtWidgets.QWidget):
             lambda: self._reset_topology_choice(default_topology))
 
         for name, spec in PARAM_SPECS.items():
+            group = _param_group(name)
+            self._ensure_group_header(group)
             widget = self._create_widget(name, spec, defaults)
             tip_key = spec.get("tip") or f"geometry.{name}"
             tip = TOOLTIPS.get(tip_key, spec.get("tip_text", ""))
@@ -370,6 +453,7 @@ class GeometryTab(QtWidgets.QWidget):
             row_widget = row(layout, spec["label"], widget, tip, reset_cb)
             self.param_widgets[name] = widget
             self.param_rows[name] = row_widget
+            self._param_groups[name] = group
             self._connect_widget(name, widget, spec)
             if spec.get("type") in {"double", "int"}:
                 register_linkable_widget(widget, section="geometry", key=name, tab="Géométrie")
@@ -478,6 +562,27 @@ class GeometryTab(QtWidgets.QWidget):
         elif isinstance(widget, QtWidgets.QLineEdit):
             widget.editingFinished.connect(self.emit_delta)
 
+    def _ensure_group_header(self, group: str):
+        if not group:
+            return
+        if group in self._group_widgets:
+            return
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(0, 12, 0, 6)
+        layout.setSpacing(4)
+        label = QtWidgets.QLabel(group)
+        label.setObjectName("ParamGroupLabel")
+        label.setStyleSheet("font-weight:600;color:#1f3a52;")
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        line.setStyleSheet("color:#d6e2ed;")
+        layout.addWidget(label)
+        layout.addWidget(line)
+        self._form_layout.addRow(container)
+        self._group_widgets[group] = container
+
     # ---------------------------------------------------------------- interface
     def _apply_topology_state(self, emit=True):
         topology = self._current_topology()
@@ -490,6 +595,13 @@ class GeometryTab(QtWidgets.QWidget):
                 label.setVisible(visible)
             widget = self.param_widgets[name]
             widget.setEnabled(visible)
+        for group, widget in self._group_widgets.items():
+            visible = any(
+                self.param_rows[param].isVisible()
+                for param, grp in self._param_groups.items()
+                if grp == group
+            )
+            widget.setVisible(visible)
         if emit:
             self.topologyChanged.emit(topology)
             self.emit_delta()
