@@ -37,7 +37,16 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..donut import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config, sanitize_donut_state
-from ..topology_generators import (Point3D, BUILTIN_GENERATORS, _rand_for_index, _value_noise3)
+from ..topology_generators import (
+    Point3D,
+    BUILTIN_GENERATORS,
+    _PHI,
+    _rand_for_index,
+    _gen_uv_sphere,
+    _scale,
+    _unique_points,
+    _value_noise3,
+)
 
 try:
     from ..topology_registry import get_topology_library
@@ -1501,8 +1510,8 @@ for name, generator in _json_generators.items():
 
     DyxtenEngine._GEOMETRY_GENERATORS[name] = _wrap(generator, defaults=definition.defaults)
 
-if not DyxtenEngine._GEOMETRY_GENERATORS:
-    for name, generator in BUILTIN_GENERATORS.items():
+for name, generator in BUILTIN_GENERATORS.items():
+    if name not in DyxtenEngine._GEOMETRY_GENERATORS:
         DyxtenEngine._GEOMETRY_GENERATORS[name] = _wrap_builtin_generator(generator)
 
 

@@ -11,6 +11,10 @@ __all__ = [
     "BUILTIN_GENERATORS",
     "_rand_for_index",
     "_value_noise3",
+    "_scale",
+    "_unique_points",
+    "_PHI",
+    "_gen_uv_sphere",
 ]
 
 
