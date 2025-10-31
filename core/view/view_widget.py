@@ -12,10 +12,11 @@ Only a very small portion of the original project interacts with the renderer:
 * ``ControlWindow`` expects a ``set_transparent`` method to toggle the window
   background.
 
-This file provides :class:`DyxtenViewWidget`, a ``QWidget`` subclass that
-exposes the ``set_params`` method mirroring the JavaScript API.  It keeps the
-same data-model as the web version which greatly simplifies interoperability
-with the existing controller code.
+This module exposes :func:`DyxtenViewWidget`, a factory returning a widget that
+implements the ``set_params`` method mirroring the JavaScript API.  The widget
+keeps the same data-model as the web version which greatly simplifies
+interoperability with the existing controller code while allowing multiple
+rendering backends.
 
 The implementation favours a direct translation of the JavaScript logic to keep
 behaviour parity.  The goal is not to micro-optimise the renderer but to offer
@@ -25,7 +26,9 @@ feature completeness and ease of maintenance.
 from __future__ import annotations
 
 import math
+import os
 import random
+import sys
 import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -1035,21 +1038,36 @@ class DyxtenEngine:
         return items
 
 
-class DyxtenViewWidget(QtWidgets.QWidget):
-    """Widget displaying the animated donut particle system."""
+class _ViewWidgetBase:
+    """Common behaviour shared by both the OpenGL and raster backends."""
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent)
+    def _init_view_widget(self) -> None:
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WA_OpaquePaintEvent, False)
+        self.setAutoFillBackground(False)
         self.engine = DyxtenEngine()
-        self._items: List[RenderItem] = []
         self._shape = "circle"
         self._transparent = True
         self._timer = QtCore.QTimer(self)
         self._timer.timeout.connect(self.update)
         self._timer.start(16)
+
+    # ------------------------------------------------------------------ OpenGL hooks
+    def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
+        self._gl = QtGui.QOpenGLFunctions()
+        self._gl.initializeOpenGLFunctions()
+        self._apply_clear_color()
+
+    def resizeGL(self, width: int, height: int) -> None:  # pragma: no cover - requires GUI context
+        # No custom viewport management required but keep method for completeness
+        del width, height
+
+    def _apply_clear_color(self) -> None:
+        if self._gl is None:
+            return
+        alpha = 0.0 if self._transparent else 1.0
+        self._gl.glClearColor(0.0, 0.0, 0.0, alpha)
 
     # ------------------------------------------------------------------ API
     def set_params(self, payload: Mapping[str, object]) -> None:
@@ -1071,16 +1089,16 @@ class DyxtenViewWidget(QtWidgets.QWidget):
     def current_donut(self) -> dict:
         return self.engine.state.get("donut", default_donut_config())
 
-    def set_transparent(self, enabled: bool) -> None:
+    def set_transparent(self, enabled: bool) -> None:  # pragma: no cover - simple setter
         self._transparent = bool(enabled)
         self.setAttribute(QtCore.Qt.WA_NoSystemBackground, enabled)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, enabled)
         self.setAutoFillBackground(not enabled)
+        self._apply_clear_color()
         self.update()
 
-    # ------------------------------------------------------------------ Qt events
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
-        painter = QtGui.QPainter(self)
+    # ------------------------------------------------------------------ Rendering helpers
+    def _render_with_painter(self, painter: QtGui.QPainter) -> None:
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
         if self._transparent:
@@ -1106,11 +1124,126 @@ class DyxtenViewWidget(QtWidgets.QWidget):
                 painter.drawRect(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
             else:
                 painter.drawEllipse(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
-        painter.end()
+
+
+class _OpenGLViewWidget(QtWidgets.QOpenGLWidget, _ViewWidgetBase):
+    """OpenGL-backed renderer when the system can create a GL context."""
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        QtWidgets.QOpenGLWidget.__init__(self, parent)
+        self._gl: Optional[QtGui.QOpenGLFunctions] = None
+        self._init_view_widget()
+
+    def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
+        try:
+            self._gl = QtGui.QOpenGLFunctions()
+            self._gl.initializeOpenGLFunctions()
+        except Exception as exc:  # pragma: no cover - defensive
+            self._gl = None
+            print(
+                f"[Dyxten][WARN] OpenGL initialisation failed: {exc}. Falling back to raster clear handling.",
+                file=sys.stderr,
+            )
+        self._apply_clear_color()
+
+    def resizeGL(self, width: int, height: int) -> None:  # pragma: no cover - requires GUI context
+        # No custom viewport management required but keep method for completeness
+        del width, height
+
+    def _apply_clear_color(self) -> None:
+        if self._gl is None:
+            return
+        alpha = 0.0 if self._transparent else 1.0
+        self._gl.glClearColor(0.0, 0.0, 0.0, alpha)
+
+    def set_transparent(self, enabled: bool) -> None:  # pragma: no cover - trivial wrapper
+        super().set_transparent(enabled)
+        self._apply_clear_color()
+
+    def paintGL(self) -> None:  # pragma: no cover - requires GUI context
+        if self._gl is not None:
+            try:
+                # GL_COLOR_BUFFER_BIT constant
+                self._gl.glClear(0x00004000)
+            except Exception:
+                pass
+        painter = QtGui.QPainter(self)
+        try:
+            self._render_with_painter(painter)
+        finally:
+            painter.end()
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self.update()
+
+
+class _RasterViewWidget(QtWidgets.QWidget, _ViewWidgetBase):
+    """Fallback renderer using the traditional raster ``QWidget`` backend."""
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        QtWidgets.QWidget.__init__(self, parent)
+        self._init_view_widget()
+
+    def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
+        del event
+        painter = QtGui.QPainter(self)
+        try:
+            self._render_with_painter(painter)
+        finally:
+            painter.end()
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self.update()
+
+
+def _should_use_opengl(force_backend: Optional[str]) -> bool:
+    if force_backend == "raster":
+        return False
+    if force_backend == "opengl":
+        return True
+    if os.environ.get("DYXTEN_FORCE_RASTER", "").strip().lower() in {"1", "true", "yes"}:
+        return False
+    return hasattr(QtWidgets, "QOpenGLWidget")
+
+
+def DyxtenViewWidget(
+    parent: Optional[QtWidgets.QWidget] = None,
+    *,
+    force_backend: Optional[str] = None,
+) -> QtWidgets.QWidget:
+    """Factory returning the best available renderer widget.
+
+    Parameters
+    ----------
+    parent:
+        Parent widget used by Qt for ownership.
+    force_backend:
+        Optional string controlling the backend selection.  ``"opengl"`` forces the
+        OpenGL widget while ``"raster"`` selects the pure QWidget implementation.
+
+    Returns
+    -------
+    QtWidgets.QWidget
+        A widget exposing the same public API regardless of the backend choice.
+    """
+
+    if _should_use_opengl(force_backend):
+        try:
+            widget = _OpenGLViewWidget(parent)
+            setattr(widget, "backend_name", "opengl")
+            setattr(widget, "uses_opengl", True)
+            return widget
+        except Exception as exc:
+            print(
+                f"[Dyxten][WARN] Unable to initialise OpenGL backend ({exc!r}). Using raster widget instead.",
+                file=sys.stderr,
+            )
+    widget = _RasterViewWidget(parent)
+    setattr(widget, "backend_name", "raster")
+    setattr(widget, "uses_opengl", False)
+    return widget
 
 
 def _gen_uv_sphere(geo: Mapping[str, float], cap: int) -> List[Point3D]:

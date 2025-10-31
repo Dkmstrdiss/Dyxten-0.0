@@ -28,7 +28,7 @@ class CameraTab(QtWidgets.QWidget):
 
         self._snap_targets = {}
 
-        self.sp_camRadius = QtWidgets.QDoubleSpinBox(); self.sp_camRadius.setRange(0.1, 20.0); self.sp_camRadius.setSingleStep(0.1); self.sp_camRadius.setValue(d["camRadius"])
+        self.sp_camRadius = QtWidgets.QDoubleSpinBox(); self.sp_camRadius.setRange(0.1, 50.0); self.sp_camRadius.setSingleStep(0.1); self.sp_camRadius.setValue(d["camRadius"])
         self.sl_camHeight = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_camHeight.setRange(-90,90); self.sl_camHeight.setValue(d["camHeightDeg"])
         self.sl_camTilt   = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_camTilt.setRange(-90,90); self.sl_camTilt.setValue(d["camTiltDeg"])
         self.sl_omega     = QtWidgets.QSlider(QtCore.Qt.Horizontal); self.sl_omega.setRange(0,180); self.sl_omega.setValue(d["omegaDegPerSec"])

@@ -156,6 +156,9 @@ class ViewWindow(QtWidgets.QMainWindow):
             central.setAttribute(Qt.WA_TranslucentBackground, enabled)
             central.setStyleSheet(bg_style)
         if self._button_layer is not None:
+            self._button_layer.setAttribute(Qt.WA_NoSystemBackground, enabled)
+            self._button_layer.setAttribute(Qt.WA_TranslucentBackground, enabled)
+            self._button_layer.setAutoFillBackground(not enabled)
             self._button_layer.setStyleSheet(bg_style)
         self.view.setAttribute(Qt.WA_StyledBackground, True)
         self.view.setAttribute(Qt.WA_NoSystemBackground, enabled)
