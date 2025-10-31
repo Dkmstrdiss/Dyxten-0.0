@@ -119,6 +119,9 @@ class ViewWindow(QtWidgets.QMainWindow):
         self._donut_config = default_donut_config()
         self.update_donut_buttons(self._donut_config)
 
+        self.view.installEventFilter(self)
+        self._sync_button_overlay()
+
         self._apply_screen_geometry(screen)
         QtWidgets.QShortcut(Qt.Key_Escape, self, activated=self.close)
         self._transparent = None
@@ -156,10 +159,10 @@ class ViewWindow(QtWidgets.QMainWindow):
             central.setAttribute(Qt.WA_TranslucentBackground, enabled)
             central.setStyleSheet(bg_style)
         if self._button_layer is not None:
-            self._button_layer.setAttribute(Qt.WA_NoSystemBackground, enabled)
-            self._button_layer.setAttribute(Qt.WA_TranslucentBackground, enabled)
-            self._button_layer.setAutoFillBackground(not enabled)
-            self._button_layer.setStyleSheet(bg_style)
+            self._button_layer.setAttribute(Qt.WA_NoSystemBackground, True)
+            self._button_layer.setAttribute(Qt.WA_TranslucentBackground, True)
+            self._button_layer.setAutoFillBackground(False)
+            self._button_layer.setStyleSheet("background: transparent;")
         self.view.setAttribute(Qt.WA_StyledBackground, True)
         self.view.setAttribute(Qt.WA_NoSystemBackground, enabled)
         self.view.setAttribute(Qt.WA_TranslucentBackground, enabled)
@@ -173,8 +176,7 @@ class ViewWindow(QtWidgets.QMainWindow):
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        self._button_layer.setGeometry(self.view.rect())
-        self._layout_buttons()
+        self._sync_button_overlay()
 
     def update_donut_buttons(self, donut: dict) -> None:
         self._donut_config = sanitize_donut_state(donut)
@@ -215,7 +217,7 @@ class ViewWindow(QtWidgets.QMainWindow):
                 ident = None
             button.setText((label or f"Bouton {idx + 1}").strip())
             button.setProperty("buttonId", ident if isinstance(ident, int) else idx + 1)
-        self._layout_buttons()
+        self._sync_button_overlay()
 
     def _layout_buttons(self) -> None:
         if not self._donut_buttons:
@@ -232,6 +234,17 @@ class ViewWindow(QtWidgets.QMainWindow):
             x = cx + radius * math.cos(angle)
             y = cy + radius * math.sin(angle)
             button.move(int(x - button.width() / 2), int(y - button.height() / 2))
+
+    def _sync_button_overlay(self) -> None:
+        if self._button_layer is None:
+            return
+        self._button_layer.setGeometry(self.view.rect())
+        self._layout_buttons()
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if watched is self.view and event.type() == QtCore.QEvent.Resize:
+            self._sync_button_overlay()
+        return super().eventFilter(watched, event)
 
 
 def main():

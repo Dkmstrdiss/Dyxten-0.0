@@ -1439,6 +1439,25 @@ class _ViewWidgetBase:
             else:
                 painter.drawEllipse(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
 
+        # Draw permanent concentric marker circles centred on the viewport
+        painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+        painter.setBrush(QtCore.Qt.NoBrush)
+
+        center_x = width / 2.0
+        center_y = height / 2.0
+        if width > 0 and height > 0:
+            base_area = (width * height) / 3.0
+            base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
+
+            def _draw_marker_circle(color: QtGui.QColor, radius: float) -> None:
+                diameter = radius * 2.0
+                painter.setPen(QtGui.QPen(color, 2.0))
+                painter.drawEllipse(QtCore.QRectF(center_x - radius, center_y - radius, diameter, diameter))
+
+            _draw_marker_circle(QtGui.QColor("red"), base_radius)
+            _draw_marker_circle(QtGui.QColor("yellow"), base_radius * math.sqrt(1.1))
+            _draw_marker_circle(QtGui.QColor("blue"), base_radius * math.sqrt(1.15))
+
 
 class _OpenGLViewWidget(QtWidgets.QOpenGLWidget, _ViewWidgetBase):
     """OpenGL-backed renderer when the system can create a GL context."""
@@ -1971,6 +1990,34 @@ def _gen_double_torus(geo: Mapping[str, float], cap: int) -> List[Point3D]:
     secondary = _gen_torus(secondary_geo, cap)
     combined = primary + secondary
     return combined[:_clamp_count(len(combined), cap)]
+
+
+def _gen_horn_torus(geo: Mapping[str, float], cap: int) -> List[Point3D]:
+    horn_geo = dict(geo)
+    r_minor = float(geo.get("r_minor", 0.45) or 0.45)
+    horn_geo["r_minor"] = r_minor
+    R_major = float(geo.get("R_major", 0.0) or r_minor)
+    if not math.isfinite(R_major):
+        R_major = r_minor
+    # Clamp the major radius so it cannot grow beyond the minor radius.
+    if R_major > r_minor:
+        R_major = r_minor
+    horn_geo["R_major"] = R_major
+    return _gen_torus(horn_geo, cap)
+
+
+def _gen_spindle_torus(geo: Mapping[str, float], cap: int) -> List[Point3D]:
+    spindle_geo = dict(geo)
+    r_minor = float(geo.get("r_minor", 0.45) or 0.45)
+    spindle_geo["r_minor"] = r_minor
+    R_major = float(geo.get("R_major", 0.0) or (0.75 * r_minor))
+    if not math.isfinite(R_major):
+        R_major = 0.75 * r_minor
+    # Clamp the major radius below the minor radius to keep the spindle self-intersection.
+    if R_major >= r_minor:
+        R_major = max(0.25 * r_minor, r_minor * 0.75)
+    spindle_geo["R_major"] = R_major
+    return _gen_torus(spindle_geo, cap)
 
 
 def _gen_torus_knot(geo: Mapping[str, float], cap: int) -> List[Point3D]:
