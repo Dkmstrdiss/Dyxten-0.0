@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import io
 import math
 import sys
 from pathlib import Path
@@ -10,6 +11,54 @@ from PyQt5.QtGui import QSurfaceFormat
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+
+class _DebugSilencer(io.TextIOBase):
+    """Stream wrapper filtering the verbose engine diagnostics."""
+
+    def __init__(self, stream: io.TextIOBase, marker: str) -> None:
+        super().__init__()
+        self._stream = stream
+        self._marker = marker
+        self._buffer: str = ""
+
+    def write(self, text: str) -> int:  # type: ignore[override]
+        self._buffer += text
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            self._emit(line + "\n")
+        return len(text)
+
+    def flush(self) -> None:  # type: ignore[override]
+        if self._buffer:
+            self._emit(self._buffer)
+            self._buffer = ""
+        self._stream.flush()
+
+    def _emit(self, chunk: str) -> None:
+        if self._marker not in chunk:
+            self._stream.write(chunk)
+
+    def writelines(self, lines) -> None:  # type: ignore[override]
+        for line in lines:
+            self.write(line)
+
+    def close(self) -> None:  # type: ignore[override]
+        self.flush()
+        super().close()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def _install_debug_silencer(marker: str = "[Dyxten][DEBUG]") -> None:
+    if marker and not isinstance(sys.stdout, _DebugSilencer):
+        sys.stdout = _DebugSilencer(sys.stdout, marker)
+    if marker and not isinstance(sys.stderr, _DebugSilencer):
+        sys.stderr = _DebugSilencer(sys.stderr, marker)
+
+
+_install_debug_silencer()
 
 try:
     from .control.control_window import ControlWindow  # exécution via -m
