@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "spherical_harmonics",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "sph_terms": "2,0,0.4;3,2,0.2",
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_spherical_harmonics_geometry(params, N):\n    generator = BUILTIN_GENERATORS['spherical_harmonics']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Harmoniques sphériques",
+    "description": "Surface sphérique modélisée par série d'harmoniques.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "sph_terms"
+    ]
+  }
+}

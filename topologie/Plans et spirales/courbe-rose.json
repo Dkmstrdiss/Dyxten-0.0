@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "rose_curve",
+    "R": 1.0,
+    "N": 4096,
+    "rose_k": 4.0,
+    "theta_max": 6.28318,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_rose_curve_geometry(params, N):\n    generator = BUILTIN_GENERATORS['rose_curve']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Plans et spirales",
+    "label": "Courbe en rose",
+    "description": "Courbe plane à pétales multiples définie par le paramètre k.",
+    "parameters": [
+      "R",
+      "N",
+      "rose_k",
+      "theta_max"
+    ]
+  }
+}

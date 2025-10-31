@@ -1,0 +1,25 @@
+{
+  "geometry": {
+    "topology": "double_torus",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "R_major": 1.2,
+    "R_major2": 0.8,
+    "r_minor": 0.45,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_double_torus_geometry(params, N):\n    generator = BUILTIN_GENERATORS['double_torus']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Double tore",
+    "description": "Deux anneaux fusionnés partageant un axe central commun.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "R_major",
+      "R_major2",
+      "r_minor"
+    ]
+  }
+}

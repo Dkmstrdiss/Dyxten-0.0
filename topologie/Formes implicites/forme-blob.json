@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "blob",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "blob_noise_amp": 0.25,
+    "blob_noise_scale": 2.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_blob_geometry(params, N):\n    generator = BUILTIN_GENERATORS['blob']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Surface blob",
+    "description": "Surface implicite souple composée de sphères fusionnées.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "blob_noise_amp",
+      "blob_noise_scale"
+    ]
+  }
+}

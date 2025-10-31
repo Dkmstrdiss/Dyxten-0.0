@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "concentric_rings",
+    "R": 1.0,
+    "rings_count": 5,
+    "ring_points": 96,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_concentric_rings_geometry(params, N):\n    generator = BUILTIN_GENERATORS['concentric_rings']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Grilles et répartitions",
+    "label": "Anneaux concentriques",
+    "description": "Ensembles de points disposés sur plusieurs cercles coaxiaux.",
+    "parameters": [
+      "R",
+      "rings_count",
+      "ring_points"
+    ]
+  }
+}

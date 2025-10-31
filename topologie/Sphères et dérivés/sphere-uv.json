@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "uv_sphere",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_uv_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['uv_sphere']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Sphère UV",
+    "description": "Maillage sphérique régulier défini par latitudes et longitudes.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon"
+    ]
+  }
+}

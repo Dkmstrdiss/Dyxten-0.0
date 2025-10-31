@@ -1,169 +1,47 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
+from typing import Tuple
 
 from .widgets import row, SubProfilePanel
 from .config import DEFAULTS, TOOLTIPS
 from .link_registry import register_linkable_widget
 
-TOPOLOGY_CATEGORIES = [
-    ("Plans & spirales", [
-        "disk_phyllotaxis", "archimede_spiral", "log_spiral", "rose_curve",
-        "superformula_2D", "density_warp_disk", "poisson_disk", "lissajous_disk",
-    ]),
-    ("Sphères & dérivés", [
-        "uv_sphere", "fibo_sphere", "geodesic_sphere", "geodesic",
-        "vogel_sphere_spiral", "superquadric", "superellipsoid", "half_sphere",
-        "noisy_sphere", "spherical_harmonics", "weighted_sphere",
-    ]),
-    ("Tores & rubans", [
-        "torus", "double_torus", "horn_torus", "spindle_torus",
-        "torus_knot", "mobius", "strip_twist", "klein_bottle",
-    ]),
-    ("Polyèdres", [
-        "icosahedron", "dodecahedron", "octahedron", "tetrahedron", "cube",
-        "truncated_icosa", "stellated_icosa", "polyhedron",
-    ]),
-    ("Formes implicites", [
-        "blob", "gyroid", "schwarz_P", "schwarz_D", "heart_implicit",
-        "metaballs", "distance_field_shape", "superformula_3D",
-    ]),
-    ("Courbes & trajectoires", [
-        "helix", "lissajous3D", "viviani_curve",
-    ]),
-    ("Flux & graphes", [
-        "line_integral_convolution_sphere", "stream_on_torus",
-        "geodesic_graph", "random_geometric_graph",
-    ]),
-    ("Grilles & répartitions", [
-        "concentric_rings", "hex_packing_plane", "voronoi_seeds",
-    ]),
-]
-
-TOPOLOGIES = [name for _label, names in TOPOLOGY_CATEGORIES for name in names]
-
-TOPOLOGY_PARAMS = {
-    "disk_phyllotaxis": ["R", "N", "phi_g"],
-    "archimede_spiral": ["R", "N", "arch_a", "arch_b", "theta_max"],
-    "log_spiral": ["R", "N", "log_a", "log_b", "theta_max"],
-    "rose_curve": ["R", "N", "rose_k", "theta_max"],
-    "superformula_2D": ["R", "N", "sf2_m", "sf2_a", "sf2_b", "sf2_n1", "sf2_n2", "sf2_n3"],
-    "density_warp_disk": ["R", "N", "density_pdf"],
-    "poisson_disk": ["R", "N", "poisson_dmin"],
-    "lissajous_disk": ["R", "N", "lissajous_a", "lissajous_b", "lissajous_phase"],
-
-    "uv_sphere": ["R", "lat", "lon"],
-    "fibo_sphere": ["R", "N", "phi_g"],
-    "geodesic_sphere": ["R", "geo_level"],
-    "geodesic": ["R", "geo_level"],
-    "vogel_sphere_spiral": ["R", "N", "vogel_k"],
-    "superquadric": ["R", "lat", "lon", "eps1", "eps2", "ax", "ay", "az"],
-    "superellipsoid": ["R", "lat", "lon", "ax", "ay", "az", "se_n1", "se_n2"],
-    "half_sphere": ["R", "lat", "lon", "half_height"],
-    "noisy_sphere": ["R", "lat", "lon", "noisy_amp", "noisy_freq", "noisy_gain", "noisy_omega"],
-    "spherical_harmonics": ["R", "lat", "lon", "sph_terms"],
-    "weighted_sphere": ["R", "N", "weight_map"],
-
-    "torus": ["R", "lat", "lon", "R_major", "r_minor"],
-    "double_torus": ["R", "lat", "lon", "R_major", "R_major2", "r_minor"],
-    "horn_torus": ["R", "lat", "lon", "R_major", "r_minor"],
-    "spindle_torus": ["R", "lat", "lon", "R_major", "r_minor"],
-    "torus_knot": ["R", "N", "R_major", "r_minor", "torus_knot_p", "torus_knot_q"],
-    "mobius": ["R", "lat", "lon", "mobius_w"],
-    "strip_twist": ["R", "lat", "lon", "strip_w", "strip_n"],
-    "klein_bottle": ["R", "lat", "lon", "R_major", "r_minor"],
-
-    "icosahedron": ["R", "poly_layers", "poly_link_steps"],
-    "dodecahedron": ["R", "poly_layers", "poly_link_steps"],
-    "octahedron": ["R", "poly_layers", "poly_link_steps"],
-    "tetrahedron": ["R", "poly_layers", "poly_link_steps"],
-    "cube": ["R", "poly_layers", "poly_link_steps"],
-    "truncated_icosa": ["R", "trunc_ratio", "poly_layers", "poly_link_steps"],
-    "stellated_icosa": ["R", "stellated_scale", "poly_layers", "poly_link_steps"],
-    "polyhedron": ["R", "polyhedron_data", "poly_layers", "poly_link_steps"],
-
-    "blob": ["R", "lat", "lon", "blob_noise_amp", "blob_noise_scale"],
-    "gyroid": ["R", "N", "gyroid_scale", "gyroid_thickness", "gyroid_c"],
-    "schwarz_P": ["R", "N", "schwarz_scale", "schwarz_iso"],
-    "schwarz_D": ["R", "N", "schwarz_scale", "schwarz_iso"],
-    "heart_implicit": ["R", "N", "heart_scale"],
-    "metaballs": ["R", "N", "metaballs_centers", "metaballs_radii", "metaballs_iso"],
-    "distance_field_shape": ["R", "N", "df_ops"],
-    "superformula_3D": ["R", "lat", "lon", "sf3_m1", "sf3_m2", "sf3_m3", "sf3_n1", "sf3_n2", "sf3_n3", "sf3_a", "sf3_b", "sf3_scale"],
-
-    "helix": ["R", "N", "helix_r", "helix_pitch", "helix_turns"],
-    "lissajous3D": ["R", "N", "lissajous3d_Ax", "lissajous3d_Ay", "lissajous3d_Az", "lissajous3d_wx", "lissajous3d_wy", "lissajous3d_wz", "lissajous3d_phi"],
-    "viviani_curve": ["R", "N", "viviani_a"],
-    "line_integral_convolution_sphere": ["R", "lic_N", "lic_steps", "lic_h"],
-    "stream_on_torus": ["R", "stream_N", "stream_steps", "R_major", "r_minor"],
-    "geodesic_graph": ["R", "geo_graph_level"],
-    "random_geometric_graph": ["R", "rgg_nodes", "rgg_radius"],
-
-    "concentric_rings": ["R", "rings_count", "ring_points"],
-    "hex_packing_plane": ["R", "hex_step", "hex_nx", "hex_ny"],
-    "voronoi_seeds": ["R", "voronoi_N", "voronoi_bbox"],
-}
+try:
+    from ..topology_registry import get_topology_library
+except ImportError:  # pragma: no cover - compat exécution directe
+    from core.topology_registry import get_topology_library  # type: ignore
 
 
-TOPOLOGY_DESCRIPTIONS = {
-    "disk_phyllotaxis": "Spirale dorée plane où les points suivent l’angle de Fibonacci pour une répartition organique.",
-    "archimede_spiral": "Courbe plane en spirale dont l’écartement entre spires reste constant.",
-    "log_spiral": "Spirale à croissance exponentielle, similaire à de nombreuses formes naturelles.",
-    "rose_curve": "Rosace polaire générée par une fonction cosinus multipliant l’angle.",
-    "superformula_2D": "Courbe paramétrique très polyvalente qui permet de reproduire de nombreux profils.",
-    "density_warp_disk": "Disque dont la densité radiale est contrôlée par une fonction personnalisée.",
-    "poisson_disk": "Échantillonnage sur disque assurant un espacement minimal entre chaque point.",
-    "lissajous_disk": "Courbe plane résultant de deux oscillations orthogonales harmonisées.",
+_JSON_LIBRARY = get_topology_library()
 
-    "uv_sphere": "Maillage classique latitude/longitude d’une sphère complète.",
-    "fibo_sphere": "Points quasi-uniformes sur la sphère grâce à la spirale de Fibonacci.",
-    "geodesic_sphere": "Subdivision d’un icosaèdre pour approcher une sphère géodésique.",
-    "geodesic": "Réseau géodésique basé sur l’icosaèdre subdivisé.",
-    "vogel_sphere_spiral": "Spirale sphérique continue couvrant la surface avec une progression régulière.",
-    "superquadric": "Surface généralisée permettant de passer du cube à la sphère via des exposants.",
-    "superellipsoid": "Superquadrique normalisée à paramètres séparés pour latitude et longitude.",
-    "half_sphere": "Dôme sphérique tronqué avec contrôle de la hauteur.",
-    "noisy_sphere": "Sphère dont le rayon varie selon un bruit procédural pour un effet organique.",
-    "spherical_harmonics": "Déformation de la sphère par combinaison d’harmoniques sphériques.",
-    "weighted_sphere": "Échantillonnage pondéré sur la sphère à l’aide d’une carte personnalisée.",
+try:
+    from ..topology_registry import TopologyDefinition, get_topology_library
+except ImportError:  # pragma: no cover - compat exécution directe
+    from core.topology_registry import TopologyDefinition, get_topology_library  # type: ignore
 
-    "torus": "Tore standard défini par un rayon majeur et un rayon mineur.",
-    "double_torus": "Deux tores concentriques pour créer un anneau doublé.",
-    "horn_torus": "Tore limite où le rayon majeur approche le rayon mineur.",
-    "spindle_torus": "Tore auto-intersecté lorsque le rayon majeur est inférieur au mineur.",
-    "torus_knot": "Courbe fermée enroulée sur un tore selon deux entiers (p,q).",
-    "mobius": "Ruban de Möbius généré comme bande torsadée non orientable.",
-    "strip_twist": "Ruban plat torsadé un nombre configurable de fois.",
-    "klein_bottle": "Immersion d’une bouteille de Klein fermée.",
 
-    "icosahedron": "Polyèdre régulier à 20 faces triangulaires.",
-    "dodecahedron": "Polyèdre régulier à 12 faces pentagonales.",
-    "octahedron": "Polyèdre régulier à 8 faces triangulaires.",
-    "tetrahedron": "Polyèdre régulier minimal composé de 4 faces.",
-    "cube": "Polyèdre régulier à 6 faces carrées.",
-    "truncated_icosa": "Polyèdre de type ballon de football formé de pentagones et hexagones.",
-    "stellated_icosa": "Version étoilée de l’icosaèdre avec pointes extrêmes.",
-    "polyhedron": "Chargement d’un polyèdre personnalisé via une description JSON.",
+_JSON_LIBRARY = get_topology_library()
 
-    "blob": "Sphère déformée par un bruit fractal pour créer une masse organique.",
-    "gyroid": "Surface implicite périodique à triple périodicité.",
-    "schwarz_P": "Surface minimale périodique de type P.",
-    "schwarz_D": "Surface minimale périodique de type D.",
-    "heart_implicit": "Surface implicite dessinant un cœur en volume.",
-    "metaballs": "Iso-surface issue de la somme de potentiels sphériques.",
-    "distance_field_shape": "Forme définie par combinaisons d’opérations sur des SDF.",
-    "superformula_3D": "Extension spatiale de la superformule avec paramètres multiples.",
+def _all_topologies() -> list[str]:
+    names = list(_JSON_LIBRARY.names())
+    if names:
+        return names
+    defaults = DEFAULTS.get("geometry", {})
+    fallback = defaults.get("topology")
+    if isinstance(fallback, str) and fallback:
+        return [fallback]
+    return []
 
-    "helix": "Hélice régulière en 3D enroulée autour d’un axe.",
-    "lissajous3D": "Courbe harmonique combinant trois oscillations orthogonales.",
-    "viviani_curve": "Courbe tracée sur l’intersection d’une sphère et d’un cylindre.",
-    "line_integral_convolution_sphere": "Trajectoires suivant un champ tangent sur la sphère.",
-    "stream_on_torus": "Lignes de flux intégrées sur la surface d’un tore.",
-    "geodesic_graph": "Graphe de géodésiques basé sur subdivisions d’icosaèdre.",
-    "random_geometric_graph": "Graphes aléatoires connectant les points proches dans l’espace.",
 
-    "concentric_rings": "Plusieurs anneaux concentriques disposés sur un plan.",
-    "hex_packing_plane": "Pavage plan en grille hexagonale régulière.",
-    "voronoi_seeds": "Jeu de graines pour générer un diagramme de Voronoï plan.",
-}
+def _grouped_topologies() -> Tuple[Tuple[str, Tuple[TopologyDefinition, ...]], ...]:
+    groups = _JSON_LIBRARY.grouped_definitions()
+    if groups:
+        return groups
+    names = _all_topologies()
+    if names:
+        definition = _JSON_LIBRARY.get(names[0])
+        if definition is not None:
+            return ((definition.category or "Bibliothèque JSON", (definition,)),)
+    return tuple()
 
 
 def _param_group(name: str) -> str:
@@ -438,7 +316,8 @@ class GeometryTab(QtWidgets.QWidget):
         self.cb_topology.setView(QtWidgets.QListView())
         self.cb_topology.view().setSpacing(2)
         self._populate_topology_combo()
-        default_topology = defaults.get("topology", TOPOLOGIES[0])
+        all_topos = _all_topologies()
+        default_topology = defaults.get("topology", all_topos[0])
         self._select_topology(default_topology)
         row(layout, "Forme de base", self.cb_topology, TOOLTIPS["geometry.topology"],
             lambda: self._reset_topology_choice(default_topology))
@@ -468,19 +347,34 @@ class GeometryTab(QtWidgets.QWidget):
         model.clear()
         header_font = QtGui.QFont(self.font())
         header_font.setBold(True)
-        for label, names in TOPOLOGY_CATEGORIES:
-            header = QtGui.QStandardItem(label)
+        groups = _grouped_topologies()
+        if not groups:
+            header = QtGui.QStandardItem("Topologies disponibles")
             header.setFlags(QtCore.Qt.NoItemFlags)
             header.setFont(header_font)
             header.setForeground(QtGui.QBrush(QtGui.QColor(76, 94, 111)))
             header.setBackground(QtGui.QBrush(QtGui.QColor(238, 242, 247)))
             model.appendRow(header)
-            for name in names:
+            for name in _all_topologies():
                 item = QtGui.QStandardItem(name)
                 item.setEditable(False)
                 item.setData(name, QtCore.Qt.UserRole)
                 model.appendRow(item)
+            return
 
+        for category, definitions in groups:
+            header_label = category or "Bibliothèque JSON"
+            header = QtGui.QStandardItem(header_label)
+            header.setFlags(QtCore.Qt.NoItemFlags)
+            header.setFont(header_font)
+            header.setForeground(QtGui.QBrush(QtGui.QColor(76, 94, 111)))
+            header.setBackground(QtGui.QBrush(QtGui.QColor(238, 242, 247)))
+            model.appendRow(header)
+            for definition in definitions:
+                item = QtGui.QStandardItem(definition.label or definition.name)
+                item.setEditable(False)
+                item.setData(definition.name, QtCore.Qt.UserRole)
+                model.appendRow(item)
     def _first_selectable_index(self) -> int:
         model: QtGui.QStandardItemModel = self.cb_topology.model()  # type: ignore[assignment]
         for row in range(model.rowCount()):
@@ -511,12 +405,19 @@ class GeometryTab(QtWidgets.QWidget):
 
     def _current_topology(self) -> str:
         data = self.cb_topology.currentData(QtCore.Qt.UserRole)
-        if isinstance(data, str) and data in TOPOLOGIES:
+        all_names = _all_topologies()
+        if not all_names:
+            return ""
+        if isinstance(data, str) and data in all_names:
             return data
         text = self.cb_topology.currentText()
-        if text in TOPOLOGIES:
+        if text in all_names:
             return text
-        return TOPOLOGIES[0]
+        defaults = DEFAULTS.get("geometry", {})
+        candidate = defaults.get("topology")
+        if isinstance(candidate, str) and candidate in all_names:
+            return candidate
+        return all_names[0]
 
     def _reset_topology_choice(self, name: str):
         self._select_topology(name)
@@ -583,6 +484,27 @@ class GeometryTab(QtWidgets.QWidget):
         self._form_layout.addRow(container)
         self._group_widgets[group] = container
 
+    def _apply_definition_defaults(self, topology: str) -> None:
+        definition = _JSON_LIBRARY.get(topology)
+        if definition is None:
+            return
+        defaults = DEFAULTS.get("geometry", {})
+        for name in definition.parameters:
+            widget = self.param_widgets.get(name)
+            if widget is None:
+                continue
+            value = definition.defaults.get(name, defaults.get(name))
+            if value is None:
+                continue
+            with QtCore.QSignalBlocker(widget):
+                if isinstance(widget, QtWidgets.QDoubleSpinBox):
+                    widget.setValue(float(value))
+                elif isinstance(widget, QtWidgets.QSpinBox):
+                    widget.setValue(int(value))
+                else:
+                    widget.setText(str(value))
+
+
     # ---------------------------------------------------------------- interface
     def _apply_topology_state(self, emit=True):
         topology = self._current_topology()
@@ -608,6 +530,8 @@ class GeometryTab(QtWidgets.QWidget):
         self._update_description(topology)
 
     def on_topology_changed(self, *args):
+        topology = self._current_topology()
+        self._apply_definition_defaults(topology)
         self._apply_topology_state(True)
         self._sync_subprofile_state()
 
@@ -636,12 +560,18 @@ class GeometryTab(QtWidgets.QWidget):
     def _active_param_names(self, topology=None):
         if topology is None:
             topology = self._current_topology()
-        return TOPOLOGY_PARAMS.get(topology, [])
+        definition = _JSON_LIBRARY.get(topology)
+        if definition is None:
+            return []
+        return [name for name in definition.parameters if name in self.param_widgets]
 
     def set_defaults(self, cfg):
         cfg = cfg or {}
         defaults = DEFAULTS["geometry"]
-        target = cfg.get("topology", defaults.get("topology", TOPOLOGIES[0]))
+        all_topos = _all_topologies()
+        if not all_topos:
+            return
+        target = cfg.get("topology", defaults.get("topology", all_topos[0]))
         self._select_topology(target)
         for name, widget in self.param_widgets.items():
             val = cfg.get(name, defaults.get(name))
@@ -663,8 +593,10 @@ class GeometryTab(QtWidgets.QWidget):
         self.changed.emit({"geometry": self.collect()})
 
     def _update_description(self, topology: str):
-        text = TOPOLOGY_DESCRIPTIONS.get(topology, "")
-        if not text:
+        definition = _JSON_LIBRARY.get(topology)
+        if definition is not None:
+            text = definition.description or f"Topologie chargée depuis {definition.path.name}."
+        else:
             text = "Sélectionnez une topologie pour afficher son descriptif."
         self._desc_label.setText(text)
 

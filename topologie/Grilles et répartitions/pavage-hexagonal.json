@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "hex_packing_plane",
+    "R": 1.0,
+    "hex_step": 0.2,
+    "hex_nx": 12,
+    "hex_ny": 12,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_hex_packing_plane_geometry(params, N):\n    generator = BUILTIN_GENERATORS['hex_packing_plane']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Grilles et répartitions",
+    "label": "Pavage hexagonal",
+    "description": "Grille plane en nid d'abeille paramétrable.",
+    "parameters": [
+      "R",
+      "hex_step",
+      "hex_nx",
+      "hex_ny"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "horn_torus",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "R_major": 1.2,
+    "r_minor": 0.45,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_horn_torus_geometry(params, N):\n    generator = BUILTIN_GENERATORS['horn_torus']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Tore à corne",
+    "description": "Anneau tangent à son centre avec une section qui affleure l'origine.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "R_major",
+      "r_minor"
+    ]
+  }
+}

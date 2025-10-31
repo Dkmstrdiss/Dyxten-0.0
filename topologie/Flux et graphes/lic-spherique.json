@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "line_integral_convolution_sphere",
+    "R": 1.0,
+    "lic_N": 12,
+    "lic_steps": 180,
+    "lic_h": 0.05,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_line_integral_convolution_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['line_integral_convolution_sphere']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Flux et graphes",
+    "label": "LIC sphérique",
+    "description": "Trajectoires intégrales sur une sphère suivant un champ vectoriel.",
+    "parameters": [
+      "R",
+      "lic_N",
+      "lic_steps",
+      "lic_h"
+    ]
+  }
+}

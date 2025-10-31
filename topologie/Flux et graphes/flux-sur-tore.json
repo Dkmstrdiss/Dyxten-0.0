@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "stream_on_torus",
+    "R": 1.0,
+    "stream_N": 12,
+    "stream_steps": 220,
+    "R_major": 1.2,
+    "r_minor": 0.45,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_stream_on_torus_geometry(params, N):\n    generator = BUILTIN_GENERATORS['stream_on_torus']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Flux et graphes",
+    "label": "Flux sur tore",
+    "description": "Intégration d'un champ vectoriel évoluant sur la surface d'un tore.",
+    "parameters": [
+      "R",
+      "stream_N",
+      "stream_steps",
+      "R_major",
+      "r_minor"
+    ]
+  }
+}

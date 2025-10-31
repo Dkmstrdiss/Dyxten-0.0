@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "distance_field_shape",
+    "R": 1.0,
+    "N": 4096,
+    "df_ops": "sphere(1.0)",
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_distance_field_shape_geometry(params, N):\n    generator = BUILTIN_GENERATORS['distance_field_shape']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Champ de distance",
+    "description": "Surface définie par composition de primitives dans un champ de distance.",
+    "parameters": [
+      "R",
+      "N",
+      "df_ops"
+    ]
+  }
+}

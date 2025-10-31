@@ -1,0 +1,37 @@
+{
+  "geometry": {
+    "topology": "superformula_3D",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "sf3_m1": 3.0,
+    "sf3_m2": 3.0,
+    "sf3_m3": 3.0,
+    "sf3_n1": 0.5,
+    "sf3_n2": 0.5,
+    "sf3_n3": 0.5,
+    "sf3_a": 1.0,
+    "sf3_b": 1.0,
+    "sf3_scale": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_superformula_3D_geometry(params, N):\n    generator = BUILTIN_GENERATORS['superformula_3D']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Superformule 3D",
+    "description": "Volume 3D issu de la superformule paramétrique de Gielis.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "sf3_m1",
+      "sf3_m2",
+      "sf3_m3",
+      "sf3_n1",
+      "sf3_n2",
+      "sf3_n3",
+      "sf3_a",
+      "sf3_b",
+      "sf3_scale"
+    ]
+  }
+}

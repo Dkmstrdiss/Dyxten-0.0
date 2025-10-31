@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "torus",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "R_major": 1.2,
+    "r_minor": 0.45,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_torus_geometry(params, N):\n    generator = BUILTIN_GENERATORS['torus']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Tore standard",
+    "description": "Anneau régulier défini par un rayon majeur et un rayon mineur.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "R_major",
+      "r_minor"
+    ]
+  }
+}

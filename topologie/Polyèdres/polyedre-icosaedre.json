@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "icosahedron",
+    "R": 1.0,
+    "poly_layers": 1,
+    "poly_link_steps": 0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_icosahedron_geometry(params, N):\n    generator = BUILTIN_GENERATORS['icosahedron']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Polyèdres",
+    "label": "Icosaèdre",
+    "description": "Polyèdre régulier à vingt triangles équilatéraux.",
+    "parameters": [
+      "R",
+      "poly_layers",
+      "poly_link_steps"
+    ]
+  }
+}

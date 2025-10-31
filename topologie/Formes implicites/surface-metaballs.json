@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "metaballs",
+    "R": 1.0,
+    "N": 4096,
+    "metaballs_centers": "0,0,0",
+    "metaballs_radii": "0.6",
+    "metaballs_iso": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_metaballs_geometry(params, N):\n    generator = BUILTIN_GENERATORS['metaballs']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Métaballes",
+    "description": "Ensemble de sphères métaballs fusionnant selon un seuil.",
+    "parameters": [
+      "R",
+      "N",
+      "metaballs_centers",
+      "metaballs_radii",
+      "metaballs_iso"
+    ]
+  }
+}

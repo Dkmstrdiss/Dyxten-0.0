@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "archimede_spiral",
+    "R": 1.0,
+    "N": 4096,
+    "arch_a": 0.0,
+    "arch_b": 0.6,
+    "theta_max": 6.28318,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_archimede_spiral_geometry(params, N):\n    generator = BUILTIN_GENERATORS['archimede_spiral']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Plans et spirales",
+    "label": "Spirale d'Archimède",
+    "description": "Courbe plane dont l'écart entre les spires reste constant.",
+    "parameters": [
+      "R",
+      "N",
+      "arch_a",
+      "arch_b",
+      "theta_max"
+    ]
+  }
+}

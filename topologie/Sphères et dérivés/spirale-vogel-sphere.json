@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "vogel_sphere_spiral",
+    "R": 1.0,
+    "N": 4096,
+    "vogel_k": 2.3999632,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_vogel_sphere_spiral_geometry(params, N):\n    generator = BUILTIN_GENERATORS['vogel_sphere_spiral']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Spirale de Vogel",
+    "description": "Spirale de Vogel projetée sur une sphère.",
+    "parameters": [
+      "R",
+      "N",
+      "vogel_k"
+    ]
+  }
+}

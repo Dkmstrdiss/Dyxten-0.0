@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "density_warp_disk",
+    "R": 1.0,
+    "N": 4096,
+    "density_pdf": "1",
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_density_warp_disk_geometry(params, N):\n    generator = BUILTIN_GENERATORS['density_warp_disk']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Plans et spirales",
+    "label": "Disque densité pilotée",
+    "description": "Points répartis sur un disque en appliquant une densité radiale personnalisée.",
+    "parameters": [
+      "R",
+      "N",
+      "density_pdf"
+    ]
+  }
+}

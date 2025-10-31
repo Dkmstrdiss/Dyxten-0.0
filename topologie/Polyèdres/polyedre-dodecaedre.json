@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "dodecahedron",
+    "R": 1.0,
+    "poly_layers": 1,
+    "poly_link_steps": 0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_dodecahedron_geometry(params, N):\n    generator = BUILTIN_GENERATORS['dodecahedron']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Polyèdres",
+    "label": "Dodécaèdre",
+    "description": "Polyèdre régulier à douze faces pentagonales.",
+    "parameters": [
+      "R",
+      "poly_layers",
+      "poly_link_steps"
+    ]
+  }
+}

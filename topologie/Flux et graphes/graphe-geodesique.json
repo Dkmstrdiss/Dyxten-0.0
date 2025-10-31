@@ -1,0 +1,17 @@
+{
+  "geometry": {
+    "topology": "geodesic_graph",
+    "R": 1.0,
+    "geo_graph_level": 2,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_geodesic_graph_geometry(params, N):\n    generator = BUILTIN_GENERATORS['geodesic_graph']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Flux et graphes",
+    "label": "Graphe géodésique",
+    "description": "Arêtes reliant les sommets d'une sphère géodésique.",
+    "parameters": [
+      "R",
+      "geo_graph_level"
+    ]
+  }
+}

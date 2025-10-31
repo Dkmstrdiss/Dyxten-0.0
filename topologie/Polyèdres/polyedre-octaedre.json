@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "octahedron",
+    "R": 1.0,
+    "poly_layers": 1,
+    "poly_link_steps": 0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_octahedron_geometry(params, N):\n    generator = BUILTIN_GENERATORS['octahedron']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Polyèdres",
+    "label": "Octaèdre",
+    "description": "Polyèdre régulier à huit faces triangulaires.",
+    "parameters": [
+      "R",
+      "poly_layers",
+      "poly_link_steps"
+    ]
+  }
+}

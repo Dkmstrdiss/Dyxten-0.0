@@ -1,0 +1,27 @@
+{
+  "geometry": {
+    "topology": "noisy_sphere",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "noisy_amp": 0.1,
+    "noisy_freq": 3.0,
+    "noisy_gain": 1.0,
+    "noisy_omega": 0.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_noisy_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['noisy_sphere']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Sphère bruitée",
+    "description": "Sphère perturbée par un bruit fractal contrôlable.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "noisy_amp",
+      "noisy_freq",
+      "noisy_gain",
+      "noisy_omega"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "heart_implicit",
+    "R": 1.0,
+    "N": 4096,
+    "heart_scale": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_heart_implicit_geometry(params, N):\n    generator = BUILTIN_GENERATORS['heart_implicit']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Cœur implicite",
+    "description": "Surface implicite en forme de cœur dont l'épaisseur est ajustable.",
+    "parameters": [
+      "R",
+      "N",
+      "heart_scale"
+    ]
+  }
+}

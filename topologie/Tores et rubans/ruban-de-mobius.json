@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "mobius",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "mobius_w": 0.4,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_mobius_geometry(params, N):\n    generator = BUILTIN_GENERATORS['mobius']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Ruban de Möbius",
+    "description": "Bande non orientable obtenue en réalisant un demi-tour avant de refermer le ruban.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "mobius_w"
+    ]
+  }
+}

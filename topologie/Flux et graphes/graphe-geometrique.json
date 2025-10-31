@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "random_geometric_graph",
+    "R": 1.0,
+    "rgg_nodes": 400,
+    "rgg_radius": 0.2,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_random_geometric_graph_geometry(params, N):\n    generator = BUILTIN_GENERATORS['random_geometric_graph']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Flux et graphes",
+    "label": "Graphe géométrique",
+    "description": "Graphe probabiliste reliant les points proches dans l'espace.",
+    "parameters": [
+      "R",
+      "rgg_nodes",
+      "rgg_radius"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "klein_bottle",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "R_major": 1.2,
+    "r_minor": 0.45,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_klein_bottle_geometry(params, N):\n    generator = BUILTIN_GENERATORS['klein_bottle']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Bouteille de Klein",
+    "description": "Surface non orientable classique présentant une auto-intersection.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "R_major",
+      "r_minor"
+    ]
+  }
+}

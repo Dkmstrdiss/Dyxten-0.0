@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "helix",
+    "R": 1.0,
+    "N": 4096,
+    "helix_r": 0.4,
+    "helix_pitch": 0.3,
+    "helix_turns": 3.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_helix_geometry(params, N):\n    generator = BUILTIN_GENERATORS['helix']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Courbes et trajectoires",
+    "label": "Hélice régulière",
+    "description": "Spirale 3D enroulée autour d'un axe avec un pas constant.",
+    "parameters": [
+      "R",
+      "N",
+      "helix_r",
+      "helix_pitch",
+      "helix_turns"
+    ]
+  }
+}

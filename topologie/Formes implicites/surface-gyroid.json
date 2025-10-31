@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "gyroid",
+    "R": 1.0,
+    "N": 4096,
+    "gyroid_scale": 1.0,
+    "gyroid_thickness": 0.05,
+    "gyroid_c": 0.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_gyroid_geometry(params, N):\n    generator = BUILTIN_GENERATORS['gyroid']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Gyroïde",
+    "description": "Surface minimale triplement périodique de type gyroid.",
+    "parameters": [
+      "R",
+      "N",
+      "gyroid_scale",
+      "gyroid_thickness",
+      "gyroid_c"
+    ]
+  }
+}

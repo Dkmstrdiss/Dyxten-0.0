@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "truncated_icosa",
+    "R": 1.0,
+    "trunc_ratio": 0.333,
+    "poly_layers": 1,
+    "poly_link_steps": 0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_truncated_icosa_geometry(params, N):\n    generator = BUILTIN_GENERATORS['truncated_icosa']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Polyèdres",
+    "label": "Icosaèdre tronqué",
+    "description": "Icosaèdre tronqué générant un polyèdre de type ballon de football.",
+    "parameters": [
+      "R",
+      "trunc_ratio",
+      "poly_layers",
+      "poly_link_steps"
+    ]
+  }
+}

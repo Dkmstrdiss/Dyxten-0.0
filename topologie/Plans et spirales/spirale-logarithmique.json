@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "log_spiral",
+    "R": 1.0,
+    "N": 4096,
+    "log_a": 0.2,
+    "log_b": 0.15,
+    "theta_max": 6.28318,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_log_spiral_geometry(params, N):\n    generator = BUILTIN_GENERATORS['log_spiral']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Plans et spirales",
+    "label": "Spirale logarithmique",
+    "description": "Spirale où la distance au centre croît de façon exponentielle.",
+    "parameters": [
+      "R",
+      "N",
+      "log_a",
+      "log_b",
+      "theta_max"
+    ]
+  }
+}

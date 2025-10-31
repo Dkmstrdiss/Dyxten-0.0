@@ -1,0 +1,29 @@
+{
+  "geometry": {
+    "topology": "superellipsoid",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "ax": 1.0,
+    "ay": 1.0,
+    "az": 1.0,
+    "se_n1": 1.0,
+    "se_n2": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_superellipsoid_geometry(params, N):\n    generator = BUILTIN_GENERATORS['superellipsoid']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Superellipsoïde",
+    "description": "Interpolation continue entre sphère, cube et cylindre.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "ax",
+      "ay",
+      "az",
+      "se_n1",
+      "se_n2"
+    ]
+  }
+}

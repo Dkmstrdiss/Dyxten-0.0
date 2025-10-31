@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "poisson_disk",
+    "R": 1.0,
+    "N": 4096,
+    "poisson_dmin": 0.05,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_poisson_disk_geometry(params, N):\n    generator = BUILTIN_GENERATORS['poisson_disk']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Plans et spirales",
+    "label": "Disque de Poisson",
+    "description": "Distribution quasi uniforme générée par échantillonnage de Poisson.",
+    "parameters": [
+      "R",
+      "N",
+      "poisson_dmin"
+    ]
+  }
+}

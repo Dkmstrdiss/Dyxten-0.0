@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "weighted_sphere",
+    "R": 1.0,
+    "N": 4096,
+    "weight_map": "1",
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_weighted_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['weighted_sphere']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Sphère pondérée",
+    "description": "Distribution sphérique modulée par une carte de poids.",
+    "parameters": [
+      "R",
+      "N",
+      "weight_map"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "lissajous_disk",
+    "R": 1.0,
+    "N": 4096,
+    "lissajous_a": 3.0,
+    "lissajous_b": 2.0,
+    "lissajous_phase": 0.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_lissajous_disk_geometry(params, N):\n    generator = BUILTIN_GENERATORS['lissajous_disk']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Plans et spirales",
+    "label": "Courbe de Lissajous plane",
+    "description": "Trajectoire plane issue de la combinaison de deux oscillations sinusoïdales.",
+    "parameters": [
+      "R",
+      "N",
+      "lissajous_a",
+      "lissajous_b",
+      "lissajous_phase"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "geometry": {
+    "topology": "strip_twist",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "strip_w": 0.4,
+    "strip_n": 2,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_strip_twist_geometry(params, N):\n    generator = BUILTIN_GENERATORS['strip_twist']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Ruban torsadé",
+    "description": "Ruban paramétrique permettant de contrôler la torsion et le nombre de répétitions.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "strip_w",
+      "strip_n"
+    ]
+  }
+}

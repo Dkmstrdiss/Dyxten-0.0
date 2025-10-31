@@ -1,0 +1,17 @@
+{
+  "geometry": {
+    "topology": "geodesic",
+    "R": 1.0,
+    "geo_level": 1,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_geodesic_geometry(params, N):\n    generator = BUILTIN_GENERATORS['geodesic']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Grille géodésique",
+    "description": "Maillage géodésique généré par subdivision d'un icosaèdre.",
+    "parameters": [
+      "R",
+      "geo_level"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "cube",
+    "R": 1.0,
+    "poly_layers": 1,
+    "poly_link_steps": 0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_cube_geometry(params, N):\n    generator = BUILTIN_GENERATORS['cube']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Polyèdres",
+    "label": "Cube",
+    "description": "Polyèdre régulier à six faces carrées.",
+    "parameters": [
+      "R",
+      "poly_layers",
+      "poly_link_steps"
+    ]
+  }
+}

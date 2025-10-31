@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "viviani_curve",
+    "R": 1.0,
+    "N": 4096,
+    "viviani_a": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_viviani_curve_geometry(params, N):\n    generator = BUILTIN_GENERATORS['viviani_curve']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Courbes et trajectoires",
+    "label": "Courbe de Viviani",
+    "description": "Intersection d'une sphère et d'un cylindre tangent générant un huit.",
+    "parameters": [
+      "R",
+      "N",
+      "viviani_a"
+    ]
+  }
+}

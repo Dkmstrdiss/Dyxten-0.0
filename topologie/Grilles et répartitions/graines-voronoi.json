@@ -1,0 +1,19 @@
+{
+  "geometry": {
+    "topology": "voronoi_seeds",
+    "R": 1.0,
+    "voronoi_N": 50,
+    "voronoi_bbox": "-1,1,-1,1",
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_voronoi_seeds_geometry(params, N):\n    generator = BUILTIN_GENERATORS['voronoi_seeds']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Grilles et répartitions",
+    "label": "Germes de Voronoï",
+    "description": "Points générateurs d'une tessellation de Voronoï aléatoire.",
+    "parameters": [
+      "R",
+      "voronoi_N",
+      "voronoi_bbox"
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "half_sphere",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "half_height": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_half_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['half_sphere']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Demi-sphère",
+    "description": "Hémisphère découpé suivant un plan horizontal.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "half_height"
+    ]
+  }
+}

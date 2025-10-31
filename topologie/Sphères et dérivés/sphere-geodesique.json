@@ -1,0 +1,17 @@
+{
+  "geometry": {
+    "topology": "geodesic_sphere",
+    "R": 1.0,
+    "geo_level": 1,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_geodesic_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['geodesic_sphere']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Sphère géodésique",
+    "description": "Approximation sphérique issue d'une subdivision géodésique.",
+    "parameters": [
+      "R",
+      "geo_level"
+    ]
+  }
+}

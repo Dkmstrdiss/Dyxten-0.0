@@ -1,0 +1,29 @@
+{
+  "geometry": {
+    "topology": "superquadric",
+    "R": 1.0,
+    "lat": 64,
+    "lon": 64,
+    "eps1": 1.0,
+    "eps2": 1.0,
+    "ax": 1.0,
+    "ay": 1.0,
+    "az": 1.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_superquadric_geometry(params, N):\n    generator = BUILTIN_GENERATORS['superquadric']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Sphères et dérivés",
+    "label": "Superquadrique",
+    "description": "Surface paramétrique généralisant sphères et ellipsoïdes.",
+    "parameters": [
+      "R",
+      "lat",
+      "lon",
+      "eps1",
+      "eps2",
+      "ax",
+      "ay",
+      "az"
+    ]
+  }
+}

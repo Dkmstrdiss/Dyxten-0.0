@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "schwarz_P",
+    "R": 1.0,
+    "N": 4096,
+    "schwarz_scale": 1.0,
+    "schwarz_iso": 0.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_schwarz_P_geometry(params, N):\n    generator = BUILTIN_GENERATORS['schwarz_P']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Formes implicites",
+    "label": "Schwarz P",
+    "description": "Surface minimale triplement périodique de type P.",
+    "parameters": [
+      "R",
+      "N",
+      "schwarz_scale",
+      "schwarz_iso"
+    ]
+  }
+}

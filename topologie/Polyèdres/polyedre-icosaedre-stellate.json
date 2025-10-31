@@ -1,0 +1,21 @@
+{
+  "geometry": {
+    "topology": "stellated_icosa",
+    "R": 1.0,
+    "stellated_scale": 1.4,
+    "poly_layers": 1,
+    "poly_link_steps": 0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_stellated_icosa_geometry(params, N):\n    generator = BUILTIN_GENERATORS['stellated_icosa']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Polyèdres",
+    "label": "Icosaèdre stellé",
+    "description": "Icosaèdre étiré produisant des pointes contrôlables.",
+    "parameters": [
+      "R",
+      "stellated_scale",
+      "poly_layers",
+      "poly_link_steps"
+    ]
+  }
+}

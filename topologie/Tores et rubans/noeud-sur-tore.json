@@ -1,0 +1,25 @@
+{
+  "geometry": {
+    "topology": "torus_knot",
+    "R": 1.0,
+    "N": 4096,
+    "R_major": 1.2,
+    "r_minor": 0.45,
+    "torus_knot_p": 3,
+    "torus_knot_q": 2,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_torus_knot_geometry(params, N):\n    generator = BUILTIN_GENERATORS['torus_knot']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Tores et rubans",
+    "label": "Nœud sur tore",
+    "description": "Courbe fermée enroulée autour d'un tore suivant deux entiers p et q.",
+    "parameters": [
+      "R",
+      "N",
+      "R_major",
+      "r_minor",
+      "torus_knot_p",
+      "torus_knot_q"
+    ]
+  }
+}

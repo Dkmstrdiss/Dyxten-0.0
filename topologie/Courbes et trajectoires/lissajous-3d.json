@@ -1,0 +1,31 @@
+{
+  "geometry": {
+    "topology": "lissajous3D",
+    "R": 1.0,
+    "N": 4096,
+    "lissajous3d_Ax": 1.0,
+    "lissajous3d_Ay": 1.0,
+    "lissajous3d_Az": 1.0,
+    "lissajous3d_wx": 3.0,
+    "lissajous3d_wy": 2.0,
+    "lissajous3d_wz": 5.0,
+    "lissajous3d_phi": 0.0,
+    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_lissajous3D_geometry(params, N):\n    generator = BUILTIN_GENERATORS['lissajous3D']\n    return generator(params, N)\n"
+  },
+  "meta": {
+    "category": "Courbes et trajectoires",
+    "label": "Courbe de Lissajous 3D",
+    "description": "Trajectoire spatiale issue de trois oscillateurs sinusoïdaux.",
+    "parameters": [
+      "R",
+      "N",
+      "lissajous3d_Ax",
+      "lissajous3d_Ay",
+      "lissajous3d_Az",
+      "lissajous3d_wx",
+      "lissajous3d_wy",
+      "lissajous3d_wz",
+      "lissajous3d_phi"
+    ]
+  }
+}
