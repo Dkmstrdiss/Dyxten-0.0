@@ -98,9 +98,8 @@ class TopologyDefinition:
     def build_generator(self) -> Callable[[Mapping[str, Any], int], List[Tuple[float, float, float]]]:
         """Compile the user provided code and expose it as a callable."""
 
-        namespace: Dict[str, Any] = {}
-        globals_dict = {"__builtins__": __builtins__}
-        exec(self.code, globals_dict, namespace)
+        namespace: Dict[str, Any] = {"__builtins__": __builtins__}
+        exec(self.code, namespace)
         func_name = f"generate_{self.name}_geometry"
         candidate = namespace.get(func_name)
         if not callable(candidate):
@@ -129,6 +128,15 @@ class TopologyDefinition:
                         x = float(item[0])
                         y = float(item[1])
                         z = float(item[2])
+                    except (TypeError, ValueError):
+                        continue
+                    out.append((x, y, z))
+                    continue
+                if hasattr(item, "x") and hasattr(item, "y") and hasattr(item, "z"):
+                    try:
+                        x = float(getattr(item, "x"))
+                        y = float(getattr(item, "y"))
+                        z = float(getattr(item, "z"))
                     except (TypeError, ValueError):
                         continue
                     out.append((x, y, z))
