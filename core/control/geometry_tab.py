@@ -269,6 +269,12 @@ class GeometryTab(QtWidgets.QWidget):
         """)
 
         container = QtWidgets.QWidget()
+        # Ensure the container doesn't force the scroll area to expand the
+        # parent window vertically. Give it a minimum vertical size policy
+        # so the QScrollArea will provide scrollbars instead of growing the
+        # main window to fit all parameter widgets.
+        container.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
+        container.setMinimumHeight(0)
         layout = QtWidgets.QFormLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
 

@@ -251,13 +251,22 @@ class ControlWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(shell)
 
-        # Fenêtre
-        self.resize(780, 920)
+        # Fenêtre — ouvrir en coin supérieur droit du second écran
+        # Taille = 1/4 de l'écran (largeur/2, hauteur/2)
         geometry = screen.availableGeometry()
-        self.move(
-            geometry.x() + geometry.width() - self.width(),
-            geometry.y() + (geometry.height() - self.height()) // 2,
-        )
+        # impose un minimum raisonnable pour éviter une fenêtre trop petite
+        width = max(200, geometry.width() // 2)
+        height = max(200, geometry.height() // 2)
+        left = geometry.x() + geometry.width() - width
+        top = geometry.y()
+        # Utiliser resize+move au lieu de setGeometry : cela évite que
+        # certains gestionnaires de fenêtres ou layouts recalcule la
+        # géométrie en la forçant à la hauteur de l'écran.
+        # Ne PAS fixer la taille (setFixedSize) — permet à l'utilisateur
+        # de redimensionner la fenêtre verticalement. Use resize so the
+        # window starts with the intended size but remains resizable.
+        self.resize(width, height)
+        self.move(left, top)
         self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         self.show()
 
