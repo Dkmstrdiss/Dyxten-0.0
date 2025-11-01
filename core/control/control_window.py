@@ -62,6 +62,16 @@ class ControlWindow(QtWidgets.QMainWindow):
 
         self._apply_theme()
 
+        self._settings = QtCore.QSettings("Dyxten", "ControlWindow")
+        self._geometry_save_timer = QtCore.QTimer(self)
+        self._geometry_save_timer.setSingleShot(True)
+        self._geometry_save_timer.timeout.connect(self._save_window_geometry)
+
+        self._shadowed_effects = []
+        self._shadow_resume_timer = QtCore.QTimer(self)
+        self._shadow_resume_timer.setSingleShot(True)
+        self._shadow_resume_timer.timeout.connect(self._resume_shadows)
+
         # Barre d’outils persistante
         toolbar = QtWidgets.QToolBar("Main")
         toolbar.setMovable(False)
@@ -242,7 +252,7 @@ class ControlWindow(QtWidgets.QMainWindow):
 
         card = QtWidgets.QFrame()
         card.setObjectName("Card")
-        card.setGraphicsEffect(self._make_shadow(blur=36, offset=12))
+        self._register_shadow_widget(card, blur=24, offset=8)
         card_layout = QtWidgets.QVBoxLayout(card)
         card_layout.setContentsMargins(18, 18, 18, 18)
         card_layout.setSpacing(12)
@@ -259,16 +269,26 @@ class ControlWindow(QtWidgets.QMainWindow):
         height = max(200, geometry.height() // 2)
         left = geometry.x() + geometry.width() - width
         top = geometry.y()
-        # Utiliser resize+move au lieu de setGeometry : cela évite que
-        # certains gestionnaires de fenêtres ou layouts recalcule la
-        # géométrie en la forçant à la hauteur de l'écran.
-        # Ne PAS fixer la taille (setFixedSize) — permet à l'utilisateur
-        # de redimensionner la fenêtre verticalement. Use resize so the
-        # window starts with the intended size but remains resizable.
-        self.resize(width, height)
-        self.move(left, top)
+
+        restored = self._restore_window_geometry()
+        raw_maximized = self._settings.value("maximized", False)
+        was_maximized = bool(raw_maximized)
+
         self.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
-        self.show()
+
+        if not restored:
+            # Utiliser resize+move au lieu de setGeometry : cela évite que
+            # certains gestionnaires de fenêtres ou layouts recalculent la
+            # géométrie en la forçant à la hauteur de l'écran. Ne PAS fixer la
+            # taille (setFixedSize) — permet à l'utilisateur de redimensionner
+            # la fenêtre verticalement.
+            self.resize(width, height)
+            self.move(left, top)
+
+        if was_maximized:
+            self.showMaximized()
+        else:
+            self.show()
 
         # État initial
         self.refresh_profiles(select=self.current_profile)
@@ -753,15 +773,108 @@ class ControlWindow(QtWidgets.QMainWindow):
             alignment=QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
         )
 
-        banner.setGraphicsEffect(self._make_shadow(blur=40, offset=18))
+        self._register_shadow_widget(banner, blur=28, offset=12)
         return banner
+
+    def _register_shadow_widget(self, widget: QtWidgets.QWidget, blur: int, offset: int) -> None:
+        effect = self._make_shadow(blur, offset)
+        widget.setGraphicsEffect(effect)
+        self._shadowed_effects.append(effect)
 
     def _make_shadow(self, blur: int, offset: int) -> QtWidgets.QGraphicsDropShadowEffect:
         effect = QtWidgets.QGraphicsDropShadowEffect(self)
         effect.setBlurRadius(blur)
         effect.setOffset(0, offset)
-        effect.setColor(QtGui.QColor(0, 0, 0, 110))
+        effect.setColor(QtGui.QColor(0, 0, 0, 96))
         return effect
+
+    def _suspend_shadows(self, defer_resume: bool = True) -> None:
+        if not self._shadowed_effects:
+            return
+        any_disabled = False
+        for effect in self._shadowed_effects:
+            if effect.isEnabled():
+                effect.setEnabled(False)
+                any_disabled = True
+        if not any_disabled:
+            return
+        if defer_resume:
+            self._shadow_resume_timer.start(180)
+        else:
+            self._shadow_resume_timer.stop()
+
+    def _resume_shadows(self) -> None:
+        if not self._shadowed_effects:
+            return
+        self._shadow_resume_timer.stop()
+        for effect in self._shadowed_effects:
+            effect.setEnabled(True)
+
+    def _schedule_geometry_save(self) -> None:
+        if not self.isVisible() or self.isMinimized():
+            return
+        self._geometry_save_timer.start(300)
+
+    def _save_window_geometry(self) -> None:
+        if not self.isVisible() or self.isMinimized():
+            return
+        try:
+            self._settings.setValue("geometry", self.saveGeometry())
+            self._settings.setValue("state", self.saveState())
+            self._settings.setValue("maximized", self.isMaximized())
+            self._settings.sync()
+        except Exception:
+            pass
+
+    def _restore_window_geometry(self) -> bool:
+        geometry_bytes = self._settings.value("geometry")
+        state_bytes = self._settings.value("state")
+        if isinstance(geometry_bytes, bytes):
+            geometry_bytes = QtCore.QByteArray(geometry_bytes)
+        if isinstance(state_bytes, bytes):
+            state_bytes = QtCore.QByteArray(state_bytes)
+        restored = False
+        if isinstance(geometry_bytes, QtCore.QByteArray) and not geometry_bytes.isEmpty():
+            try:
+                restored = bool(self.restoreGeometry(geometry_bytes))
+            except Exception:
+                restored = False
+        if restored and isinstance(state_bytes, QtCore.QByteArray) and not state_bytes.isEmpty():
+            try:
+                self.restoreState(state_bytes)
+            except Exception:
+                pass
+        if restored:
+            frame = self.frameGeometry()
+            center = frame.center()
+            screens = QtWidgets.QApplication.screens() if QtWidgets.QApplication.instance() else []
+            if not any(scr.availableGeometry().contains(center) for scr in screens):
+                restored = False
+        return restored
+
+    def moveEvent(self, event: QtGui.QMoveEvent) -> None:  # pragma: no cover - interface utilisateur
+        if event.spontaneous():
+            self._suspend_shadows()
+            self._schedule_geometry_save()
+        super().moveEvent(event)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # pragma: no cover - interface utilisateur
+        self._suspend_shadows()
+        self._schedule_geometry_save()
+        super().resizeEvent(event)
+
+    def changeEvent(self, event: QtCore.QEvent) -> None:  # pragma: no cover - interface utilisateur
+        if event.type() == QtCore.QEvent.WindowStateChange:
+            if self.isMinimized():
+                self._suspend_shadows(defer_resume=False)
+            else:
+                self._resume_shadows()
+            self._schedule_geometry_save()
+        super().changeEvent(event)
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # pragma: no cover - interface utilisateur
+        self._save_window_geometry()
+        super().closeEvent(event)
 
     def _update_profile_banner(self):
         if not hasattr(self, "lbl_profile_title"):
