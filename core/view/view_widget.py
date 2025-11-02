@@ -137,9 +137,9 @@ def _default_state() -> Dict[str, dict]:
         "geometry": {
             "topology": "torus",
             "R": 1.0,
-            "lat": 64,
-            "lon": 64,
-            "N": 4096,
+            "lat": 24,
+            "lon": 24,
+            "N": 250,
             "phi_g": 3.883222,
             "R_major": 1.2,
             "R_major2": 0.8,
@@ -1070,9 +1070,12 @@ class _ViewWidgetBase:
                 painter.setPen(QtGui.QPen(color, 2.0))
                 painter.drawEllipse(QtCore.QRectF(center_x - radius, center_y - radius, diameter, diameter))
 
-            _draw_marker_circle(QtGui.QColor("red"), base_radius)
-            _draw_marker_circle(QtGui.QColor("yellow"), base_radius * math.sqrt(1.1))
-            _draw_marker_circle(QtGui.QColor("blue"), base_radius * math.sqrt(1.15))
+            radius_red = base_radius * 0.5
+            radius_yellow = radius_red * 1.15
+            radius_blue = radius_yellow * 1.10
+            _draw_marker_circle(QtGui.QColor("red"), radius_red)
+            _draw_marker_circle(QtGui.QColor("yellow"), radius_yellow)
+            _draw_marker_circle(QtGui.QColor("blue"), radius_blue)
 
 
 class _OpenGLViewWidget(QtWidgets.QOpenGLWidget, _ViewWidgetBase):
