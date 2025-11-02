@@ -25,7 +25,6 @@ feature completeness and ease of maintenance.
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import random
@@ -40,11 +39,8 @@ from ..donut import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config, sanitize_d
 from ..topology_generators import (
     Point3D,
     BUILTIN_GENERATORS,
-    _PHI,
     _rand_for_index,
     _gen_uv_sphere,
-    _scale,
-    _unique_points,
     _value_noise3,
 )
 
@@ -122,184 +118,6 @@ def _sgnpow(u: float, p: float) -> float:
 
 
 
-def _mix(a: Tuple[float, float, float], b: Tuple[float, float, float], t: float) -> Tuple[float, float, float]:
-    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
-
-
-
-_POLYHEDRA_DATA: Dict[str, Tuple[List[Tuple[float, float, float]], List[Tuple[int, ...]]]] = {
-    "tetrahedron": (
-        [
-            (1, 1, 1),
-            (1, -1, -1),
-            (-1, 1, -1),
-            (-1, -1, 1),
-        ],
-        [(0, 1, 2), (0, 3, 1), (0, 2, 3), (1, 3, 2)],
-    ),
-    "cube": (
-        [
-            (-1, -1, -1),
-            (1, -1, -1),
-            (1, 1, -1),
-            (-1, 1, -1),
-            (-1, -1, 1),
-            (1, -1, 1),
-            (1, 1, 1),
-            (-1, 1, 1),
-        ],
-        [
-            (0, 1, 2, 3),
-            (4, 5, 6, 7),
-            (0, 1, 5, 4),
-            (2, 3, 7, 6),
-            (1, 2, 6, 5),
-            (3, 0, 4, 7),
-        ],
-    ),
-    "octahedron": (
-        [
-            (1, 0, 0),
-            (-1, 0, 0),
-            (0, 1, 0),
-            (0, -1, 0),
-            (0, 0, 1),
-            (0, 0, -1),
-        ],
-        [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4), (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)],
-    ),
-    "icosahedron": (
-        [
-            (-1, _PHI, 0),
-            (1, _PHI, 0),
-            (-1, -_PHI, 0),
-            (1, -_PHI, 0),
-            (0, -1, _PHI),
-            (0, 1, _PHI),
-            (0, -1, -_PHI),
-            (0, 1, -_PHI),
-            (_PHI, 0, -1),
-            (_PHI, 0, 1),
-            (-_PHI, 0, -1),
-            (-_PHI, 0, 1),
-        ],
-        [
-            (0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11),
-            (1, 5, 9), (5, 11, 4), (11, 10, 2), (10, 7, 6), (7, 1, 8),
-            (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9),
-            (4, 9, 5), (2, 4, 11), (6, 2, 10), (8, 6, 7), (9, 8, 1),
-        ],
-    ),
-    "dodecahedron": (
-        [
-            (-1, -1, -1),
-            (-1, -1, 1),
-            (-1, 1, -1),
-            (-1, 1, 1),
-            (1, -1, -1),
-            (1, -1, 1),
-            (1, 1, -1),
-            (1, 1, 1),
-            (0, -1 / _PHI, -_PHI),
-            (0, -1 / _PHI, _PHI),
-            (0, 1 / _PHI, -_PHI),
-            (0, 1 / _PHI, _PHI),
-            (-1 / _PHI, -_PHI, 0),
-            (-1 / _PHI, _PHI, 0),
-            (1 / _PHI, -_PHI, 0),
-            (1 / _PHI, _PHI, 0),
-            (-_PHI, 0, -1 / _PHI),
-            (_PHI, 0, -1 / _PHI),
-            (-_PHI, 0, 1 / _PHI),
-            (_PHI, 0, 1 / _PHI),
-        ],
-        [
-            (0, 8, 10, 2, 16),
-            (0, 12, 14, 4, 8),
-            (0, 16, 18, 1, 12),
-            (1, 9, 11, 3, 13),
-            (1, 18, 19, 5, 9),
-            (2, 10, 6, 17, 16),
-            (2, 3, 11, 7, 6),
-            (3, 13, 15, 7, 11),
-            (4, 14, 15, 7, 6),
-            (4, 5, 19, 17, 8),
-            (5, 9, 11, 7, 15),
-            (6, 7, 15, 14, 10),
-        ],
-    ),
-}
-
-
-
-def _polyhedron_points(
-    base_vertices: Sequence[Tuple[float, float, float]],
-    faces: Sequence[Tuple[int, ...]],
-    radius: float,
-    layers: int,
-    link_steps: int,
-    cap: int,
-) -> List[Point3D]:
-    if not base_vertices:
-        return []
-    vectors: List[Tuple[float, float, float]] = []
-    for v in base_vertices:
-        vectors.append(v)
-    layers = max(1, layers)
-    if layers > 1:
-        for layer in range(1, layers):
-            scale = layer / layers
-            for v in base_vertices:
-                vectors.append(_scale(v, scale))
-    if link_steps > 0 and faces:
-        edges = set()
-        for face in faces:
-            if len(face) < 2:
-                continue
-            for i in range(len(face)):
-                a = face[i]
-                b = face[(i + 1) % len(face)]
-                edge = tuple(sorted((a, b)))
-                edges.add(edge)
-        for a, b in edges:
-            va = base_vertices[a]
-            vb = base_vertices[b]
-            for step in range(1, link_steps + 1):
-                t = step / (link_steps + 1)
-                vectors.append(_mix(va, vb, t))
-    return _unique_points(vectors, radius, cap)
-
-
-def _parse_polyhedron_json(text: str | None) -> Tuple[List[Tuple[float, float, float]], List[Tuple[int, ...]]]:
-    if not text:
-        return ([], [])
-    try:
-        payload = json.loads(text)
-    except Exception:
-        return ([], [])
-    vertices_raw = payload.get("vertices") if isinstance(payload, dict) else None
-    faces_raw = payload.get("faces") if isinstance(payload, dict) else None
-    vertices: List[Tuple[float, float, float]] = []
-    faces: List[Tuple[int, ...]] = []
-    if isinstance(vertices_raw, list):
-        for entry in vertices_raw:
-            if isinstance(entry, (list, tuple)) and len(entry) >= 3:
-                try:
-                    vertices.append((float(entry[0]), float(entry[1]), float(entry[2])))
-                except (TypeError, ValueError):
-                    continue
-    if isinstance(faces_raw, list):
-        for face in faces_raw:
-            if isinstance(face, (list, tuple)) and len(face) >= 3:
-                clean: List[int] = []
-                for idx in face:
-                    try:
-                        clean.append(int(idx))
-                    except (TypeError, ValueError):
-                        continue
-                if len(clean) >= 3:
-                    faces.append(tuple(clean))
-    return vertices, faces
 
 
 
@@ -1134,8 +952,27 @@ class _ViewWidgetBase:
         self._shape = "circle"
         self._transparent = True
         self._timer = QtCore.QTimer(self)
+        self._frame_interval_ms = 16
         self._timer.timeout.connect(self.update)
-        self._timer.start(16)
+        self._timer.start(self._frame_interval_ms)
+
+    def _apply_frame_interval(self, interval_ms: int) -> None:
+        """Update the refresh interval used by the render timer."""
+
+        interval_ms = max(int(interval_ms), 0)
+        if interval_ms == self._frame_interval_ms and self._timer.isActive() == (
+            interval_ms > 0
+        ):
+            return
+        self._frame_interval_ms = interval_ms
+        if interval_ms <= 0:
+            if self._timer.isActive():
+                self._timer.stop()
+            return
+        if self._timer.isActive():
+            self._timer.setInterval(interval_ms)
+        else:
+            self._timer.start(interval_ms)
 
     # ------------------------------------------------------------------ OpenGL hooks
     def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
@@ -1165,6 +1002,15 @@ class _ViewWidgetBase:
             transparent = True
         else:
             transparent = bool(transparent_flag)
+        frame_interval = system.get("frameIntervalMs")
+        if frame_interval is None:
+            target_interval = 16
+        else:
+            try:
+                target_interval = int(float(frame_interval))
+            except (TypeError, ValueError):
+                target_interval = 16
+        self._apply_frame_interval(target_interval)
         if transparent != self._transparent:
             self.set_transparent(transparent)
         if previous_shape != self._shape:
@@ -1499,9 +1345,19 @@ for name, generator in _json_generators.items():
             params: Dict[str, object] = dict(defaults)
             extra = {k: v for k, v in geo.items() if isinstance(k, str) and k not in {"code", "topology"}}
             params.update(extra)
-            target = int(cap or params.get("N", 0) or 0)
-            if target <= 0:
-                target = int(defaults.get("N", 0) or 0)
+            def _as_positive_int(value: object) -> int:
+                try:
+                    number = int(value)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    return 0
+                return number if number > 0 else 0
+
+            requested = _as_positive_int(params.get("N"))
+            default_n = _as_positive_int(defaults.get("N"))
+            cap_n = _as_positive_int(cap)
+            target = requested or default_n or cap_n or 4096
+            if cap_n:
+                target = min(target, cap_n)
             params["N"] = target
             raw_points = gen(params, target)
             return _wrap_point_list(raw_points, target)

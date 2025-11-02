@@ -2,20 +2,22 @@
   "geometry": {
     "topology": "line_integral_convolution_sphere",
     "R": 1.0,
+    "N": 4096,
     "lic_N": 12,
-    "lic_steps": 180,
-    "lic_h": 0.05,
-    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_line_integral_convolution_sphere_geometry(params, N):\n    generator = BUILTIN_GENERATORS['line_integral_convolution_sphere']\n    return generator(params, N)\n"
+    "lic_jitter": 0.18,
+    "seed": 0,
+    "code": "import math\nimport random\n\ndef generate_line_integral_convolution_sphere_geometry(params, N):\n    count = int(N or params.get('N') or params.get('lic_steps', 0) or 4096)\n    count = max(1, count)\n    bands = max(1, int(params.get('lic_N', 12) or 12))\n    jitter = float(params.get('lic_jitter', 0.18) or 0.18)\n    radius = float(params.get('R', 1.0))\n    rng = random.Random(params.get('seed', 0))\n    points = []\n    for i in range(count):\n        band = i % bands\n        base_phi = (band + rng.random()) / bands * (2.0 * math.pi)\n        base_theta = rng.random() * math.pi\n        theta = base_theta + (rng.random() - 0.5) * jitter\n        phi = base_phi + (rng.random() - 0.5) * jitter * 2.0\n        x = math.sin(theta) * math.cos(phi) * radius\n        y = math.cos(theta) * radius\n        z = math.sin(theta) * math.sin(phi) * radius\n        points.append((x, y, z))\n    return points\n"
   },
   "meta": {
     "category": "Flux et graphes",
     "label": "LIC sphérique",
-    "description": "Trajectoires intégrales sur une sphère suivant un champ vectoriel.",
+    "description": "Bandeaux de particules circulant sur la surface d'une sphère.",
     "parameters": [
       "R",
+      "N",
       "lic_N",
-      "lic_steps",
-      "lic_h"
+      "lic_jitter",
+      "seed"
     ]
   }
 }

@@ -122,6 +122,215 @@ def _unique_points(vectors: Sequence[Tuple[float, float, float]], radius: float,
 
 _PHI = (1.0 + math.sqrt(5.0)) / 2.0
 
+
+def _mix(a: Tuple[float, float, float], b: Tuple[float, float, float], t: float) -> Tuple[float, float, float]:
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+
+
+_POLYHEDRA_DATA: Dict[str, Tuple[List[Tuple[float, float, float]], List[Tuple[int, ...]]]] = {
+    "tetrahedron": (
+        [
+            (1, 1, 1),
+            (1, -1, -1),
+            (-1, 1, -1),
+            (-1, -1, 1),
+        ],
+        [(0, 1, 2), (0, 3, 1), (0, 2, 3), (1, 3, 2)],
+    ),
+    "cube": (
+        [
+            (-1, -1, -1),
+            (1, -1, -1),
+            (1, 1, -1),
+            (-1, 1, -1),
+            (-1, -1, 1),
+            (1, -1, 1),
+            (1, 1, 1),
+            (-1, 1, 1),
+        ],
+        [
+            (0, 1, 2, 3),
+            (4, 5, 6, 7),
+            (0, 1, 5, 4),
+            (2, 3, 7, 6),
+            (1, 2, 6, 5),
+            (3, 0, 4, 7),
+        ],
+    ),
+    "octahedron": (
+        [
+            (1, 0, 0),
+            (-1, 0, 0),
+            (0, 1, 0),
+            (0, -1, 0),
+            (0, 0, 1),
+            (0, 0, -1),
+        ],
+        [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4), (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)],
+    ),
+    "icosahedron": (
+        [
+            (-1, _PHI, 0),
+            (1, _PHI, 0),
+            (-1, -_PHI, 0),
+            (1, -_PHI, 0),
+            (0, -1, _PHI),
+            (0, 1, _PHI),
+            (0, -1, -_PHI),
+            (0, 1, -_PHI),
+            (_PHI, 0, -1),
+            (_PHI, 0, 1),
+            (-_PHI, 0, -1),
+            (-_PHI, 0, 1),
+        ],
+        [
+            (0, 11, 5),
+            (0, 5, 1),
+            (0, 1, 7),
+            (0, 7, 10),
+            (0, 10, 11),
+            (1, 5, 9),
+            (5, 11, 4),
+            (11, 10, 2),
+            (10, 7, 6),
+            (7, 1, 8),
+            (3, 9, 4),
+            (3, 4, 2),
+            (3, 2, 6),
+            (3, 6, 8),
+            (3, 8, 9),
+            (4, 9, 5),
+            (2, 4, 11),
+            (6, 2, 10),
+            (8, 6, 7),
+            (9, 8, 1),
+        ],
+    ),
+    "dodecahedron": (
+        [
+            (-1, -1, -1),
+            (-1, -1, 1),
+            (-1, 1, -1),
+            (-1, 1, 1),
+            (1, -1, -1),
+            (1, -1, 1),
+            (1, 1, -1),
+            (1, 1, 1),
+            (0, -1 / _PHI, -_PHI),
+            (0, -1 / _PHI, _PHI),
+            (0, 1 / _PHI, -_PHI),
+            (0, 1 / _PHI, _PHI),
+            (-1 / _PHI, -_PHI, 0),
+            (-1 / _PHI, _PHI, 0),
+            (1 / _PHI, -_PHI, 0),
+            (1 / _PHI, _PHI, 0),
+            (-_PHI, 0, -1 / _PHI),
+            (_PHI, 0, -1 / _PHI),
+            (-_PHI, 0, 1 / _PHI),
+            (_PHI, 0, 1 / _PHI),
+        ],
+        [
+            (0, 8, 10, 2, 16),
+            (0, 12, 14, 4, 8),
+            (0, 16, 18, 1, 12),
+            (1, 9, 11, 3, 13),
+            (1, 18, 19, 5, 9),
+            (2, 10, 6, 17, 16),
+            (2, 3, 11, 7, 6),
+            (3, 13, 15, 7, 11),
+            (4, 14, 15, 7, 6),
+            (4, 5, 19, 17, 8),
+            (5, 9, 11, 7, 15),
+            (6, 7, 15, 14, 10),
+        ],
+    ),
+}
+
+
+def _polyhedron_points(
+    base_vertices: Sequence[Tuple[float, float, float]],
+    faces: Sequence[Tuple[int, ...]],
+    radius: float,
+    layers: int,
+    link_steps: int,
+    cap: int,
+) -> List[Point3D]:
+    if not base_vertices:
+        return []
+    vectors: List[Tuple[float, float, float]] = list(base_vertices)
+    layers = max(1, layers)
+    if layers > 1:
+        for layer in range(1, layers):
+            scale = layer / layers
+            for v in base_vertices:
+                vectors.append(_scale(v, scale))
+    if link_steps > 0 and faces:
+        edges = set()
+        for face in faces:
+            if len(face) < 2:
+                continue
+            for i in range(len(face)):
+                a = face[i]
+                b = face[(i + 1) % len(face)]
+                edges.add(tuple(sorted((a, b))))
+        for a, b in edges:
+            try:
+                va = base_vertices[a]
+                vb = base_vertices[b]
+            except IndexError:
+                continue
+            for step in range(1, link_steps + 1):
+                t = step / (link_steps + 1)
+                vectors.append(_mix(va, vb, t))
+    points: List[Point3D] = []
+    seen = set()
+    for idx, vec in enumerate(vectors):
+        sx = radius * float(vec[0])
+        sy = radius * float(vec[1])
+        sz = radius * float(vec[2])
+        key = (round(sx, 6), round(sy, 6), round(sz, 6))
+        if key in seen:
+            continue
+        seen.add(key)
+        points.append(Point3D(sx, sy, sz, idx))
+        if cap and len(points) >= cap:
+            break
+    if cap:
+        return points[:cap]
+    return points
+
+
+def _parse_polyhedron_json(text: str | None) -> Tuple[List[Tuple[float, float, float]], List[Tuple[int, ...]]]:
+    if not text:
+        return ([], [])
+    try:
+        payload = json.loads(text)
+    except Exception:
+        return ([], [])
+    vertices_raw = payload.get("vertices") if isinstance(payload, dict) else None
+    faces_raw = payload.get("faces") if isinstance(payload, dict) else None
+    vertices: List[Tuple[float, float, float]] = []
+    faces: List[Tuple[int, ...]] = []
+    if isinstance(vertices_raw, list):
+        for entry in vertices_raw:
+            if isinstance(entry, (list, tuple)) and len(entry) >= 3:
+                try:
+                    vertices.append((float(entry[0]), float(entry[1]), float(entry[2])))
+                except (TypeError, ValueError):
+                    continue
+    if isinstance(faces_raw, list):
+        for face in faces_raw:
+            if isinstance(face, (list, tuple)) and len(face) >= 3:
+                clean: List[int] = []
+                for idx in face:
+                    try:
+                        clean.append(int(idx))
+                    except (TypeError, ValueError):
+                        continue
+                if len(clean) >= 3:
+                    faces.append(tuple(clean))
+    return vertices, faces
+
 def _polyhedron_vectors(name: str) -> Tuple[List[Tuple[float, float, float]], List[Tuple[int, ...]]]:
     data = _POLYHEDRA_DATA.get(name)
     if data:

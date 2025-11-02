@@ -114,12 +114,22 @@ class TopologyDefinition:
         def _generator(params: Mapping[str, Any], cap: int) -> List[Tuple[float, float, float]]:
             combined: Dict[str, Any] = dict(self.defaults)
             combined.update(params)
-            target = int(cap or combined.get("N", 0) or 0)
-            if target <= 0:
-                target = int(self.defaults.get("N", 0) or 0)
-            if target <= 0:
-                target = 4096  # Fallback limit for safety
+
+            def _as_positive_int(value: Any) -> int:
+                try:
+                    number = int(value)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    return 0
+                return number if number > 0 else 0
+
+            requested = _as_positive_int(combined.get("N"))
+            default_n = _as_positive_int(self.defaults.get("N"))
+            cap_n = _as_positive_int(cap)
+            target = requested or default_n or cap_n or 4096
+            if cap_n:
+                target = min(target, cap_n)
             combined["N"] = target
+
             points = candidate(combined, target)
             out: List[Tuple[float, float, float]] = []
             for item in points:

@@ -6,14 +6,6 @@ from .config import DEFAULTS, TOOLTIPS
 from .link_registry import register_linkable_widget
 
 try:
-    from ..topology_registry import get_topology_library
-except ImportError:  # pragma: no cover - compat exécution directe
-    from core.topology_registry import get_topology_library  # type: ignore
-
-
-_JSON_LIBRARY = get_topology_library()
-
-try:
     from ..topology_registry import TopologyDefinition, get_topology_library
 except ImportError:  # pragma: no cover - compat exécution directe
     from core.topology_registry import TopologyDefinition, get_topology_library  # type: ignore
@@ -514,26 +506,63 @@ class GeometryTab(QtWidgets.QWidget):
     # ---------------------------------------------------------------- interface
     def _apply_topology_state(self, emit=True):
         topology = self._current_topology()
-        active = set(self._active_param_names(topology))
-        for name, row_widget in self.param_rows.items():
-            visible = name in active
-            row_widget.setVisible(visible)
-            label = getattr(row_widget, "_form_label", None)
-            if label is not None:
-                label.setVisible(visible)
-            widget = self.param_widgets[name]
-            widget.setEnabled(visible)
-        for group, widget in self._group_widgets.items():
-            visible = any(
-                self.param_rows[param].isVisible()
-                for param, grp in self._param_groups.items()
-                if grp == group
-            )
-            widget.setVisible(visible)
+        active = self._active_param_names(topology)
+        self._rebuild_param_layout(active)
         if emit:
             self.topologyChanged.emit(topology)
             self.emit_delta()
         self._update_description(topology)
+
+    def _remove_from_form(self, widget: QtWidgets.QWidget) -> None:
+        if widget is None:
+            return
+        row, _role = self._form_layout.getWidgetPosition(widget)
+        if row != -1:
+            self._form_layout.takeRow(row)
+            return
+        index = self._form_layout.indexOf(widget)
+        if index != -1:
+            item = self._form_layout.takeAt(index)
+            if item is not None:
+                orphan = item.widget()
+                if orphan is not None and orphan is not widget:
+                    orphan.hide()
+
+    def _rebuild_param_layout(self, active_names):
+        # Disable every widget and remove current rows to rebuild a clean view.
+        for widget in self.param_widgets.values():
+            widget.setEnabled(False)
+        for row_widget in self.param_rows.values():
+            self._remove_from_form(row_widget)
+            row_widget.hide()
+            label = getattr(row_widget, "_form_label", None)
+            if label is not None:
+                label.hide()
+        for container in self._group_widgets.values():
+            self._remove_from_form(container)
+            container.hide()
+
+        added_groups = []
+        for name in active_names:
+            row_widget = self.param_rows.get(name)
+            if row_widget is None:
+                continue
+            group = self._param_groups.get(name)
+            if group and group not in added_groups:
+                container = self._group_widgets.get(group)
+                if container is not None:
+                    self._form_layout.addRow(container)
+                    container.show()
+                added_groups.append(group)
+            label = getattr(row_widget, "_form_label", None)
+            if label is not None:
+                self._form_layout.addRow(label, row_widget)
+                label.show()
+            else:
+                self._form_layout.addRow(row_widget)
+            row_widget.show()
+            widget = self.param_widgets[name]
+            widget.setEnabled(True)
 
     def on_topology_changed(self, *args):
         topology = self._current_topology()
@@ -542,8 +571,10 @@ class GeometryTab(QtWidgets.QWidget):
         self._sync_subprofile_state()
 
     def collect(self):
-        data = {"topology": self._current_topology()}
-        for name, widget in self.param_widgets.items():
+        topology = self._current_topology()
+        data = {"topology": topology}
+        for name in self._active_param_names(topology):
+            widget = self.param_widgets[name]
             if isinstance(widget, QtWidgets.QDoubleSpinBox):
                 data[name] = widget.value()
             elif isinstance(widget, QtWidgets.QSpinBox):

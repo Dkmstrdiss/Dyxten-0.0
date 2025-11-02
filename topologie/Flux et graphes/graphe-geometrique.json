@@ -2,18 +2,20 @@
   "geometry": {
     "topology": "random_geometric_graph",
     "R": 1.0,
-    "rgg_nodes": 400,
+    "N": 4096,
     "rgg_radius": 0.2,
-    "code": "from core.topology_generators import BUILTIN_GENERATORS\n\ndef generate_random_geometric_graph_geometry(params, N):\n    generator = BUILTIN_GENERATORS['random_geometric_graph']\n    return generator(params, N)\n"
+    "seed": 0,
+    "code": "import random\n\ndef generate_random_geometric_graph_geometry(params, N):\n    radius = float(params.get('R', 1.0))\n    count = int(N or params.get('N') or params.get('rgg_nodes', 0) or 4096)\n    count = max(1, count)\n    rng = random.Random(params.get('seed', 0))\n    stretch = float(params.get('rgg_radius', 0.2) or 0.2)\n    points = []\n    for _ in range(count):\n        x = rng.uniform(-radius, radius)\n        y = rng.uniform(-radius, radius) * stretch\n        z = rng.uniform(-radius, radius)\n        points.append((x, y, z))\n    return points\n"
   },
   "meta": {
     "category": "Flux et graphes",
     "label": "Graphe géométrique",
-    "description": "Graphe probabiliste reliant les points proches dans l'espace.",
+    "description": "Nuage de particules distribué selon une densité anisotrope.",
     "parameters": [
       "R",
-      "rgg_nodes",
-      "rgg_radius"
+      "N",
+      "rgg_radius",
+      "seed"
     ]
   }
 }
