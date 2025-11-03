@@ -36,13 +36,6 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..donut import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config, sanitize_donut_state
-from ..topology_generators import (
-    Point3D,
-    BUILTIN_GENERATORS,
-    _rand_for_index,
-    _gen_uv_sphere,
-    _value_noise3,
-)
 
 try:
     from ..topology_registry import get_topology_library
@@ -56,6 +49,19 @@ __all__ = ["DyxtenViewWidget"]
 
 # ---------------------------------------------------------------------------
 # Data structures
+
+
+@dataclass
+class Point3D:
+    """Simple structure storing a 3D point and the seed used to generate it."""
+
+    x: float
+    y: float
+    z: float
+    seed: int = 0
+
+    def copy(self) -> "Point3D":
+        return Point3D(self.x, self.y, self.z, self.seed)
 
 
 @dataclass
@@ -102,6 +108,85 @@ def _map_blend_mode(name: str | None) -> QtGui.QPainter.CompositionMode:
 
 # ---------------------------------------------------------------------------
 # Utility helpers translated from the JavaScript implementation
+
+
+def _rand_for_index(index: int, salt: int = 0) -> float:
+    s = index * 12.9898 + salt * 78.233
+    x = math.sin(s) * 43758.5453
+    return x - math.floor(x)
+
+
+def _value_noise3(x: float, y: float, z: float) -> float:
+    xi = math.floor(x)
+    yi = math.floor(y)
+    zi = math.floor(z)
+    xf = x - xi
+    yf = y - yi
+    zf = z - zi
+
+    def _hash(ix: int, iy: int, iz: int) -> float:
+        n = ix * 15731 + iy * 789221 + iz * 1376312589
+        n = (n << 13) ^ n
+        return (1.0 - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7FFFFFFF) / 1073741824.0) * 0.5 + 0.5
+
+    def _lerp(a: float, b: float, t: float) -> float:
+        return a + (b - a) * t
+
+    def _smooth(t: float) -> float:
+        return t * t * (3.0 - 2.0 * t)
+
+    c000 = _hash(xi, yi, zi)
+    c100 = _hash(xi + 1, yi, zi)
+    c010 = _hash(xi, yi + 1, zi)
+    c110 = _hash(xi + 1, yi + 1, zi)
+    c001 = _hash(xi, yi, zi + 1)
+    c101 = _hash(xi + 1, yi, zi + 1)
+    c011 = _hash(xi, yi + 1, zi + 1)
+    c111 = _hash(xi + 1, yi + 1, zi + 1)
+
+    u = _smooth(xf)
+    v = _smooth(yf)
+    w = _smooth(zf)
+
+    x00 = _lerp(c000, c100, u)
+    x10 = _lerp(c010, c110, u)
+    x01 = _lerp(c001, c101, u)
+    x11 = _lerp(c011, c111, u)
+    y0 = _lerp(x00, x10, v)
+    y1 = _lerp(x01, x11, v)
+    return _lerp(y0, y1, w)
+
+
+def _gen_uv_sphere(geo: Mapping[str, object], cap: int) -> List[Point3D]:
+    radius = float(geo.get("R", 1.0))
+    lat_steps = max(2, int(geo.get("lat", 0) or 0))
+    lon_steps = max(3, int(geo.get("lon", 0) or 0))
+    points: List[Point3D] = []
+    for i in range(lat_steps):
+        v = i / (lat_steps - 1 if lat_steps > 1 else 1)
+        theta = v * math.pi
+        sin_theta = math.sin(theta)
+        cos_theta = math.cos(theta)
+        for j in range(lon_steps):
+            u = j / lon_steps
+            phi = u * 2.0 * math.pi
+            cos_phi = math.cos(phi)
+            sin_phi = math.sin(phi)
+            points.append(
+                Point3D(
+                    radius * sin_theta * cos_phi,
+                    radius * cos_theta,
+                    radius * sin_theta * sin_phi,
+                )
+            )
+    if cap and cap > 0:
+        return points[:cap]
+    return points
+
+
+_DEFAULT_GENERATORS: Dict[str, GeometryGenerator] = {
+    "uv_sphere": _gen_uv_sphere,
+}
 
 
 def _sgnpow(u: float, p: float) -> float:
@@ -1369,7 +1454,7 @@ for name, generator in _json_generators.items():
 
     DyxtenEngine._GEOMETRY_GENERATORS[name] = _wrap(generator, defaults=definition.defaults)
 
-for name, generator in BUILTIN_GENERATORS.items():
+for name, generator in _DEFAULT_GENERATORS.items():
     if name not in DyxtenEngine._GEOMETRY_GENERATORS:
         DyxtenEngine._GEOMETRY_GENERATORS[name] = _wrap_builtin_generator(generator)
 
