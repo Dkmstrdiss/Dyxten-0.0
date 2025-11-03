@@ -3,6 +3,7 @@ import io
 import math
 import sys
 from pathlib import Path
+from typing import cast
 from PyQt5 import QtCore, QtWidgets, QtGui
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QSurfaceFormat
@@ -80,10 +81,6 @@ fmt.setAlphaBufferSize(8)
 QSurfaceFormat.setDefaultFormat(fmt)
 
 
-def _clamp(value: float, minimum: float, maximum: float) -> float:
-    return max(minimum, min(maximum, value))
-
-
 def _fail_fast_verify():
     import core.control.control_window as cw
     path = Path(cw.__file__).resolve()
@@ -115,8 +112,11 @@ class ViewWindow(QtWidgets.QMainWindow):
         self._button_layer.setAutoFillBackground(False)
         self._button_layer.setGeometry(self.view.rect())
         self._button_layer.raise_()
+        self._button_layer.installEventFilter(self)
         self._donut_buttons: list[QtWidgets.QPushButton] = []
         self._donut_config = default_donut_config()
+        self._donut_angle_offset = 0.0
+        self._scroll_step_radians = math.radians(12.0)
         self.update_donut_buttons(self._donut_config)
 
         self.view.installEventFilter(self)
@@ -206,6 +206,7 @@ class ViewWindow(QtWidgets.QMainWindow):
                     QPushButton:pressed { background: rgba(0,140,200,0.85); }
                     """
                 )
+                button.installEventFilter(self)
                 button.show()
                 self._donut_buttons.append(button)
         for idx, (button, descriptor) in enumerate(zip(self._donut_buttons, descriptors)):
@@ -219,18 +220,44 @@ class ViewWindow(QtWidgets.QMainWindow):
             button.setProperty("buttonId", ident if isinstance(ident, int) else idx + 1)
         self._sync_button_overlay()
 
+    def _marker_radii_for_view(self) -> tuple[float, float, float]:
+        rect = self.view.rect()
+        width = rect.width()
+        height = rect.height()
+        if width <= 0 or height <= 0:
+            return 0.0, 0.0, 0.0
+        base_area = (width * height) / 3.0
+        base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
+        radius_red = base_radius * 0.5
+        radius_yellow = radius_red * 1.15
+        radius_blue = radius_yellow * 1.10
+        max_radius = min(width, height) / 2.0
+        radius_red = min(radius_red, max_radius)
+        radius_yellow = min(radius_yellow, max_radius)
+        radius_blue = min(radius_blue, max_radius)
+        return radius_red, radius_yellow, radius_blue
+
     def _layout_buttons(self) -> None:
         if not self._donut_buttons:
             return
         rect = self.view.rect()
-        cx = rect.width() / 2
-        cy = rect.height() / 2
-        ratio = float(self._donut_config.get("radiusRatio", 0.35) or 0.35)
-        ratio = _clamp(ratio, 0.05, 0.9)
-        radius = min(rect.width(), rect.height()) * ratio
+        width = rect.width()
+        height = rect.height()
+        if width <= 0 or height <= 0:
+            return
+        _, _, radius = self._marker_radii_for_view()
+        if radius <= 0:
+            return
+        cx = width / 2
+        cy = height / 2
         count = len(self._donut_buttons)
+        if count <= 0:
+            return
+        step = (2 * math.pi) / count
+        self._donut_angle_offset = self._donut_angle_offset % (2 * math.pi)
+        base_angle = (-math.pi / 2) + self._donut_angle_offset
         for index, button in enumerate(self._donut_buttons):
-            angle = (index / count) * 2 * math.pi - math.pi / 2
+            angle = base_angle + index * step
             x = cx + radius * math.cos(angle)
             y = cy + radius * math.sin(angle)
             button.move(int(x - button.width() / 2), int(y - button.height() / 2))
@@ -241,7 +268,29 @@ class ViewWindow(QtWidgets.QMainWindow):
         self._button_layer.setGeometry(self.view.rect())
         self._layout_buttons()
 
+    def _handle_donut_wheel(self, event: QtGui.QWheelEvent) -> bool:
+        if not self._donut_buttons:
+            return False
+        angle_delta = event.angleDelta()
+        steps = angle_delta.y()
+        if steps == 0:
+            steps = angle_delta.x()
+        if steps == 0:
+            return False
+        rotation = (steps / 120.0) * self._scroll_step_radians
+        if rotation == 0.0:
+            return False
+        self._donut_angle_offset = (self._donut_angle_offset + rotation) % (2 * math.pi)
+        self._layout_buttons()
+        event.accept()
+        return True
+
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
+        if event.type() == QtCore.QEvent.Wheel:
+            wheel_event = cast(QtGui.QWheelEvent, event)
+            if watched is self.view or watched is self._button_layer or watched in self._donut_buttons:
+                if self._handle_donut_wheel(wheel_event):
+                    return True
         if watched is self.view and event.type() == QtCore.QEvent.Resize:
             self._sync_button_overlay()
         return super().eventFilter(watched, event)

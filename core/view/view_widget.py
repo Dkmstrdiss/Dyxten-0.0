@@ -1059,6 +1059,22 @@ class _ViewWidgetBase:
         else:
             self._timer.start(interval_ms)
 
+    def _compute_marker_radii(self, width: float, height: float) -> Tuple[float, float, float]:
+        """Return the radii of the red, yellow and blue marker circles."""
+
+        if width <= 0.0 or height <= 0.0:
+            return 0.0, 0.0, 0.0
+        base_area = (width * height) / 3.0
+        base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
+        radius_red = base_radius * 0.5
+        radius_yellow = radius_red * 1.15
+        radius_blue = radius_yellow * 1.10
+        max_radius = min(width, height) / 2.0
+        radius_red = min(radius_red, max_radius)
+        radius_yellow = min(radius_yellow, max_radius)
+        radius_blue = min(radius_blue, max_radius)
+        return radius_red, radius_yellow, radius_blue
+
     # ------------------------------------------------------------------ OpenGL hooks
     def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
         self._gl = QtGui.QOpenGLFunctions()
@@ -1125,11 +1141,19 @@ class _ViewWidgetBase:
             painter.fillRect(self.rect(), QtGui.QColor("black"))
         width = max(1, self.width())
         height = max(1, self.height())
+        radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
         items = self.engine.step(width, height)
         blend_mode = (
             self.engine.state.get("appearance", {}).get("blendMode", "source-over")
         )
         painter.setCompositionMode(_map_blend_mode(blend_mode))
+        clip_applied = False
+        if radius_red > 0.0:
+            clip_path = QtGui.QPainterPath()
+            clip_path.addEllipse(QtCore.QPointF(width / 2.0, height / 2.0), radius_red, radius_red)
+            painter.setClipPath(clip_path, QtCore.Qt.ReplaceClip)
+            clip_applied = True
+
         for item in items:
             color = QtGui.QColor(item.color)
             color.setAlphaF(clamp01(item.alpha))
@@ -1140,6 +1164,9 @@ class _ViewWidgetBase:
             else:
                 painter.drawEllipse(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
 
+        if clip_applied and painter.hasClipping():
+            painter.setClipping(False)
+
         # Draw permanent concentric marker circles centred on the viewport
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
         painter.setBrush(QtCore.Qt.NoBrush)
@@ -1147,17 +1174,13 @@ class _ViewWidgetBase:
         center_x = width / 2.0
         center_y = height / 2.0
         if width > 0 and height > 0:
-            base_area = (width * height) / 3.0
-            base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
-
             def _draw_marker_circle(color: QtGui.QColor, radius: float) -> None:
+                if radius <= 0.0:
+                    return
                 diameter = radius * 2.0
                 painter.setPen(QtGui.QPen(color, 2.0))
                 painter.drawEllipse(QtCore.QRectF(center_x - radius, center_y - radius, diameter, diameter))
 
-            radius_red = base_radius * 0.5
-            radius_yellow = radius_red * 1.15
-            radius_blue = radius_yellow * 1.10
             _draw_marker_circle(QtGui.QColor("red"), radius_red)
             _draw_marker_circle(QtGui.QColor("yellow"), radius_yellow)
             _draw_marker_circle(QtGui.QColor("blue"), radius_blue)
