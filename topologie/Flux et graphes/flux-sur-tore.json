@@ -2,12 +2,14 @@
   "geometry": {
     "topology": "stream_on_torus",
     "R": 1.0,
-    "N": 4096,
+    "N": 500,
     "stream_N": 12,
     "R_major": 1.2,
     "r_minor": 0.45,
     "seed": 0,
-    "code": "import math\nimport random\n\ndef generate_stream_on_torus_geometry(params, N):\n    count = int(N or params.get('N') or params.get('stream_steps', 0) or 4096)\n    count = max(1, count)\n    streams = max(1, int(params.get('stream_N', 12) or 12))\n    radius = float(params.get('R', 1.0))\n    R_major = float(params.get('R_major', 1.2) or 1.2)\n    r_minor = float(params.get('r_minor', 0.45) or 0.45)\n    twist = float(params.get('stream_twist', 0.35) or 0.35)\n    rng = random.Random(params.get('seed', 0))\n    points = []\n    for i in range(count):\n        band = i % streams\n        theta = (band + rng.random()) / streams * (2.0 * math.pi)\n        phi = theta * twist + rng.random() * 2.0 * math.pi\n        ring = R_major + r_minor * math.cos(theta)\n        x = ring * math.cos(phi)\n        y = r_minor * math.sin(theta)\n        z = ring * math.sin(phi)\n        points.append((x * radius, y * radius, z * radius))\n    return points\n"
+    "code": "import math\nimport random\n\ndef generate_stream_on_torus_geometry(params, N):\n    count = int(N or params.get('N') or params.get('stream_steps', 0) or 4096)\n    count = max(1, count)\n    streams = max(1, int(params.get('stream_N', 12) or 12))\n    radius = float(params.get('R', 1.0))\n    R_major = float(params.get('R_major', 1.2) or 1.2)\n    r_minor = float(params.get('r_minor', 0.45) or 0.45)\n    twist = float(params.get('stream_twist', 0.35) or 0.35)\n    rng = random.Random(params.get('seed', 0))\n    points = []\n    for i in range(count):\n        band = i % streams\n        theta = (band + rng.random()) / streams * (2.0 * math.pi)\n        phi = theta * twist + rng.random() * 2.0 * math.pi\n        ring = R_major + r_minor * math.cos(theta)\n        x = ring * math.cos(phi)\n        y = r_minor * math.sin(theta)\n        z = ring * math.sin(phi)\n        points.append((x * radius, y * radius, z * radius))\n    return points\n",
+    "lat": 500,
+    "lon": 16
   },
   "meta": {
     "category": "Flux et graphes",
