@@ -19,7 +19,7 @@ import math
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -83,7 +83,6 @@ class DonutHub(QtWidgets.QWidget):
         self.core = QtWidgets.QWidget(self)
         self.core.setAttribute(QtCore.Qt.WA_NativeWindow, True)
         self.core.resize(self.core_diam, self.core_diam)
-        self._mask_core()
 
         # Segments (colors) and default icon mapping
         self.segments: Sequence[Tuple[str, QtGui.QColor]] = [
@@ -109,20 +108,6 @@ class DonutHub(QtWidgets.QWidget):
         self.proc: Optional[subprocess.Popen[str]] = None
         if self.jar_path is not None:
             QtCore.QTimer.singleShot(200, self._start_java)
-
-    # ------------------------------------------------------------------
-    # Core mask helpers
-    def _mask_core(self) -> None:
-        diameter = self.core_diam
-        pixmap = QtGui.QPixmap(diameter, diameter)
-        pixmap.fill(QtCore.Qt.transparent)
-        painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        path = QtGui.QPainterPath()
-        path.addEllipse(0, 0, diameter, diameter)
-        painter.fillPath(path, QtCore.Qt.white)
-        painter.end()
-        self.core.setMask(pixmap.mask())
 
     # ------------------------------------------------------------------
     # Buttons

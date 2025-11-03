@@ -75,6 +75,8 @@ class RenderItem:
     alpha: float
     depth: float
     world: Point3D
+    gravity_weight: float = 0.0
+    role: str = "cloud"
 
 
 def clamp01(value: float) -> float:
@@ -479,6 +481,14 @@ def _mix_hex(color_a: str, color_b: str, t: float) -> str:
     return _rgb_to_hex(rr, gg, bb)
 
 
+def _mix_qcolor(color_a: QtGui.QColor, color_b: QtGui.QColor, t: float) -> QtGui.QColor:
+    t = clamp01(t)
+    r = int(round(color_a.red() + (color_b.red() - color_a.red()) * t))
+    g = int(round(color_a.green() + (color_b.green() - color_a.green()) * t))
+    b = int(round(color_a.blue() + (color_b.blue() - color_a.blue()) * t))
+    return QtGui.QColor(r, g, b)
+
+
 def _parse_gradient_stops(value: str | None) -> List[Tuple[str, float]]:
     if not value:
         return [("#00C8FF", 0.0), ("#FFFFFF", 1.0)]
@@ -574,6 +584,7 @@ class DyxtenEngine:
         self._last_avg_alpha = ""
         self._last_bounds = ""
         self._last_step_note = ""
+        self._marker_radii: Tuple[float, float, float] = (0.0, 0.0, 0.0)
         self.rebuild_geometry()
 
     # ------------------------------------------------------------------ helpers
@@ -702,6 +713,7 @@ class DyxtenEngine:
         return Point3D(x, y, z, seed)
 
     def _keep_point(self, point: Point3D, seed: int, now_ms: float) -> bool:
+        del now_ms
         dist = self.state.get("distribution", {})
         mode = dist.get("densityMode") or dist.get("pr") or "uniform"
         g = self.state.get("geometry", {})
@@ -717,7 +729,6 @@ class DyxtenEngine:
             n = _value_noise3(point.x * 1.6 + 11.1, point.y * 1.6 + 22.2, point.z * 1.6 + 33.3)
             weight *= clamp01(n)
 
-        weight *= self._mask_weight(point, now_ms)
         weight = clamp01(weight)
         if weight <= 0:
             return False
@@ -725,39 +736,33 @@ class DyxtenEngine:
             return True
         return _rand_for_index(seed + 1) <= weight
 
-    def _mask_weight(self, point: Point3D, now_ms: float) -> float:
-        mask = self.state.get("mask", {})
-        if not mask.get("enabled") or mask.get("mode") == "none":
-            return 1.0
-        theta, phi = _spherical_from_cartesian(point.x, point.y, point.z)
-        softness = float(mask.get("softDeg", 0.0) or 0.0)
-        mode = mask.get("mode")
-        if mode == "north_cap":
-            cutoff = to_rad(float(mask.get("angleDeg", 30)))
-            soft = to_rad(softness)
-            w = _smoothstep(cutoff, cutoff + soft, theta)
-            weight = 1 - w
-        elif mode == "south_cap":
-            cutoff = to_rad(float(mask.get("angleDeg", 30)))
-            soft = to_rad(softness)
-            w = _smoothstep(cutoff, cutoff + soft, math.pi - theta)
-            weight = 1 - w
-        elif mode == "equatorial_band":
-            half = to_rad(float(mask.get("bandHalfDeg", 20)))
-            soft = to_rad(softness)
-            diff = abs(theta - math.pi / 2)
-            weight = 1 - _smoothstep(half, half + soft, diff)
-        elif mode == "longitudinal_band":
-            center = to_rad(float(mask.get("lonCenterDeg", 0)))
-            width = to_rad(float(mask.get("lonWidthDeg", 30)))
-            soft = to_rad(softness)
-            diff = abs((phi - center + math.pi) % (2 * math.pi) - math.pi)
-            weight = 1 - _smoothstep(width / 2, width / 2 + soft, diff)
+    def _compute_donut_orbits(self, width: int, height: int) -> Tuple[List[Tuple[float, float]], float]:
+        donut = self.state.get("donut", {})
+        if not isinstance(donut, Mapping):
+            donut = default_donut_config()
+        buttons = donut.get("buttons")
+        if not isinstance(buttons, Sequence) or not buttons:
+            buttons = default_donut_config()["buttons"]
+        count = max(1, min(len(buttons), DEFAULT_DONUT_BUTTON_COUNT))
+        ratio_raw = donut.get("radiusRatio", 0.35)
+        try:
+            ratio = float(ratio_raw)
+        except (TypeError, ValueError):
+            ratio = 0.35
+        ratio = clamp(ratio, 0.05, 0.9)
+        radius = min(width, height) * ratio
+        cx = width / 2.0
+        cy = height / 2.0
+        centers: List[Tuple[float, float]] = []
+        for index in range(count):
+            angle = (index / count) * 2.0 * math.pi - math.pi / 2.0
+            centers.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+        if radius <= 0 or count <= 0:
+            orbit_base = max(12.0, min(width, height) * 0.05)
         else:
-            weight = 1.0
-        if mask.get("invert"):
-            weight = 1 - weight
-        return clamp01(weight)
+            spacing = (2.0 * math.pi * radius) / count
+            orbit_base = clamp(spacing * 0.25, 10.0, max(18.0, spacing * 0.65))
+        return centers, orbit_base
 
     def _compute_phase_factor(self, point: Point3D, idx: int) -> float:
         dyn = self.state.get("dynamics", {})
@@ -773,6 +778,10 @@ class DyxtenEngine:
         if mode == "random":
             return _rand_for_index(idx, 77)
         return 0.0
+
+    def marker_radii(self, width: int, height: int) -> Tuple[float, float, float]:
+        del width, height
+        return self._marker_radii
 
     def _pick_color(self, item: RenderItem, now_ms: float) -> QtGui.QColor:
         appearance = self.state.get("appearance", {})
@@ -854,17 +863,25 @@ class DyxtenEngine:
         cx = width / 2
         cy = height / 2
 
+        base_area = (width * height) / 3.0
+        base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
+        radius_red = base_radius * 0.5
+        radius_blue = radius_red * 1.15 * 1.10
+
         dyn = self.state.get("dynamics", {})
         pulse_amp = float(dyn.get("pulseA", 0.0) or 0.0)
         pulse_w = float(dyn.get("pulseW", 0.0) or 0.0)
         pulse_phi = to_rad(float(dyn.get("pulsePhaseDeg", 0.0) or 0.0))
         rot_phase_amp = to_rad(float(dyn.get("rotPhaseDeg", 0.0) or 0.0))
 
-        items: List[RenderItem] = []
+        projected: List[Dict[str, object]] = []
+        distances: List[float] = []
         screen_grid: Dict[Tuple[int, int], List[Tuple[float, float]]] = {}
         dist = self.state.get("distribution", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
         cell = max(1.0, dmin_px) if dmin_px > 0 else 1.0
+        donut_centers, orbit_base = self._compute_donut_orbits(width, height)
+        donut_count = len(donut_centers)
         if not self.base_points:
             return []
 
@@ -898,6 +915,8 @@ class DyxtenEngine:
             X = cos_y * Xx + sin_y * Zx
             Z = -sin_y * Xx + cos_y * Zx
             Y = Yx
+
+            world_point = Point3D(X, Y, Z, idx)
 
             # camera transformation
             Xc = cos_theta * X - sin_theta * Z
@@ -943,17 +962,79 @@ class DyxtenEngine:
 
             px_size = float(self.state.get("appearance", {}).get("px", 2.0) or 2.0)
             radius = max(1.0, px_size)
+            dist_center = math.hypot(sx - cx, sy - cy)
+            projected.append(
+                {
+                    "idx": idx,
+                    "sx": sx,
+                    "sy": sy,
+                    "radius": radius,
+                    "depth": Zc3,
+                    "world": world_point,
+                    "dist_center": dist_center,
+                }
+            )
+            distances.append(dist_center)
+
+        if not projected:
+            self._marker_radii = (0.0, 0.0, 0.0)
+            return []
+
+        sorted_distances = sorted(distances)
+        min_dist = sorted_distances[0]
+        max_dist = sorted_distances[-1]
+        self._marker_radii = (0.0, 0.0, 0.0)
+
+        items: List[RenderItem] = []
+        radius_range = max(1e-6, max_dist - min_dist)
+
+        for data in projected:
+            dist_center = float(data["dist_center"])
+            if radius_range <= 1e-6:
+                gravity_weight = 0.0
+            else:
+                gravity_weight = clamp01((dist_center - min_dist) / radius_range)
 
             item = RenderItem(
-                sx=sx,
-                sy=sy,
-                r=radius,
+                sx=float(data["sx"]),
+                sy=float(data["sy"]),
+                r=float(data["radius"]),
                 color=QtGui.QColor("#00C8FF"),
                 alpha=1.0,
-                depth=Zc3,
-                world=Point3D(X, Y, Z, idx),
+                depth=float(data["depth"]),
+                world=data["world"],
+                gravity_weight=gravity_weight,
+                role="cloud",
             )
             items.append(item)
+
+            if donut_count > 0 and gravity_weight > 0.0:
+                idx = int(data["idx"])
+                btn_index = idx % donut_count
+                center_x, center_y = donut_centers[btn_index]
+                phase_seed = _rand_for_index(idx, 311)
+                speed_seed = _rand_for_index(idx, 733)
+                orbit_speed = 0.6 + 1.2 * speed_seed
+                orbit_angle = phase_seed * 2 * math.pi + now * 0.001 * orbit_speed * 2 * math.pi
+                scale_seed = 0.75 + 0.5 * _rand_for_index(idx, 911)
+                action_ring = orbit_base * 0.55
+                inaction_ring = orbit_base * 1.35
+                orbit_radius = (action_ring + (inaction_ring - action_ring) * gravity_weight) * scale_seed
+                sx_orbit = center_x + math.cos(orbit_angle) * orbit_radius
+                sy_orbit = center_y + math.sin(orbit_angle) * orbit_radius
+                orbit_size = max(1.0, float(data["radius"]) * (0.9 + 0.6 * _rand_for_index(idx, 619)))
+                orbit_item = RenderItem(
+                    sx=sx_orbit,
+                    sy=sy_orbit,
+                    r=orbit_size,
+                    color=QtGui.QColor("#00C8FF"),
+                    alpha=1.0,
+                    depth=0.0,
+                    world=data["world"],
+                    gravity_weight=gravity_weight,
+                    role="orbit",
+                )
+                items.append(orbit_item)
 
         self._width = width
         self._height = height
@@ -963,13 +1044,21 @@ class DyxtenEngine:
         alpha_depth = float(appearance.get("alphaDepth", 0.0) or 0.0)
 
         for item in items:
-            item.color = self._pick_color(item, now)
+            base_color = self._pick_color(item, now)
+            if item.role == "orbit":
+                inactive_color = QtGui.QColor("#252B38")
+                mix = clamp01(item.gravity_weight)
+                base_color = _mix_qcolor(base_color, inactive_color, mix)
+                visibility = 0.25 + 0.75 * mix
+            else:
+                visibility = 1.0
+            item.color = base_color
             if alpha_depth > 0:
                 t = clamp01(math.atan(max(0.0, item.depth)) / (math.pi / 2))
                 depth_alpha = (1 - alpha_depth) + alpha_depth * (1 - t)
             else:
                 depth_alpha = 1.0
-            item.alpha = clamp01(opacity * depth_alpha * self._mask_weight(item.world, now))
+            item.alpha = clamp01(opacity * depth_alpha * clamp01(visibility))
 
         if self.state.get("system", {}).get("depthSort", True):
             items.sort(key=lambda it: it.depth, reverse=True)
@@ -1181,9 +1270,13 @@ class _ViewWidgetBase:
                 painter.setPen(QtGui.QPen(color, 2.0))
                 painter.drawEllipse(QtCore.QRectF(center_x - radius, center_y - radius, diameter, diameter))
 
-            _draw_marker_circle(QtGui.QColor("red"), radius_red)
-            _draw_marker_circle(QtGui.QColor("yellow"), radius_yellow)
-            _draw_marker_circle(QtGui.QColor("blue"), radius_blue)
+            radius_red, radius_yellow, radius_blue = self.engine.marker_radii(width, height)
+            if radius_red > 0:
+                _draw_marker_circle(QtGui.QColor("red"), radius_red)
+            if radius_yellow > 0:
+                _draw_marker_circle(QtGui.QColor("yellow"), radius_yellow)
+            if radius_blue > 0:
+                _draw_marker_circle(QtGui.QColor("blue"), radius_blue)
 
 
 class _OpenGLViewWidget(QtWidgets.QOpenGLWidget, _ViewWidgetBase):
