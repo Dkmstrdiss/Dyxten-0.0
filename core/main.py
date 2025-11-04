@@ -256,11 +256,19 @@ class ViewWindow(QtWidgets.QMainWindow):
         step = (2 * math.pi) / count
         self._donut_angle_offset = self._donut_angle_offset % (2 * math.pi)
         base_angle = (-math.pi / 2) + self._donut_angle_offset
+        centers: list[tuple[float, float]] = []
         for index, button in enumerate(self._donut_buttons):
             angle = base_angle + index * step
             x = cx + radius * math.cos(angle)
             y = cy + radius * math.sin(angle)
             button.move(int(x - button.width() / 2), int(y - button.height() / 2))
+            centers.append((x, y))
+
+        if hasattr(self.view, "update_donut_layout"):
+            try:
+                self.view.update_donut_layout(centers, width=width, height=height)
+            except Exception:
+                pass
 
     def _sync_button_overlay(self) -> None:
         if self._button_layer is None:

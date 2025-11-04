@@ -613,6 +613,7 @@ class DyxtenEngine:
         self._last_bounds = ""
         self._last_step_note = ""
         self._marker_radii: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+        self._donut_layout: List[Tuple[float, float]] = []
         self.rebuild_geometry()
 
     # ------------------------------------------------------------------ helpers
@@ -627,6 +628,7 @@ class DyxtenEngine:
         for key, value in payload.items():
             if key == "donut":
                 self.state["donut"] = sanitize_donut_state(value if isinstance(value, dict) else None)
+                self._donut_layout = []
                 continue
             if key not in self.state or not isinstance(self.state[key], dict) or not isinstance(value, Mapping):
                 self.state[key] = value  # type: ignore[assignment]
@@ -764,7 +766,56 @@ class DyxtenEngine:
             return True
         return _rand_for_index(seed + 1) <= weight
 
+    def update_donut_layout(
+        self,
+        width: int,
+        height: int,
+        centers: Sequence[Tuple[float, float]],
+    ) -> None:
+        """Store the button centres provided by the overlay layer."""
+
+        if width <= 0 or height <= 0:
+            self._donut_layout = []
+            return
+
+        center_list = list(centers)
+        if not center_list:
+            self._donut_layout = []
+            return
+
+        w = float(width)
+        h = float(height)
+        normalized: List[Tuple[float, float]] = []
+        for sx, sy in center_list:
+            if not isinstance(sx, (int, float)) or not isinstance(sy, (int, float)):
+                continue
+            if not (math.isfinite(sx) and math.isfinite(sy)):
+                continue
+            clamped_x = clamp(float(sx), 0.0, w)
+            clamped_y = clamp(float(sy), 0.0, h)
+            normalized.append((clamped_x / w, clamped_y / h))
+
+        self._donut_layout = normalized
+
     def _compute_donut_orbits(self, width: int, height: int) -> Tuple[List[Tuple[float, float]], float]:
+        if self._donut_layout and width > 0 and height > 0:
+            centers = [
+                (clamp01(cx) * width, clamp01(cy) * height) for cx, cy in self._donut_layout
+            ]
+            cx = width / 2.0
+            cy = height / 2.0
+            if centers:
+                radii = [math.hypot(x - cx, y - cy) for x, y in centers]
+                avg_radius = sum(radii) / len(radii) if radii else 0.0
+                if avg_radius > 0.0 and len(centers) > 0:
+                    spacing = (2.0 * math.pi * avg_radius) / len(centers)
+                    orbit_base = clamp(spacing * 0.25, 10.0, max(18.0, spacing * 0.65))
+                else:
+                    orbit_base = max(12.0, min(width, height) * 0.05)
+            else:
+                orbit_base = max(12.0, min(width, height) * 0.05)
+            return centers, orbit_base
+
         donut = self.state.get("donut", {})
         if not isinstance(donut, Mapping):
             donut = default_donut_config()
@@ -1204,6 +1255,24 @@ class _ViewWidgetBase:
         radius_yellow = min(radius_yellow, max_radius)
         radius_blue = min(radius_blue, max_radius)
         return radius_red, radius_yellow, radius_blue
+
+    def update_donut_layout(
+        self,
+        centers: Sequence[Tuple[float, float]],
+        *,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+    ) -> None:
+        """Forward the donut button layout from the host window to the engine."""
+
+        if width is None:
+            width = int(self.width())
+        if height is None:
+            height = int(self.height())
+        try:
+            self.engine.update_donut_layout(int(width), int(height), centers)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ OpenGL hooks
     def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
