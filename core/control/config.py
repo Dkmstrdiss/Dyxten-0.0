@@ -97,7 +97,15 @@ DEFAULTS = dict(
         bandHalfDeg=20.0, lonCenterDeg=0.0, lonWidthDeg=30.0,
         softDeg=10.0, invert=False
     ),
-    system=dict(Nmax=50000, dprClamp=2.0, depthSort=True, transparent=True),
+    system=dict(
+        Nmax=50000,
+        dprClamp=2.0,
+        depthSort=True,
+        transparent=True,
+        donutGravityStrength=1.0,
+        donutGravityFalloff=1.0,
+        donutGravityRingOffset=4.0,
+    ),
     donut=default_donut_config(),
     controller=dict(
         tracks=[
@@ -1238,6 +1246,9 @@ TOOLTIPS = {
     "system.dprClamp":"Limite la résolution utilisée pour protéger les performances.",
     "system.depthSort":"Trie les particules pour un affichage correct avec la transparence.",
     "system.transparent":"Permet de rendre la fenêtre de prévisualisation transparente.",
+    "system.donutGravityStrength":"Ajuste la force d'attraction des particules vers les boutons du donut.",
+    "system.donutGravityFalloff":"Contrôle la progression de l'attraction en fonction de la distance au donut.",
+    "system.donutGravityRingOffset":"Décale le rayon d'orbite autour des boutons (en pixels).",
     "controller.tracks[].enabled":"Active ou désactive la piste correspondante pour appliquer la modulation.",
     "controller.tracks[].waveform":"Choisit la source de modulation pour la piste (forme mathématique, micro ou lecture système).",
     "controller.tracks[].amplitude":"Détermine l’intensité relative de la modulation autour du centre.",

@@ -613,7 +613,7 @@ class DyxtenEngine:
         self._last_bounds = ""
         self._last_step_note = ""
         self._marker_radii: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-        self._donut_layout: List[Tuple[float, float]] = []
+        self._donut_layout: List[Tuple[float, float, float]] = []
         self.rebuild_geometry()
 
     # ------------------------------------------------------------------ helpers
@@ -771,6 +771,7 @@ class DyxtenEngine:
         width: int,
         height: int,
         centers: Sequence[Tuple[float, float]],
+        radii: Optional[Sequence[float]] = None,
     ) -> None:
         """Store the button centres provided by the overlay layer."""
 
@@ -783,38 +784,60 @@ class DyxtenEngine:
             self._donut_layout = []
             return
 
+        radius_list: List[Optional[float]] = []
+        if radii is not None:
+            radius_list = [float(r) if isinstance(r, (int, float)) else None for r in radii]
+
         w = float(width)
         h = float(height)
-        normalized: List[Tuple[float, float]] = []
-        for sx, sy in center_list:
+        normalized: List[Tuple[float, float, float]] = []
+        for idx, (sx, sy) in enumerate(center_list):
             if not isinstance(sx, (int, float)) or not isinstance(sy, (int, float)):
                 continue
             if not (math.isfinite(sx) and math.isfinite(sy)):
                 continue
             clamped_x = clamp(float(sx), 0.0, w)
             clamped_y = clamp(float(sy), 0.0, h)
-            normalized.append((clamped_x / w, clamped_y / h))
+            radius_px = 0.0
+            if idx < len(radius_list):
+                candidate = radius_list[idx]
+                if candidate is not None and math.isfinite(candidate):
+                    radius_px = max(0.0, float(candidate))
+            normalized.append((clamped_x / w, clamped_y / h, radius_px))
 
         self._donut_layout = normalized
 
-    def _compute_donut_orbits(self, width: int, height: int) -> Tuple[List[Tuple[float, float]], float]:
+    def _compute_donut_orbits(
+        self, width: int, height: int
+    ) -> Tuple[List[Tuple[float, float]], List[float], float]:
         if self._donut_layout and width > 0 and height > 0:
-            centers = [
-                (clamp01(cx) * width, clamp01(cy) * height) for cx, cy in self._donut_layout
-            ]
+            centers: List[Tuple[float, float]] = []
+            radii: List[float] = []
+            for cx_norm, cy_norm, radius_px in self._donut_layout:
+                px = clamp01(cx_norm) * width
+                py = clamp01(cy_norm) * height
+                centers.append((px, py))
+                if math.isfinite(radius_px) and radius_px > 0.0:
+                    radii.append(float(radius_px))
+                else:
+                    radii.append(0.0)
+
             cx = width / 2.0
             cy = height / 2.0
+            fallback_radius = max(12.0, min(width, height) * 0.05)
             if centers:
-                radii = [math.hypot(x - cx, y - cy) for x, y in centers]
-                avg_radius = sum(radii) / len(radii) if radii else 0.0
+                radii_to_center = [math.hypot(x - cx, y - cy) for x, y in centers]
+                avg_radius = sum(radii_to_center) / len(radii_to_center) if radii_to_center else 0.0
                 if avg_radius > 0.0 and len(centers) > 0:
                     spacing = (2.0 * math.pi * avg_radius) / len(centers)
-                    orbit_base = clamp(spacing * 0.25, 10.0, max(18.0, spacing * 0.65))
-                else:
-                    orbit_base = max(12.0, min(width, height) * 0.05)
-            else:
-                orbit_base = max(12.0, min(width, height) * 0.05)
-            return centers, orbit_base
+                    fallback_radius = clamp(spacing * 0.25, 10.0, max(18.0, spacing * 0.65))
+
+            positive_button = [r for r in radii if r > 0.0]
+            if positive_button:
+                average_button = sum(positive_button) / len(positive_button)
+                fallback_radius = max(average_button, fallback_radius)
+
+            return centers, radii, fallback_radius
 
         donut = self.state.get("donut", {})
         if not isinstance(donut, Mapping):
@@ -837,11 +860,12 @@ class DyxtenEngine:
             angle = (index / count) * 2.0 * math.pi - math.pi / 2.0
             centers.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
         if radius <= 0 or count <= 0:
-            orbit_base = max(12.0, min(width, height) * 0.05)
+            fallback_radius = max(12.0, min(width, height) * 0.05)
         else:
             spacing = (2.0 * math.pi * radius) / count
-            orbit_base = clamp(spacing * 0.25, 10.0, max(18.0, spacing * 0.65))
-        return centers, orbit_base
+            fallback_radius = clamp(spacing * 0.25, 10.0, max(18.0, spacing * 0.65))
+        radii = [fallback_radius for _ in range(len(centers))]
+        return centers, radii, fallback_radius
 
     def _compute_phase_factor(self, point: Point3D, idx: int) -> float:
         dyn = self.state.get("dynamics", {})
@@ -956,10 +980,25 @@ class DyxtenEngine:
         projected: List[Dict[str, object]] = []
         screen_grid: Dict[Tuple[int, int], List[Tuple[float, float]]] = {}
         dist = self.state.get("distribution", {})
+        system = self.state.get("system", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
         cell = max(1.0, dmin_px) if dmin_px > 0 else 1.0
-        donut_centers, orbit_base = self._compute_donut_orbits(width, height)
+        donut_centers, donut_radii, fallback_orbit_radius = self._compute_donut_orbits(width, height)
         donut_count = len(donut_centers)
+        try:
+            gravity_strength = clamp01(float(system.get("donutGravityStrength", 1.0)))
+        except (TypeError, ValueError):
+            gravity_strength = 1.0
+        try:
+            gravity_falloff = float(system.get("donutGravityFalloff", 1.0))
+        except (TypeError, ValueError):
+            gravity_falloff = 1.0
+        gravity_falloff = clamp(gravity_falloff, 0.2, 5.0)
+        try:
+            ring_offset = float(system.get("donutGravityRingOffset", 6.0))
+        except (TypeError, ValueError):
+            ring_offset = 6.0
+        ring_offset = clamp(ring_offset, -48.0, 120.0)
         if not self.base_points:
             return []
 
@@ -1047,35 +1086,47 @@ class DyxtenEngine:
                 outer_span = max(1.0, radius_blue - radius_red)
                 outside = dist_center - radius_red
                 if outside > 0.0:
-                    gravity_weight = clamp01(outside / outer_span)
-                    nearest_idx = 0
-                    nearest_dist = float("inf")
-                    for btn_idx, (center_x, center_y) in enumerate(donut_centers):
-                        d = (sx - center_x) ** 2 + (sy - center_y) ** 2
-                        if d < nearest_dist:
-                            nearest_dist = d
-                            nearest_idx = btn_idx
-                    center_x, center_y = donut_centers[nearest_idx]
-                    phase_seed = _rand_for_index(idx, 311)
-                    speed_seed = _rand_for_index(idx, 733)
-                    orbit_speed = 0.6 + 1.2 * speed_seed
-                    orbit_angle = phase_seed * 2 * math.pi + now * 0.001 * orbit_speed * 2 * math.pi
-                    scale_seed = 0.75 + 0.5 * _rand_for_index(idx, 911)
-                    action_ring = orbit_base * 0.55
-                    inaction_ring = orbit_base * 1.35
-                    orbit_radius = (action_ring + (inaction_ring - action_ring) * gravity_weight) * scale_seed
-                    sx_orbit = center_x + math.cos(orbit_angle) * orbit_radius
-                    sy_orbit = center_y + math.sin(orbit_angle) * orbit_radius
-                    sx = sx + (sx_orbit - sx) * gravity_weight
-                    sy = sy + (sy_orbit - sy) * gravity_weight
-                    dist_center = math.hypot(sx - cx, sy - cy)
-                    orbit_size = max(1.0, radius * (0.9 + 0.6 * _rand_for_index(idx, 619)))
-                    orbit_descriptor = {
-                        "sx": sx_orbit,
-                        "sy": sy_orbit,
-                        "radius": orbit_size,
-                        "weight": gravity_weight,
-                    }
+                    progress = clamp01(outside / outer_span)
+                    progress = clamp01(progress ** gravity_falloff)
+                    pull = clamp01(progress * gravity_strength)
+                    if pull > 0.0:
+                        nearest_idx = 0
+                        nearest_dist = float("inf")
+                        for btn_idx, (center_x, center_y) in enumerate(donut_centers):
+                            d = (sx - center_x) ** 2 + (sy - center_y) ** 2
+                            if d < nearest_dist:
+                                nearest_dist = d
+                                nearest_idx = btn_idx
+                        center_x, center_y = donut_centers[nearest_idx]
+                        button_radius = 0.0
+                        if nearest_idx < len(donut_radii):
+                            button_radius = float(donut_radii[nearest_idx])
+                        if not math.isfinite(button_radius) or button_radius <= 0.0:
+                            button_radius = fallback_orbit_radius
+                        phase_seed = _rand_for_index(idx, 311)
+                        speed_seed = _rand_for_index(idx, 733)
+                        orbit_speed = 0.6 + 1.2 * speed_seed
+                        orbit_angle = phase_seed * 2 * math.pi + now * 0.001 * orbit_speed * 2 * math.pi
+                        jitter = 1.0 + 0.2 * (_rand_for_index(idx, 911) - 0.5)
+                        target_radius = max(1.0, button_radius + ring_offset)
+                        orbit_radius = max(1.0, target_radius * jitter)
+                        sx_orbit = center_x + math.cos(orbit_angle) * orbit_radius
+                        sy_orbit = center_y + math.sin(orbit_angle) * orbit_radius
+                        sx = sx + (sx_orbit - sx) * pull
+                        sy = sy + (sy_orbit - sy) * pull
+                        dist_center = math.hypot(sx - cx, sy - cy)
+                        orbit_size = max(
+                            1.0,
+                            (button_radius + max(0.0, ring_offset))
+                            * (0.35 + 0.2 * _rand_for_index(idx, 619)),
+                        )
+                        orbit_descriptor = {
+                            "sx": sx_orbit,
+                            "sy": sy_orbit,
+                            "radius": orbit_size,
+                            "weight": pull,
+                        }
+                        gravity_weight = pull
             projected.append(
                 {
                     "idx": idx,
@@ -1262,6 +1313,7 @@ class _ViewWidgetBase:
         *,
         width: Optional[int] = None,
         height: Optional[int] = None,
+        radii: Optional[Sequence[float]] = None,
     ) -> None:
         """Forward the donut button layout from the host window to the engine."""
 
@@ -1270,7 +1322,7 @@ class _ViewWidgetBase:
         if height is None:
             height = int(self.height())
         try:
-            self.engine.update_donut_layout(int(width), int(height), centers)
+            self.engine.update_donut_layout(int(width), int(height), centers, radii=radii)
         except Exception:
             pass
 
