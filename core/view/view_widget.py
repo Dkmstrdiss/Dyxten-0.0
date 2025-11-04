@@ -109,6 +109,34 @@ def _map_blend_mode(name: str | None) -> QtGui.QPainter.CompositionMode:
 
 
 # ---------------------------------------------------------------------------
+# OpenGL helpers
+
+
+def _create_opengl_functions() -> Tuple[Optional[object], Optional[BaseException]]:
+    """Safely instantiate ``QOpenGLFunctions`` when available.
+
+    Returns a tuple ``(functions, error)`` where ``functions`` is the
+    initialised OpenGL function table or ``None`` when the binding is not
+    present.  ``error`` contains the exception encountered while creating or
+    initialising the functions so that callers can surface a meaningful
+    diagnostic message.
+    """
+
+    factory = getattr(QtGui, "QOpenGLFunctions", None)
+    if factory is None:
+        return None, AttributeError("PyQt5.QtGui has no attribute 'QOpenGLFunctions'")
+    try:
+        functions = factory()
+    except Exception as exc:  # pragma: no cover - depends on bindings
+        return None, exc
+    try:
+        functions.initializeOpenGLFunctions()
+    except Exception as exc:  # pragma: no cover - depends on runtime GL state
+        return None, exc
+    return functions, None
+
+
+# ---------------------------------------------------------------------------
 # Utility helpers translated from the JavaScript implementation
 
 
@@ -875,7 +903,6 @@ class DyxtenEngine:
         rot_phase_amp = to_rad(float(dyn.get("rotPhaseDeg", 0.0) or 0.0))
 
         projected: List[Dict[str, object]] = []
-        distances: List[float] = []
         screen_grid: Dict[Tuple[int, int], List[Tuple[float, float]]] = {}
         dist = self.state.get("distribution", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
@@ -963,6 +990,41 @@ class DyxtenEngine:
             px_size = float(self.state.get("appearance", {}).get("px", 2.0) or 2.0)
             radius = max(1.0, px_size)
             dist_center = math.hypot(sx - cx, sy - cy)
+            gravity_weight = 0.0
+            orbit_descriptor: Optional[Dict[str, float]] = None
+            if donut_count > 0 and radius_red > 0.0:
+                outer_span = max(1.0, radius_blue - radius_red)
+                outside = dist_center - radius_red
+                if outside > 0.0:
+                    gravity_weight = clamp01(outside / outer_span)
+                    nearest_idx = 0
+                    nearest_dist = float("inf")
+                    for btn_idx, (center_x, center_y) in enumerate(donut_centers):
+                        d = (sx - center_x) ** 2 + (sy - center_y) ** 2
+                        if d < nearest_dist:
+                            nearest_dist = d
+                            nearest_idx = btn_idx
+                    center_x, center_y = donut_centers[nearest_idx]
+                    phase_seed = _rand_for_index(idx, 311)
+                    speed_seed = _rand_for_index(idx, 733)
+                    orbit_speed = 0.6 + 1.2 * speed_seed
+                    orbit_angle = phase_seed * 2 * math.pi + now * 0.001 * orbit_speed * 2 * math.pi
+                    scale_seed = 0.75 + 0.5 * _rand_for_index(idx, 911)
+                    action_ring = orbit_base * 0.55
+                    inaction_ring = orbit_base * 1.35
+                    orbit_radius = (action_ring + (inaction_ring - action_ring) * gravity_weight) * scale_seed
+                    sx_orbit = center_x + math.cos(orbit_angle) * orbit_radius
+                    sy_orbit = center_y + math.sin(orbit_angle) * orbit_radius
+                    sx = sx + (sx_orbit - sx) * gravity_weight
+                    sy = sy + (sy_orbit - sy) * gravity_weight
+                    dist_center = math.hypot(sx - cx, sy - cy)
+                    orbit_size = max(1.0, radius * (0.9 + 0.6 * _rand_for_index(idx, 619)))
+                    orbit_descriptor = {
+                        "sx": sx_orbit,
+                        "sy": sy_orbit,
+                        "radius": orbit_size,
+                        "weight": gravity_weight,
+                    }
             projected.append(
                 {
                     "idx": idx,
@@ -972,28 +1034,19 @@ class DyxtenEngine:
                     "depth": Zc3,
                     "world": world_point,
                     "dist_center": dist_center,
+                    "gravity_weight": gravity_weight,
+                    "orbit": orbit_descriptor,
                 }
             )
-            distances.append(dist_center)
 
         if not projected:
             self._marker_radii = (0.0, 0.0, 0.0)
             return []
 
-        sorted_distances = sorted(distances)
-        min_dist = sorted_distances[0]
-        max_dist = sorted_distances[-1]
-        self._marker_radii = (0.0, 0.0, 0.0)
-
         items: List[RenderItem] = []
-        radius_range = max(1e-6, max_dist - min_dist)
 
         for data in projected:
-            dist_center = float(data["dist_center"])
-            if radius_range <= 1e-6:
-                gravity_weight = 0.0
-            else:
-                gravity_weight = clamp01((dist_center - min_dist) / radius_range)
+            gravity_weight = float(data.get("gravity_weight", 0.0))
 
             item = RenderItem(
                 sx=float(data["sx"]),
@@ -1008,30 +1061,17 @@ class DyxtenEngine:
             )
             items.append(item)
 
-            if donut_count > 0 and gravity_weight > 0.0:
-                idx = int(data["idx"])
-                btn_index = idx % donut_count
-                center_x, center_y = donut_centers[btn_index]
-                phase_seed = _rand_for_index(idx, 311)
-                speed_seed = _rand_for_index(idx, 733)
-                orbit_speed = 0.6 + 1.2 * speed_seed
-                orbit_angle = phase_seed * 2 * math.pi + now * 0.001 * orbit_speed * 2 * math.pi
-                scale_seed = 0.75 + 0.5 * _rand_for_index(idx, 911)
-                action_ring = orbit_base * 0.55
-                inaction_ring = orbit_base * 1.35
-                orbit_radius = (action_ring + (inaction_ring - action_ring) * gravity_weight) * scale_seed
-                sx_orbit = center_x + math.cos(orbit_angle) * orbit_radius
-                sy_orbit = center_y + math.sin(orbit_angle) * orbit_radius
-                orbit_size = max(1.0, float(data["radius"]) * (0.9 + 0.6 * _rand_for_index(idx, 619)))
+            if donut_count > 0 and gravity_weight > 0.0 and data.get("orbit"):
+                orbit_info = data["orbit"]
                 orbit_item = RenderItem(
-                    sx=sx_orbit,
-                    sy=sy_orbit,
-                    r=orbit_size,
+                    sx=float(orbit_info["sx"]),
+                    sy=float(orbit_info["sy"]),
+                    r=float(orbit_info["radius"]),
                     color=QtGui.QColor("#00C8FF"),
                     alpha=1.0,
                     depth=0.0,
                     world=data["world"],
-                    gravity_weight=gravity_weight,
+                    gravity_weight=float(orbit_info["weight"]),
                     role="orbit",
                 )
                 items.append(orbit_item)
@@ -1122,6 +1162,7 @@ class _ViewWidgetBase:
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WA_OpaquePaintEvent, False)
         self.setAutoFillBackground(False)
+        self._gl: Optional[object] = None
         self.engine = DyxtenEngine()
         self._shape = "circle"
         self._transparent = True
@@ -1166,8 +1207,7 @@ class _ViewWidgetBase:
 
     # ------------------------------------------------------------------ OpenGL hooks
     def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
-        self._gl = QtGui.QOpenGLFunctions()
-        self._gl.initializeOpenGLFunctions()
+        self._gl, _ = _create_opengl_functions()
         self._apply_clear_color()
 
     def resizeGL(self, width: int, height: int) -> None:  # pragma: no cover - requires GUI context
@@ -1236,13 +1276,6 @@ class _ViewWidgetBase:
             self.engine.state.get("appearance", {}).get("blendMode", "source-over")
         )
         painter.setCompositionMode(_map_blend_mode(blend_mode))
-        clip_applied = False
-        if radius_red > 0.0:
-            clip_path = QtGui.QPainterPath()
-            clip_path.addEllipse(QtCore.QPointF(width / 2.0, height / 2.0), radius_red, radius_red)
-            painter.setClipPath(clip_path, QtCore.Qt.ReplaceClip)
-            clip_applied = True
-
         for item in items:
             color = QtGui.QColor(item.color)
             color.setAlphaF(clamp01(item.alpha))
@@ -1252,9 +1285,6 @@ class _ViewWidgetBase:
                 painter.drawRect(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
             else:
                 painter.drawEllipse(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
-
-        if clip_applied and painter.hasClipping():
-            painter.setClipping(False)
 
         # Draw permanent concentric marker circles centred on the viewport
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
@@ -1284,17 +1314,14 @@ class _OpenGLViewWidget(QtWidgets.QOpenGLWidget, _ViewWidgetBase):
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         QtWidgets.QOpenGLWidget.__init__(self, parent)
-        self._gl: Optional[QtGui.QOpenGLFunctions] = None
+        self._gl: Optional[object] = None
         self._init_view_widget()
 
     def initializeGL(self) -> None:  # pragma: no cover - requires GUI context
-        try:
-            self._gl = QtGui.QOpenGLFunctions()
-            self._gl.initializeOpenGLFunctions()
-        except Exception as exc:  # pragma: no cover - defensive
-            self._gl = None
+        self._gl, error = _create_opengl_functions()
+        if error is not None:  # pragma: no cover - depends on bindings/runtime
             print(
-                f"[Dyxten][WARN] OpenGL initialisation failed: {exc}. Falling back to raster clear handling.",
+                f"[Dyxten][WARN] OpenGL initialisation failed: {error}. Falling back to raster clear handling.",
                 file=sys.stderr,
             )
         self._apply_clear_color()
