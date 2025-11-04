@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple, List
 
@@ -39,9 +40,43 @@ def _relocate_legacy_file(source: Path, destination: Path) -> Path:
     try:
         source.replace(target)
     except OSError:
-        data = source.read_bytes()
-        target.write_bytes(data)
-        source.unlink(missing_ok=True)
+        shutil.copy2(str(source), str(target))
+
+        def _ensure_removed(path: Path) -> None:
+            try:
+                path.unlink()
+                return
+            except FileNotFoundError:
+                return
+            except PermissionError:
+                try:
+                    path.chmod(stat.S_IWRITE | stat.S_IREAD)
+                    path.unlink()
+                    return
+                except OSError:
+                    pass
+            except OSError:
+                pass
+
+            stem = path.stem if path.suffix else path.name
+            suffix = path.suffix
+            counter = 0
+            while True:
+                counter += 1
+                if suffix:
+                    candidate = path.with_name(f"{stem}.stale{counter}{suffix}")
+                else:
+                    candidate = path.with_name(f"{stem}.stale{counter}")
+                if candidate.exists():
+                    continue
+                try:
+                    path.rename(candidate)
+                except OSError:
+                    break
+                else:
+                    break
+
+        _ensure_removed(source)
 
     return target
 
