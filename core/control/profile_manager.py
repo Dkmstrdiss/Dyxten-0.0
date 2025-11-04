@@ -1,7 +1,49 @@
 import copy
+import hashlib
 import json
+import re
+import shutil
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Tuple, List
+
+
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^0-9a-zA-Z]+", "-", name.strip().lower()).strip("-")
+    return slug or "entry"
+
+
+def _relocate_legacy_file(source: Path, destination: Path) -> Path:
+    """Move a legacy flat-file to the structured storage location.
+
+    When a previous version stored data inside a plain JSON file whose path now
+    collides with the directory-based layout, we rename the file to the
+    ``destination`` path (or to a suffixed variant if it already exists) so the
+    directory can be created without raising ``FileExistsError``.
+    """
+
+    if not source.exists() or source.is_dir():
+        return destination
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    target = destination
+    stem = destination.stem if destination.suffix else destination.name
+    suffix = destination.suffix
+    counter = 0
+    while target.exists():
+        counter += 1
+        if suffix:
+            target = destination.with_name(f"{stem}.legacy{counter}{suffix}")
+        else:
+            target = destination.with_name(f"{stem}.legacy{counter}")
+
+    try:
+        source.replace(target)
+    except OSError:
+        data = source.read_bytes()
+        target.write_bytes(data)
+        source.unlink(missing_ok=True)
+
+    return target
 
 try:
     from .config import DEFAULTS, PROFILE_PRESETS, SUBPROFILE_PRESETS
@@ -16,26 +58,63 @@ class ProfileManager:
 
     def __init__(self, storage_path: Optional[Path] = None):
         base_dir = Path.home() / ".dyxten"
-        self.path = storage_path or (base_dir / "profiles.json")
+        raw_path = Path(storage_path) if storage_path is not None else (base_dir / "profiles")
+        if raw_path.suffix:
+            self._legacy_file = raw_path
+            self.path = raw_path.parent / raw_path.stem
+        else:
+            self.path = raw_path
+            self._legacy_file = raw_path.with_suffix(".json")
+        if self.path.exists() and self.path.is_file():
+            self._legacy_file = _relocate_legacy_file(self.path, self._legacy_file)
         self._profiles: Dict[str, dict] = {}
+        self._profile_dirs: Dict[str, Path] = {}
         self._load()
 
     # ------------------------------------------------------------------ utils
     def _load(self) -> None:
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        self._profiles = {}
+        self._profile_dirs = {}
+
+        if self.path.is_dir():
+            for entry in sorted(self.path.iterdir()):
+                if not entry.is_dir():
+                    continue
+                name = entry.name
+                meta_path = entry / "metadata.json"
+                if meta_path.exists():
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                        if isinstance(meta, dict) and isinstance(meta.get("name"), str):
+                            name = meta["name"]
+                    except Exception:
+                        pass
+                sections: Dict[str, dict] = {}
+                for section_file in entry.glob("*.json"):
+                    if section_file.name == "metadata.json":
+                        continue
+                    try:
+                        payload = json.loads(section_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+                    if isinstance(payload, dict):
+                        sections[section_file.stem] = copy.deepcopy(payload)
+                if sections:
+                    self._profiles[name] = sections
+                    self._profile_dirs[name] = entry
+
+        if not self._profiles and self._legacy_file.exists():
+            try:
+                raw = json.loads(self._legacy_file.read_text(encoding="utf-8"))
+            except Exception:
+                raw = {}
             if isinstance(raw, dict):
                 self._profiles = {
                     str(name): self._sanitize_profile(data)
                     for name, data in raw.items()
                     if isinstance(data, dict)
                 }
-            else:
-                self._profiles = {}
-        except FileNotFoundError:
-            self._profiles = {}
-        except Exception:
-            self._profiles = {}
+                self._write()
 
         changed = self.ensure_default(DEFAULTS)
         if self.ensure_presets(PROFILE_PRESETS):
@@ -44,12 +123,18 @@ class ProfileManager:
             self._write()
 
     def _write(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        serialisable = {name: data for name, data in sorted(self._profiles.items())}
-        self.path.write_text(
-            json.dumps(serialisable, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        self.path.mkdir(parents=True, exist_ok=True)
+        existing_dirs = {entry for entry in self.path.iterdir() if entry.is_dir()}
+        used_dirs = set()
+        for name in sorted(self._profiles.keys(), key=str.lower):
+            directory = self._profile_dirs.get(name)
+            if directory is None:
+                directory = self._build_profile_dir(name)
+            used_dirs.add(directory)
+            self._write_profile_dir(directory, name, self._profiles[name])
+            self._profile_dirs[name] = directory
+        for directory in existing_dirs - used_dirs:
+            shutil.rmtree(directory, ignore_errors=True)
 
     @staticmethod
     def _sanitize_profile(data: Optional[dict]) -> dict:
@@ -78,6 +163,40 @@ class ProfileManager:
             if isinstance(section, dict):
                 coerced[key] = copy.deepcopy(section)
         return coerced
+
+    def _build_profile_dir(self, name: str) -> Path:
+        slug = _slugify(name) or "profile"
+        digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+        return self.path / f"{slug}-{digest}"
+
+    def _write_profile_dir(self, directory: Path, name: str, payload: dict) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        metadata = {"name": name}
+        (directory / "metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        existing = {
+            path
+            for path in directory.glob("*.json")
+            if path.name != "metadata.json"
+        }
+        used = set()
+        for section in sorted(payload.keys()):
+            values = payload[section]
+            if not isinstance(values, dict):
+                continue
+            section_path = directory / f"{section}.json"
+            section_path.write_text(
+                json.dumps(values, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            used.add(section_path)
+        for leftover in existing - used:
+            try:
+                leftover.unlink()
+            except FileNotFoundError:
+                pass
 
     # ---------------------------------------------------------------- profiles
     def ensure_default(self, defaults: dict) -> bool:
@@ -122,6 +241,9 @@ class ProfileManager:
             raise ValueError("Default profile cannot be deleted")
         if name in self._profiles:
             del self._profiles[name]
+            directory = self._profile_dirs.pop(name, None)
+            if directory is not None and directory.exists():
+                shutil.rmtree(directory, ignore_errors=True)
             self._write()
 
     def rename_profile(self, old: str, new: str) -> None:
@@ -134,7 +256,15 @@ class ProfileManager:
             raise KeyError(old)
         if new_name in self._profiles:
             raise ValueError("Profile already exists")
-        self._profiles[new_name] = self._profiles.pop(old)
+        payload = self._profiles.pop(old)
+        directory = self._profile_dirs.pop(old, None)
+        self._profiles[new_name] = payload
+        if directory is not None and directory.exists():
+            new_dir = self._build_profile_dir(new_name)
+            if new_dir.exists():
+                shutil.rmtree(new_dir, ignore_errors=True)
+            directory.rename(new_dir)
+            self._profile_dirs[new_name] = new_dir
         self._write()
 
     def profile_equals(self, name: str, state: dict) -> bool:
@@ -156,15 +286,63 @@ class SubProfileManager:
 
     def __init__(self, storage_path: Optional[Path] = None):
         base_dir = Path.home() / ".dyxten"
-        self.path = storage_path or (base_dir / "subprofiles.json")
+        raw_path = Path(storage_path) if storage_path is not None else (base_dir / "subprofiles")
+        if raw_path.suffix:
+            self._legacy_file = raw_path
+            self.path = raw_path.parent / raw_path.stem
+        else:
+            self.path = raw_path
+            self._legacy_file = raw_path.with_suffix(".json")
+        if self.path.exists() and self.path.is_file():
+            self._legacy_file = _relocate_legacy_file(self.path, self._legacy_file)
         self._sections: Dict[str, Dict[str, dict]] = {}
         self._categories: Dict[str, Dict[str, str]] = {}
+        self._subprofile_paths: Dict[Tuple[str, str], Path] = {}
         self._load()
 
     # ------------------------------------------------------------------ utils
     def _load(self) -> None:
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        self._sections = {}
+        self._categories = {}
+        self._subprofile_paths = {}
+
+        if self.path.is_dir():
+            for section_dir in sorted(self.path.iterdir()):
+                if not section_dir.is_dir():
+                    continue
+                section_name = section_dir.name
+                store: Dict[str, dict] = {}
+                cat_map: Dict[str, str] = {}
+                for preset_file in section_dir.glob("*.json"):
+                    try:
+                        data = json.loads(preset_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        continue
+                    if not isinstance(data, dict):
+                        continue
+                    name = data.get("name") if isinstance(data.get("name"), str) else preset_file.stem
+                    category = data.get("category") if isinstance(data.get("category"), str) else self.CATEGORY_CUSTOM
+                    payload = data.get("payload") if isinstance(data.get("payload"), dict) else None
+                    if payload is None:
+                        payload = {
+                            key: value
+                            for key, value in data.items()
+                            if key not in {"name", "category"}
+                        }
+                    if not isinstance(payload, dict):
+                        continue
+                    store[name] = self._sanitize_profile(payload)
+                    cat_map[name] = category
+                    self._subprofile_paths[(section_name, name)] = preset_file
+                if store:
+                    self._sections[section_name] = store
+                    self._categories[section_name] = cat_map
+
+        if not self._sections and self._legacy_file.exists():
+            try:
+                raw = json.loads(self._legacy_file.read_text(encoding="utf-8"))
+            except Exception:
+                raw = {}
             if isinstance(raw, dict):
                 clean: Dict[str, Dict[str, dict]] = {}
                 for section, payload in raw.items():
@@ -177,14 +355,8 @@ class SubProfileManager:
                     if clean_section:
                         clean[str(section)] = clean_section
                 self._sections = clean
-            else:
-                self._sections = {}
-        except FileNotFoundError:
-            self._sections = {}
-        except Exception:
-            self._sections = {}
+                self._write()
 
-        self._categories = {}
         for section, store in self._sections.items():
             cat_map = self._categories.setdefault(section, {})
             for name in store.keys():
@@ -199,15 +371,42 @@ class SubProfileManager:
             self._write()
 
     def _write(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        serialisable = {
-            section: {name: data for name, data in sorted(store.items())}
-            for section, store in sorted(self._sections.items())
-        }
-        self.path.write_text(
-            json.dumps(serialisable, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        self.path.mkdir(parents=True, exist_ok=True)
+        existing_sections = {entry for entry in self.path.iterdir() if entry.is_dir()}
+        used_sections = set()
+        for section in sorted(self._sections.keys()):
+            store = self._sections[section]
+            section_dir = self.path / section
+            used_sections.add(section_dir)
+            section_dir.mkdir(parents=True, exist_ok=True)
+            existing_files = {path for path in section_dir.glob("*.json")}
+            used_files = set()
+            cat_map = self._categories.get(section, {})
+            for name in sorted(store.keys(), key=str.lower):
+                payload = store[name]
+                if not isinstance(payload, dict):
+                    continue
+                target_path = self._subprofile_paths.get((section, name))
+                if target_path is None or target_path.parent != section_dir:
+                    target_path = self._build_subprofile_path(section, name)
+                entry = {
+                    "name": name,
+                    "category": cat_map.get(name, self.CATEGORY_CUSTOM),
+                    "payload": payload,
+                }
+                target_path.write_text(
+                    json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+                used_files.add(target_path)
+                self._subprofile_paths[(section, name)] = target_path
+            for leftover in existing_files - used_files:
+                try:
+                    leftover.unlink()
+                except FileNotFoundError:
+                    pass
+        for section_dir in existing_sections - used_sections:
+            shutil.rmtree(section_dir, ignore_errors=True)
 
     def _migrate_distribution_payloads(self) -> bool:
         store = self._sections.get("distribution")
@@ -235,6 +434,11 @@ class SubProfileManager:
 
     def _record_category(self, section: str, name: str, category: str) -> None:
         self._categories.setdefault(section, {})[name] = category
+
+    def _build_subprofile_path(self, section: str, name: str) -> Path:
+        slug = _slugify(name) or "preset"
+        digest = hashlib.sha1(f"{section}:{name}".encode("utf-8")).hexdigest()[:8]
+        return self.path / section / f"{slug}-{digest}.json"
 
     @staticmethod
     def _iter_groups(spec) -> Iterable[Tuple[str, Dict[str, dict]]]:
@@ -362,6 +566,7 @@ class SubProfileManager:
         store = self._sections.setdefault(section, {})
         store[clean_name] = self._sanitize_profile(payload)
         self._record_category(section, clean_name, self.CATEGORY_CUSTOM)
+        self._subprofile_paths[(section, clean_name)] = self._build_subprofile_path(section, clean_name)
         self._write()
 
     def set_default(self, section: str, payload: dict) -> None:
@@ -370,6 +575,7 @@ class SubProfileManager:
         store = self._sections.setdefault(section, {})
         store[self.DEFAULT_NAME] = self._sanitize_profile(payload)
         self._record_category(section, self.DEFAULT_NAME, self.CATEGORY_DEFAULT)
+        self._subprofile_paths[(section, self.DEFAULT_NAME)] = self._build_subprofile_path(section, self.DEFAULT_NAME)
         self._write()
 
     def delete(self, section: str, name: str) -> None:
@@ -381,6 +587,12 @@ class SubProfileManager:
             cat_map = self._categories.get(section)
             if cat_map and name in cat_map:
                 del cat_map[name]
+            path = self._subprofile_paths.pop((section, name), None)
+            if path is not None and path.exists():
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
             self._write()
 
     def rename(self, section: str, old: str, new: str) -> None:
@@ -396,10 +608,19 @@ class SubProfileManager:
             raise KeyError(old)
         if new_name in store:
             raise ValueError("Sub-profile already exists")
-        store[new_name] = store.pop(old)
+        payload = store.pop(old)
+        store[new_name] = payload
         cat_map = self._categories.setdefault(section, {})
         cat = cat_map.pop(old, self.CATEGORY_CUSTOM)
         cat_map[new_name] = cat
+        path = self._subprofile_paths.pop((section, old), None)
+        new_path = self._build_subprofile_path(section, new_name)
+        if path is not None and path.exists():
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        self._subprofile_paths[(section, new_name)] = new_path
         self._write()
 
     def find_match(self, section: str, payload: dict) -> Optional[str]:

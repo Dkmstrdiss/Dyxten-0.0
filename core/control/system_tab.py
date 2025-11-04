@@ -26,6 +26,8 @@ class SystemTab(QtWidgets.QWidget):
         self.sp_gravity_strength = QtWidgets.QDoubleSpinBox(); self.sp_gravity_strength.setRange(0.0,1.0); self.sp_gravity_strength.setSingleStep(0.05); self.sp_gravity_strength.setDecimals(3); self.sp_gravity_strength.setValue(d["donutGravityStrength"])
         self.sp_gravity_falloff = QtWidgets.QDoubleSpinBox(); self.sp_gravity_falloff.setRange(0.2,5.0); self.sp_gravity_falloff.setSingleStep(0.1); self.sp_gravity_falloff.setDecimals(3); self.sp_gravity_falloff.setValue(d["donutGravityFalloff"])
         self.sp_ring_offset = QtWidgets.QDoubleSpinBox(); self.sp_ring_offset.setRange(-48.0,120.0); self.sp_ring_offset.setSingleStep(1.0); self.sp_ring_offset.setDecimals(1); self.sp_ring_offset.setValue(d["donutGravityRingOffset"])
+        self._orbit_widget, self._orbit_slider, self._orbit_spin = self._create_orbit_speed_controls(d["orbitSpeed"])
+        self._circle_controls = self._create_circle_controls(d.get("markerCircles", {}))
         self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
         self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
         row(fl, "Particules max", self.sp_Nmax, TOOLTIPS["system.Nmax"], lambda: self.sp_Nmax.setValue(d["Nmax"]))
@@ -33,6 +35,10 @@ class SystemTab(QtWidgets.QWidget):
         row(fl, "Gravité donut (force)", self.sp_gravity_strength, TOOLTIPS["system.donutGravityStrength"], lambda: self.sp_gravity_strength.setValue(d["donutGravityStrength"]))
         row(fl, "Gravité donut (progression)", self.sp_gravity_falloff, TOOLTIPS["system.donutGravityFalloff"], lambda: self.sp_gravity_falloff.setValue(d["donutGravityFalloff"]))
         row(fl, "Anneau donut (offset px)", self.sp_ring_offset, TOOLTIPS["system.donutGravityRingOffset"], lambda: self.sp_ring_offset.setValue(d["donutGravityRingOffset"]))
+        row(fl, "Vitesse orbitale", self._orbit_widget, TOOLTIPS["system.orbitSpeed"], lambda: self._set_orbit_speed(d["orbitSpeed"]))
+        row(fl, "Diamètre cercle rouge", self._circle_controls["red"][0], TOOLTIPS["system.markerCircles.red"], lambda: self._set_circle_value("red", d["markerCircles"]["red"]))
+        row(fl, "Diamètre cercle jaune", self._circle_controls["yellow"][0], TOOLTIPS["system.markerCircles.yellow"], lambda: self._set_circle_value("yellow", d["markerCircles"]["yellow"]))
+        row(fl, "Diamètre cercle bleu", self._circle_controls["blue"][0], TOOLTIPS["system.markerCircles.blue"], lambda: self._set_circle_value("blue", d["markerCircles"]["blue"]))
         row(fl, "Tri par profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
         row(fl, "Fenêtre transparente", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
         for w in [
@@ -41,16 +47,20 @@ class SystemTab(QtWidgets.QWidget):
             self.sp_gravity_strength,
             self.sp_gravity_falloff,
             self.sp_ring_offset,
+            self._orbit_spin,
             self.chk_depthSort,
             self.chk_transparent,
         ]:
             if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
             else: w.valueChanged.connect(self.emit_delta)
+        for _container, _slider, spin in self._circle_controls.values():
+            spin.valueChanged.connect(self.emit_delta)
         register_linkable_widget(self.sp_Nmax, section="system", key="Nmax", tab="Système")
         register_linkable_widget(self.sp_dpr, section="system", key="dprClamp", tab="Système")
         register_linkable_widget(self.sp_gravity_strength, section="system", key="donutGravityStrength", tab="Système")
         register_linkable_widget(self.sp_gravity_falloff, section="system", key="donutGravityFalloff", tab="Système")
         register_linkable_widget(self.sp_ring_offset, section="system", key="donutGravityRingOffset", tab="Système")
+        register_linkable_widget(self._orbit_spin, section="system", key="orbitSpeed", tab="Système")
         self._sync_subprofile_state()
     def collect(self):
         return dict(
@@ -59,6 +69,11 @@ class SystemTab(QtWidgets.QWidget):
             donutGravityStrength=self.sp_gravity_strength.value(),
             donutGravityFalloff=self.sp_gravity_falloff.value(),
             donutGravityRingOffset=self.sp_ring_offset.value(),
+            orbitSpeed=self._orbit_spin.value(),
+            markerCircles={
+                color: spin.value() / 200.0
+                for color, (_container, _slider, spin) in self._circle_controls.items()
+            },
             depthSort=self.chk_depthSort.isChecked(),
             transparent=self.chk_transparent.isChecked(),
         )
@@ -75,6 +90,22 @@ class SystemTab(QtWidgets.QWidget):
             self.sp_gravity_falloff.setValue(float(cfg.get("donutGravityFalloff", d["donutGravityFalloff"])))
         with QtCore.QSignalBlocker(self.sp_ring_offset):
             self.sp_ring_offset.setValue(float(cfg.get("donutGravityRingOffset", d["donutGravityRingOffset"])))
+        try:
+            orbit_value = float(cfg.get("orbitSpeed", d["orbitSpeed"]))
+        except (TypeError, ValueError):
+            orbit_value = d["orbitSpeed"]
+        self._set_orbit_speed(orbit_value)
+        marker_cfg = cfg.get("markerCircles", {})
+        if not isinstance(marker_cfg, dict):
+            marker_cfg = {}
+        for color in ("red", "yellow", "blue"):
+            default_value = d["markerCircles"].get(color, 0.0)
+            raw = marker_cfg.get(color, default_value)
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                value = default_value
+            self._set_circle_value(color, value)
         with QtCore.QSignalBlocker(self.chk_depthSort):
             self.chk_depthSort.setChecked(bool(cfg.get("depthSort", d["depthSort"])))
         with QtCore.QSignalBlocker(self.chk_transparent):
@@ -99,3 +130,84 @@ class SystemTab(QtWidgets.QWidget):
     def _sync_subprofile_state(self):
         if hasattr(self, "_subprofile_panel") and self._subprofile_panel is not None:
             self._subprofile_panel.sync_from_data(self.collect())
+
+    # ------------------------------------------------------------------ helpers
+    def _create_orbit_speed_controls(self, value: float):
+        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider.setRange(0, 400)
+        slider.setSingleStep(1)
+        spin = QtWidgets.QDoubleSpinBox()
+        spin.setRange(0.0, 4.0)
+        spin.setDecimals(2)
+        spin.setSingleStep(0.05)
+        spin.setValue(float(value))
+        slider.setValue(int(round(spin.value() * 100)))
+        slider.valueChanged.connect(lambda val: spin.setValue(val / 100.0))
+        spin.valueChanged.connect(lambda val: slider.setValue(int(round(val * 100))))
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(slider, 1)
+        layout.addWidget(spin)
+        container.setLayout(layout)
+        return container, slider, spin
+
+    def _create_circle_controls(self, overrides: dict):
+        controls = {}
+        defaults = DEFAULTS["system"]["markerCircles"]
+        for color in ("red", "yellow", "blue"):
+            default_value = float(defaults.get(color, 0.0))
+            value = overrides.get(color, default_value)
+            try:
+                ratio = float(value)
+            except (TypeError, ValueError):
+                ratio = default_value
+            ratio = max(0.0, min(0.5, ratio))
+            slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setSingleStep(1)
+            spin = QtWidgets.QDoubleSpinBox()
+            spin.setRange(0.0, 100.0)
+            spin.setDecimals(0)
+            spin.setSingleStep(1.0)
+            spin.setSuffix(" %")
+            spin.setValue(ratio * 200.0)
+            slider.setValue(int(round(spin.value())))
+
+            def _on_slider(val, target_spin=spin):
+                with QtCore.QSignalBlocker(target_spin):
+                    target_spin.setValue(float(val))
+
+            def _on_spin(val, target_slider=slider):
+                with QtCore.QSignalBlocker(target_slider):
+                    target_slider.setValue(int(round(val)))
+
+            slider.valueChanged.connect(_on_slider)
+            spin.valueChanged.connect(_on_spin)
+            container = QtWidgets.QWidget()
+            layout = QtWidgets.QHBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+            layout.addWidget(slider, 1)
+            layout.addWidget(spin)
+            container.setLayout(layout)
+            controls[color] = (container, slider, spin)
+        return controls
+
+    def _set_orbit_speed(self, value: float):
+        value = max(0.0, min(4.0, float(value)))
+        with QtCore.QSignalBlocker(self._orbit_spin):
+            self._orbit_spin.setValue(value)
+        with QtCore.QSignalBlocker(self._orbit_slider):
+            self._orbit_slider.setValue(int(round(value * 100)))
+
+    def _set_circle_value(self, color: str, ratio: float):
+        if color not in self._circle_controls:
+            return
+        ratio = max(0.0, min(0.5, float(ratio)))
+        _container, slider, spin = self._circle_controls[color]
+        with QtCore.QSignalBlocker(spin):
+            spin.setValue(ratio * 200.0)
+        with QtCore.QSignalBlocker(slider):
+            slider.setValue(int(round(spin.value())))

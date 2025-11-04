@@ -958,10 +958,8 @@ class DyxtenEngine:
         cx = width / 2
         cy = height / 2
 
-        base_area = (width * height) / 3.0
-        base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
-        radius_red = base_radius * 0.5
-        radius_blue = radius_red * 1.15 * 1.10
+        radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
+        self._marker_radii = (radius_red, radius_yellow, radius_blue)
 
         dyn = self.state.get("dynamics", {})
         pulse_amp = float(dyn.get("pulseA", 0.0) or 0.0)
@@ -991,6 +989,11 @@ class DyxtenEngine:
         except (TypeError, ValueError):
             ring_offset = 6.0
         ring_offset = clamp(ring_offset, -48.0, 120.0)
+        try:
+            orbit_speed_multiplier = float(system.get("orbitSpeed", 1.0))
+        except (TypeError, ValueError):
+            orbit_speed_multiplier = 1.0
+        orbit_speed_multiplier = max(0.0, orbit_speed_multiplier)
         if not self.base_points:
             return []
 
@@ -1097,7 +1100,8 @@ class DyxtenEngine:
                             button_radius = fallback_orbit_radius
                         phase_seed = _rand_for_index(idx, 311)
                         speed_seed = _rand_for_index(idx, 733)
-                        orbit_speed = 0.6 + 1.2 * speed_seed
+                        base_speed = 0.6 + 1.2 * speed_seed
+                        orbit_speed = orbit_speed_multiplier * base_speed
                         orbit_angle = phase_seed * 2 * math.pi + now * 0.001 * orbit_speed * 2 * math.pi
                         jitter = 1.0 + 0.2 * (_rand_for_index(idx, 911) - 0.5)
                         target_radius = max(1.0, button_radius + ring_offset)
@@ -1107,16 +1111,12 @@ class DyxtenEngine:
                         sx = sx + (sx_orbit - sx) * pull
                         sy = sy + (sy_orbit - sy) * pull
                         dist_center = math.hypot(sx - cx, sy - cy)
-                        orbit_size = max(
-                            1.0,
-                            (button_radius + max(0.0, ring_offset))
-                            * (0.35 + 0.2 * _rand_for_index(idx, 619)),
-                        )
                         orbit_descriptor = {
                             "sx": sx_orbit,
                             "sy": sy_orbit,
-                            "radius": orbit_size,
                             "weight": pull,
+                            "radius": radius,
+                            "depth": Zc3,
                         }
                         gravity_weight = pull
             projected.append(
@@ -1160,10 +1160,10 @@ class DyxtenEngine:
                 orbit_item = RenderItem(
                     sx=float(orbit_info["sx"]),
                     sy=float(orbit_info["sy"]),
-                    r=float(orbit_info["radius"]),
+                    r=float(orbit_info.get("radius", data["radius"])),
                     color=QtGui.QColor("#00C8FF"),
                     alpha=1.0,
-                    depth=0.0,
+                    depth=float(orbit_info.get("depth", data["depth"])),
                     world=data["world"],
                     gravity_weight=float(orbit_info["weight"]),
                     role="orbit",
@@ -1282,15 +1282,33 @@ class _ViewWidgetBase:
 
         if width <= 0.0 or height <= 0.0:
             return 0.0, 0.0, 0.0
+        min_dim = max(1.0, min(width, height))
         base_area = (width * height) / 3.0
         base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
         radius_red = base_radius * 0.5
         radius_yellow = radius_red * 1.15
         radius_blue = radius_yellow * 1.10
-        max_radius = min(width, height) / 2.0
+        max_radius = min_dim / 2.0
         radius_red = min(radius_red, max_radius)
         radius_yellow = min(radius_yellow, max_radius)
         radius_blue = min(radius_blue, max_radius)
+
+        system = self.state.get("system", {})
+        marker_cfg = system.get("markerCircles")
+        if isinstance(marker_cfg, Mapping):
+            def _resolve(key: str, fallback: float) -> float:
+                raw = marker_cfg.get(key, fallback / min_dim)
+                try:
+                    ratio = float(raw)
+                except (TypeError, ValueError):
+                    ratio = fallback / min_dim
+                ratio = clamp(ratio, 0.0, 0.5)
+                return ratio * min_dim
+
+            radius_red = _resolve("red", radius_red)
+            radius_yellow = _resolve("yellow", radius_yellow)
+            radius_blue = _resolve("blue", radius_blue)
+
         return radius_red, radius_yellow, radius_blue
 
     def update_donut_layout(
