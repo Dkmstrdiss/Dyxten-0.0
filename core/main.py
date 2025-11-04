@@ -306,7 +306,7 @@ class ViewWindow(QtWidgets.QMainWindow):
         return super().eventFilter(watched, event)
 
 
-def main():
+def main() -> int:
     _fail_fast_verify()
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
@@ -317,8 +317,12 @@ def main():
     view_win = ViewWindow(second)
     view_win.show()
     _ = ControlWindow(app, second, view_win)
-    sys.exit(app.exec_())
+    # Return the application's exit code instead of calling sys.exit here.
+    # This allows callers (tests, importers) to invoke main() without
+    # raising SystemExit; the script entrypoint below will still
+    # exit the interpreter when run directly.
+    return app.exec_()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
