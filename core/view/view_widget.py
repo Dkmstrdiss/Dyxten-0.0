@@ -509,14 +509,6 @@ def _mix_hex(color_a: str, color_b: str, t: float) -> str:
     return _rgb_to_hex(rr, gg, bb)
 
 
-def _mix_qcolor(color_a: QtGui.QColor, color_b: QtGui.QColor, t: float) -> QtGui.QColor:
-    t = clamp01(t)
-    r = int(round(color_a.red() + (color_b.red() - color_a.red()) * t))
-    g = int(round(color_a.green() + (color_b.green() - color_a.green()) * t))
-    b = int(round(color_a.blue() + (color_b.blue() - color_a.blue()) * t))
-    return QtGui.QColor(r, g, b)
-
-
 def _parse_gradient_stops(value: str | None) -> List[Tuple[str, float]]:
     if not value:
         return [("#00C8FF", 0.0), ("#FFFFFF", 1.0)]
@@ -1187,13 +1179,7 @@ class DyxtenEngine:
 
         for item in items:
             base_color = self._pick_color(item, now)
-            if item.role == "orbit":
-                inactive_color = QtGui.QColor("#252B38")
-                mix = clamp01(item.gravity_weight)
-                base_color = _mix_qcolor(base_color, inactive_color, mix)
-                visibility = 0.25 + 0.75 * mix
-            else:
-                visibility = 1.0
+            visibility = 1.0
             item.color = base_color
             if alpha_depth > 0:
                 t = clamp01(math.atan(max(0.0, item.depth)) / (math.pi / 2))
