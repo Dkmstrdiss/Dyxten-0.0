@@ -151,7 +151,8 @@ class DonutHub(QtWidgets.QWidget):
         self.R_outer = 260
         self.R_inner = 160
         self.core_diam = 360
-        self.icon_size = 40
+        # Double the diameter of the buttons as requested
+        self.icon_size = 80
 
         # Core widget that will host the Java window
         self.core = QtWidgets.QWidget(self)
@@ -196,7 +197,7 @@ class DonutHub(QtWidgets.QWidget):
             for (key, _), p in zip(self.segments, png_list[: len(self.segments)]):
                 ordered_map[key] = p
 
-        final_map: Dict[str, Path | str] = {}
+        final_map: Dict[str, Path | str | None] = {}
         for key, _ in self.segments:
             # priority: explicit supplied map > ordered PNG list (if exact count) > named PNGs > defaults
             if key in supplied:
@@ -205,8 +206,12 @@ class DonutHub(QtWidgets.QWidget):
                 final_map[key] = _resolve_icon(ordered_map[key])
             elif key in pngs_dict:
                 final_map[key] = _resolve_icon(pngs_dict[key])
-            else:
+            elif key in DEFAULT_ICONS:
+                # only use DEFAULT_ICONS when a matching key exists there
                 final_map[key] = _resolve_icon(DEFAULT_ICONS[key])
+            else:
+                # no icon available; keep None so callers can handle absence
+                final_map[key] = None
 
         self.icon_map = final_map
 
@@ -309,11 +314,11 @@ class DonutHub(QtWidgets.QWidget):
             button.setStyleSheet(
                 f"""
                 QToolButton {{
-                  background: rgba(0,0,0,0.45);
-                  border: 1px solid rgba(255,255,255,0.18);
-                  border-radius: {self.icon_size // 2}px;
+                                    background: transparent;
+                                    border: none;
+                                    border-radius: {self.icon_size // 2}px;
                 }}
-                QToolButton:hover {{ background: rgba(0,0,0,0.62); }}
+                                QToolButton:hover {{ background: rgba(255,255,255,0.04); }}
                 """
             )
             button.clicked.connect(lambda _checked=False, k=key: self.on_action(k))
@@ -365,68 +370,11 @@ class DonutHub(QtWidgets.QWidget):
     # ------------------------------------------------------------------
     # Painting
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:  # type: ignore[override]
+        # Intentionally draw nothing: remove colored background, shadows and
+        # white circles as requested. Keep the event minimal so the widget
+        # remains transparent and the Java core (if any) shows through.
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        cx, cy = self.width() / 2, self.height() / 2
-
-        shadow = QtGui.QRadialGradient(QtCore.QPointF(cx, cy), self.R_outer + 24)
-        shadow.setColorAt(0.8, QtGui.QColor(0, 0, 0, 60))
-        shadow.setColorAt(1.0, QtGui.QColor(0, 0, 0, 0))
-        painter.setBrush(shadow)
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.drawEllipse(
-            QtCore.QRectF(
-                cx - (self.R_outer + 24),
-                cy - (self.R_outer + 24),
-                2 * (self.R_outer + 24),
-                2 * (self.R_outer + 24),
-            )
-        )
-
-        total = len(self.segments)
-        for index, (key, color) in enumerate(self.segments):
-            start = -90 + index * (360.0 / total)
-            span = 360.0 / total
-            path = QtGui.QPainterPath()
-            rect_outer = QtCore.QRectF(
-                cx - self.R_outer, cy - self.R_outer, 2 * self.R_outer, 2 * self.R_outer
-            )
-            rect_inner = QtCore.QRectF(
-                cx - self.R_inner, cy - self.R_inner, 2 * self.R_inner, 2 * self.R_inner
-            )
-            path.moveTo(cx, cy)
-            path.arcMoveTo(rect_outer, start)
-            path.arcTo(rect_outer, start, span)
-            path.lineTo(
-                cx + self.R_inner * math.cos(math.radians(start + span)),
-                cy + self.R_inner * math.sin(math.radians(start + span)),
-            )
-            path.arcTo(rect_inner, start + span, -span)
-            path.closeSubpath()
-
-            grad = QtGui.QLinearGradient(
-                QtCore.QPointF(
-                    cx + self.R_outer * math.cos(math.radians(start)),
-                    cy + self.R_outer * math.sin(math.radians(start)),
-                ),
-                QtCore.QPointF(cx, cy),
-            )
-            base = QtGui.QColor(color)
-            base.setAlpha(220)
-            grad.setColorAt(0.0, base.lighter(120))
-            grad.setColorAt(1.0, base.darker(120))
-            painter.fillPath(path, grad)
-
-        pen = QtGui.QPen(QtGui.QColor(255, 255, 255, 30), 2)
-        painter.setPen(pen)
-        painter.setBrush(QtCore.Qt.NoBrush)
-        painter.drawEllipse(QtCore.QRectF(cx - self.R_outer, cy - self.R_outer, 2 * self.R_outer, 2 * self.R_outer))
-        painter.drawEllipse(QtCore.QRectF(cx - self.R_inner, cy - self.R_inner, 2 * self.R_inner, 2 * self.R_inner))
-
-        for radius, width, alpha in [(self.R_inner - 34, 8, 200), (self.R_inner - 18, 10, 230)]:
-            pen = QtGui.QPen(QtGui.QColor(255, 255, 255, alpha), width)
-            painter.setPen(pen)
-            painter.drawEllipse(QtCore.QRectF(cx - radius, cy - radius, 2 * radius, 2 * radius))
         painter.end()
 
     # ------------------------------------------------------------------
@@ -504,16 +452,7 @@ def _collect_png_icons() -> Dict[str, Path]:
     return out
 
 
-DEFAULT_ICONS: Dict[str, Path | str] = {
-    "music": Path("assets/icons/music.png"),
-    "games": Path("assets/icons/gamepad.png"),
-    "mail": Path("assets/icons/mail.png"),
-    "secure": Path("assets/icons/lock.png"),
-    "bulb": Path("assets/icons/bulb.png"),
-    "doc": Path("assets/icons/doc.png"),
-    "laptop": Path("assets/icons/laptop.png"),
-    "gauge": Path("assets/icons/gauge.png"),
-}
+DEFAULT_ICONS: Dict[str, Path | str] = {}
 
 
 def main(jar: Optional[str] = None) -> int:
