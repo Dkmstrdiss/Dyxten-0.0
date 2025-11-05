@@ -35,7 +35,7 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from ..donut import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config, sanitize_donut_state
+from ..donut_hub import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config, sanitize_donut_state
 
 try:
     from ..topology_registry import get_topology_library

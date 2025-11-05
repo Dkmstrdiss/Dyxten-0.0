@@ -17,7 +17,7 @@ try:
     from .system_tab import SystemTab
     from .link_controller_tab import LinkControllerTab
     from .profile_manager import ProfileManager, SubProfileManager
-    from ..donut import default_donut_config, sanitize_donut_state
+    from ..donut_hub import default_donut_config, sanitize_donut_state
 except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.config import DEFAULTS, PROFILE_PRESET_DESCRIPTIONS  # type: ignore
     from core.control.camera_tab import CameraTab  # type: ignore
@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.system_tab import SystemTab  # type: ignore
     from core.control.link_controller_tab import LinkControllerTab  # type: ignore
     from core.control.profile_manager import ProfileManager, SubProfileManager  # type: ignore
-    from core.donut import default_donut_config, sanitize_donut_state  # type: ignore
+    from core.donut_hub import default_donut_config, sanitize_donut_state  # type: ignore
 
 
 FLAT_TOPOLOGIES = {
@@ -508,8 +508,28 @@ class ControlWindow(QtWidgets.QMainWindow):
             view.set_params(self.state)
         except Exception:
             return
+        # Prefer controlling the DonutHub directly when available.
         try:
-            self.view_win.update_donut_buttons(view.current_donut())
+            donut = view.current_donut()
+        except Exception:
+            donut = default_donut_config()
+        try:
+            hub = getattr(self.view_win, "donut_hub", None)
+            if hub is not None:
+                try:
+                    hub.update_donut_buttons(donut)
+                    hub.request_layout_update()
+                except Exception:
+                    # fallback to view_win helper
+                    try:
+                        self.view_win.update_donut_buttons(donut)
+                    except Exception:
+                        pass
+            else:
+                try:
+                    self.view_win.update_donut_buttons(donut)
+                except Exception:
+                    pass
         except Exception:
             pass
 

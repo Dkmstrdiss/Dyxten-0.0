@@ -1,7 +1,7 @@
 
 from PyQt5 import QtCore
 
-from ..donut import default_donut_config
+from ..donut_hub import default_donut_config
 
 
 DEFAULTS = dict(

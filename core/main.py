@@ -93,9 +93,14 @@ except ImportError:  # pragma: no cover
     from core.view import DyxtenViewWidget  # type: ignore
 
 try:
-    from .donut import default_donut_config, sanitize_donut_state
+    from .donut_hub import default_donut_config, sanitize_donut_state
 except ImportError:  # pragma: no cover
-    from core.donut import default_donut_config, sanitize_donut_state
+    from core.donut_hub import default_donut_config, sanitize_donut_state
+
+try:
+    from .donut_hub import DonutHub
+except ImportError:  # pragma: no cover
+    from core.donut_hub import DonutHub
 
 fmt = QSurfaceFormat()
 fmt.setAlphaBufferSize(8)
@@ -126,22 +131,37 @@ class ViewWindow(QtWidgets.QMainWindow):
         lay.addWidget(self.view)
         self.setCentralWidget(w)
 
-        self._button_layer = QtWidgets.QWidget(self.view)
-        self._button_layer.setAttribute(Qt.WA_NoSystemBackground, True)
-        self._button_layer.setAttribute(Qt.WA_TransparentForMouseEvents, False)
-        self._button_layer.setAttribute(Qt.WA_TranslucentBackground, True)
-        self._button_layer.setAutoFillBackground(False)
-        self._button_layer.setGeometry(self.view.rect())
-        self._button_layer.raise_()
-        self._button_layer.installEventFilter(self)
-        self._donut_buttons: list[QtWidgets.QPushButton] = []
-        self._donut_config = default_donut_config()
+        # Overlay: use DonutHub as the host for donut buttons. DonutHub will
+        # emit layouts that we forward to the view's renderer.
+        try:
+            self.donut_hub = DonutHub(parent=self.view)
+            self.donut_hub.setAttribute(Qt.WA_NoSystemBackground, True)
+            self.donut_hub.setAttribute(Qt.WA_TranslucentBackground, True)
+            self.donut_hub.setAutoFillBackground(False)
+            self.donut_hub.setGeometry(self.view.rect())
+            self.donut_hub.raise_()
+        except Exception:
+            self.donut_hub = None
+
         self._donut_angle_offset = 0.0
         self._scroll_step_radians = math.radians(12.0)
-        self.update_donut_buttons(self._donut_config)
 
+        # Connect layout updates from DonutHub to the renderer
+        if self.donut_hub is not None:
+            try:
+                self.donut_hub.donutLayoutChanged.connect(
+                    lambda centers, radii: self.view.update_donut_layout(centers, width=int(self.view.width()), height=int(self.view.height()), radii=radii)
+                )
+                # initialize buttons from default config
+                try:
+                    self.donut_hub.update_donut_buttons(default_donut_config())
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        # Keep listening to view resize/wheel events
         self.view.installEventFilter(self)
-        self._sync_button_overlay()
 
         self._apply_screen_geometry(screen)
         QtWidgets.QShortcut(Qt.Key_Escape, self, activated=self.close)
@@ -179,11 +199,14 @@ class ViewWindow(QtWidgets.QMainWindow):
             central.setAttribute(Qt.WA_NoSystemBackground, enabled)
             central.setAttribute(Qt.WA_TranslucentBackground, enabled)
             central.setStyleSheet(bg_style)
-        if self._button_layer is not None:
-            self._button_layer.setAttribute(Qt.WA_NoSystemBackground, True)
-            self._button_layer.setAttribute(Qt.WA_TranslucentBackground, True)
-            self._button_layer.setAutoFillBackground(False)
-            self._button_layer.setStyleSheet("background: transparent;")
+        if getattr(self, "donut_hub", None) is not None:
+            try:
+                self.donut_hub.setAttribute(Qt.WA_NoSystemBackground, True)
+                self.donut_hub.setAttribute(Qt.WA_TranslucentBackground, True)
+                self.donut_hub.setAutoFillBackground(False)
+                self.donut_hub.setStyleSheet("background: transparent;")
+            except Exception:
+                pass
         self.view.setAttribute(Qt.WA_StyledBackground, True)
         self.view.setAttribute(Qt.WA_NoSystemBackground, enabled)
         self.view.setAttribute(Qt.WA_TranslucentBackground, enabled)
@@ -200,46 +223,18 @@ class ViewWindow(QtWidgets.QMainWindow):
         self._sync_button_overlay()
 
     def update_donut_buttons(self, donut: dict) -> None:
-        self._donut_config = sanitize_donut_state(donut)
-        descriptors = self._donut_config.get("buttons", [])
-        if len(self._donut_buttons) != len(descriptors):
-            for btn in self._donut_buttons:
-                btn.deleteLater()
-            self._donut_buttons = []
-            for descriptor in descriptors:
-                button = QtWidgets.QPushButton(self._button_layer)
-                button.setFixedSize(56, 56)
-                button.setStyleSheet(
-                    """
-                    QPushButton {
-                        border-radius: 28px;
-                        border: 1px solid rgba(255,255,255,0.3);
-                        background: rgba(12,18,27,0.65);
-                        color: #f5f6ff;
-                        font-family: 'Segoe UI', sans-serif;
-                        font-size: 13px;
-                        font-weight: 600;
-                        letter-spacing: 0.04em;
-                        text-transform: uppercase;
-                        padding: 4px 10px;
-                    }
-                    QPushButton:hover { background: rgba(0,200,255,0.65); border-color: rgba(0,200,255,0.85); }
-                    QPushButton:pressed { background: rgba(0,140,200,0.85); }
-                    """
-                )
-                button.installEventFilter(self)
-                button.show()
-                self._donut_buttons.append(button)
-        for idx, (button, descriptor) in enumerate(zip(self._donut_buttons, descriptors)):
-            if isinstance(descriptor, dict):
-                label = descriptor.get("label")
-                ident = descriptor.get("id")
-            else:
-                label = None
-                ident = None
-            button.setText((label or f"Bouton {idx + 1}").strip())
-            button.setProperty("buttonId", ident if isinstance(ident, int) else idx + 1)
-        self._sync_button_overlay()
+        # Delegate to DonutHub when available; otherwise keep the state.
+        if getattr(self, "donut_hub", None) is not None:
+            try:
+                self.donut_hub.update_donut_buttons(donut)
+            except Exception:
+                pass
+        else:
+            # fallback: store sanitized config
+            try:
+                self._donut_config = sanitize_donut_state(donut)
+            except Exception:
+                self._donut_config = default_donut_config()
 
     def _marker_radii_for_view(self) -> tuple[float, float, float]:
         rect = self.view.rect()
@@ -259,48 +254,41 @@ class ViewWindow(QtWidgets.QMainWindow):
         return radius_red, radius_yellow, radius_blue
 
     def _layout_buttons(self) -> None:
-        if not self._donut_buttons:
+        # Delegate layout to DonutHub (if present). Otherwise no-op.
+        if getattr(self, "donut_hub", None) is None:
             return
-        rect = self.view.rect()
-        width = rect.width()
-        height = rect.height()
-        if width <= 0 or height <= 0:
-            return
-        _, _, radius = self._marker_radii_for_view()
-        if radius <= 0:
-            return
-        cx = width / 2
-        cy = height / 2
-        count = len(self._donut_buttons)
-        if count <= 0:
-            return
-        step = (2 * math.pi) / count
-        self._donut_angle_offset = self._donut_angle_offset % (2 * math.pi)
-        base_angle = (-math.pi / 2) + self._donut_angle_offset
-        centers: list[tuple[float, float]] = []
-        radii: list[float] = []
-        for index, button in enumerate(self._donut_buttons):
-            angle = base_angle + index * step
-            x = cx + radius * math.cos(angle)
-            y = cy + radius * math.sin(angle)
-            button.move(int(x - button.width() / 2), int(y - button.height() / 2))
-            centers.append((x, y))
-            radii.append(button.width() / 2.0)
-
-        if hasattr(self.view, "update_donut_layout"):
+        try:
+            # ensure hub geometry matches the view and let it position buttons
+            self.donut_hub.setGeometry(self.view.rect())
+            # request a layout update from the DonutHub (public API)
             try:
-                self.view.update_donut_layout(centers, width=width, height=height, radii=radii)
+                self.donut_hub.request_layout_update()
             except Exception:
-                pass
+                try:
+                    # fallback to private in case older hub doesn't expose the public method
+                    self.donut_hub._position_all()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _sync_button_overlay(self) -> None:
-        if self._button_layer is None:
+        if getattr(self, "donut_hub", None) is None:
             return
-        self._button_layer.setGeometry(self.view.rect())
-        self._layout_buttons()
+        try:
+            self.donut_hub.setGeometry(self.view.rect())
+            try:
+                self.donut_hub.request_layout_update()
+            except Exception:
+                try:
+                    self.donut_hub._position_all()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _handle_donut_wheel(self, event: QtGui.QWheelEvent) -> bool:
-        if not self._donut_buttons:
+        if getattr(self, "donut_hub", None) is None:
             return False
         angle_delta = event.angleDelta()
         steps = angle_delta.y()
@@ -311,15 +299,20 @@ class ViewWindow(QtWidgets.QMainWindow):
         rotation = (steps / 120.0) * self._scroll_step_radians
         if rotation == 0.0:
             return False
-        self._donut_angle_offset = (self._donut_angle_offset + rotation) % (2 * math.pi)
-        self._layout_buttons()
+        # rotation is in radians; convert to degrees for DonutHub
+        deg = math.degrees(rotation)
+        self._donut_angle_offset = (self._donut_angle_offset + deg) % 360.0
+        try:
+            self.donut_hub.set_angle_offset(self._donut_angle_offset)
+        except Exception:
+            pass
         event.accept()
         return True
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
         if event.type() == QtCore.QEvent.Wheel:
             wheel_event = cast(QtGui.QWheelEvent, event)
-            if watched is self.view or watched is self._button_layer or watched in self._donut_buttons:
+            if watched is self.view or watched is getattr(self, "donut_hub", None):
                 if self._handle_donut_wheel(wheel_event):
                     return True
         if watched is self.view and event.type() == QtCore.QEvent.Resize:

@@ -1,10 +1,7 @@
 Traceback (most recent call last):
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1477, in paintGL
-    self._render_with_painter(painter)
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1399, in _render_with_painter
-    items = self.engine.step(width, height)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 962, in step
-    radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
-                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'DyxtenEngine' object has no attribute '_compute_marker_radii'
+  File "D:\Dyxten-0.0\core\donut_hub.py", line 373, in resizeEvent
+    self._position_all()
+  File "D:\Dyxten-0.0\core\donut_hub.py", line 347, in _position_all
+    if isinstance(self._buttons_orbit_radius_px, (int, float)) and self._buttons_orbit_radius_px > 0:
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'DonutHub' object has no attribute '_buttons_orbit_radius_px'

@@ -23,6 +23,71 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from typing import List, Optional, Sequence
+
+# --- moved from core/donut.py to unify donut utilities with DonutHub ---
+DEFAULT_DONUT_BUTTON_COUNT = 10
+_DEFAULT_RADIUS_RATIO = 0.35
+
+
+def _make_button(idx: int, label: Optional[str] = None, *, button_id: Optional[int] = None) -> dict:
+    """Return a normalized button payload."""
+    clean_label = label if (label and label.strip()) else f"Bouton {idx}"
+    clean_id = button_id if isinstance(button_id, int) else idx
+    return {"id": clean_id, "label": clean_label.strip()}
+
+
+def default_donut_buttons(count: int = DEFAULT_DONUT_BUTTON_COUNT) -> List[dict]:
+    """Build a list of default donut buttons."""
+    return [_make_button(i + 1) for i in range(max(1, count))]
+
+
+def default_donut_config() -> dict:
+    """Return the default configuration used by both the UI and the web view."""
+    return {
+        "buttons": default_donut_buttons(),
+        "radiusRatio": _DEFAULT_RADIUS_RATIO,
+    }
+
+
+def _sanitize_buttons(buttons: Sequence[object]) -> List[dict]:
+    sanitized: List[dict] = []
+    for idx, entry in enumerate(buttons):
+        slot = idx + 1
+        if isinstance(entry, dict):
+            label = str(entry.get("label") or entry.get("text") or entry.get("name") or "").strip()
+            ident = entry.get("id")
+            sanitized.append(_make_button(slot, label, button_id=ident if isinstance(ident, int) else None))
+        elif isinstance(entry, str):
+            sanitized.append(_make_button(slot, entry))
+        elif entry is None:
+            sanitized.append(_make_button(slot))
+        if len(sanitized) >= DEFAULT_DONUT_BUTTON_COUNT:
+            break
+    while len(sanitized) < DEFAULT_DONUT_BUTTON_COUNT:
+        sanitized.append(_make_button(len(sanitized) + 1))
+    return sanitized
+
+
+def sanitize_donut_state(payload: Optional[dict]) -> dict:
+    """Return a sanitized donut state based on user-provided payload."""
+    if not isinstance(payload, dict):
+        return default_donut_config()
+
+    base = default_donut_config()
+
+    buttons = payload.get("buttons")
+    if isinstance(buttons, Sequence):
+        base["buttons"] = _sanitize_buttons(buttons)
+
+    radius = payload.get("radiusRatio")
+    if isinstance(radius, (int, float)):
+        base["radiusRatio"] = max(0.05, min(0.9, float(radius)))
+
+    return base
+
+# ------------------------------------------------------------------
+
 try:  # pragma: no cover - only available on Windows
     from win32 import win32con, win32gui
 except ImportError:  # pragma: no cover - the widget only works on Windows
@@ -32,6 +97,7 @@ except ImportError:  # pragma: no cover - the widget only works on Windows
 
 TITLE = "DyxtenJavaView"
 ROOT = Path(__file__).resolve().parents[1]
+PNG_DIR = ROOT / "PNG"
 
 
 def find_hwnd(title_sub: str) -> Optional[int]:
@@ -61,6 +127,11 @@ def find_hwnd(title_sub: str) -> Optional[int]:
 class DonutHub(QtWidgets.QWidget):
     """Circular launcher that embeds a Java window in its core."""
 
+    # Emitted after buttons are positioned. Payload: (centers, radii)
+    # centers: list of (x, y) in local widget coordinates
+    # radii: list of float (pixels)
+    donutLayoutChanged = QtCore.pyqtSignal(object, object)
+
     def __init__(
         self,
         jar_path: Optional[Path | str] = None,
@@ -73,6 +144,9 @@ class DonutHub(QtWidgets.QWidget):
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.FramelessWindowHint)
         self.resize(900, 700)
 
+        # angle offset (degrees) applied when positioning buttons
+        self._angle_offset_deg = 0.0
+
         # Donut geometry
         self.R_outer = 260
         self.R_inner = 160
@@ -84,21 +158,66 @@ class DonutHub(QtWidgets.QWidget):
         self.core.setAttribute(QtCore.Qt.WA_NativeWindow, True)
         self.core.resize(self.core_diam, self.core_diam)
 
-        # Segments (colors) and default icon mapping
-        self.segments: Sequence[Tuple[str, QtGui.QColor]] = [
-            ("music", QtGui.QColor("#E53935")),
-            ("games", QtGui.QColor("#2E7D32")),
-            ("mail", QtGui.QColor("#66BB6A")),
-            ("secure", QtGui.QColor("#C0CA33")),
-            ("bulb", QtGui.QColor("#FBC02D")),
-            ("doc", QtGui.QColor("#FB8C00")),
-            ("laptop", QtGui.QColor("#F4511E")),
-            ("gauge", QtGui.QColor("#9E9E9E")),
-        ]
+        # Segments (keys + colors). Use the default donut button count from
+        # `core.donut` so the hub matches the configured number of buttons.
+        # Keys are generic (btn1, btn2, ...) to allow mapping by order from
+        # the PNG/ folder. Colors are generated evenly around the hue circle.
+        count = DEFAULT_DONUT_BUTTON_COUNT
+        self.segments = []  # type: ignore[var-annotated]
+        for i in range(count):
+            key = f"btn{i+1}"
+            hue = int((360.0 * i) / max(1, count))
+            color = QtGui.QColor()
+            color.setHsl(hue, 180, 140)  # moderate saturation/lightness
+            self.segments.append((key, color))
 
-        self.icon_map: Dict[str, Path | str] = (
-            {key: _resolve_icon(path) for key, path in (icon_map or DEFAULT_ICONS).items()}
-        )
+        # Build the icon map with priority:
+        # 1) explicit icon_map passed to constructor
+        # 2) images found in the PNG/ folder (filenames like 'music.png' match keys)
+        # 3) DEFAULT_ICONS shipped with the app
+        supplied: Dict[str, Path | str] = {k: v for k, v in (icon_map or {}).items()}
+        pngs_dict = _collect_png_icons()
+
+        # also capture ordered list of PNG files; this enables assignment by
+        # order when the user placed exactly one image per button in PNG/
+        png_list: List[Path] = []
+        try:
+            if PNG_DIR.exists() and PNG_DIR.is_dir():
+                png_list = sorted(PNG_DIR.glob("*.png"))
+        except Exception:
+            png_list = []
+
+        ordered_map: Dict[str, Path] = {}
+        # If the PNG folder contains at least as many files as segments, map
+        # the first N files by order to the N segments. This allows users to
+        # drop a set of images and have them assigned even when counts differ
+        # (extra files are ignored).
+        if len(png_list) >= len(self.segments) and len(png_list) > 0:
+            for (key, _), p in zip(self.segments, png_list[: len(self.segments)]):
+                ordered_map[key] = p
+
+        final_map: Dict[str, Path | str] = {}
+        for key, _ in self.segments:
+            # priority: explicit supplied map > ordered PNG list (if exact count) > named PNGs > defaults
+            if key in supplied:
+                final_map[key] = _resolve_icon(supplied[key])
+            elif key in ordered_map:
+                final_map[key] = _resolve_icon(ordered_map[key])
+            elif key in pngs_dict:
+                final_map[key] = _resolve_icon(pngs_dict[key])
+            else:
+                final_map[key] = _resolve_icon(DEFAULT_ICONS[key])
+
+        self.icon_map = final_map
+
+        # Debug: print resolved icon paths so we can verify which images are used
+        try:
+            print("[DonutHub] resolved icon_map:")
+            for k, v in self.icon_map.items():
+                print(f"  {k}: {str(v)}")
+        except Exception:
+            # Avoid crashing if print/logging fails in some environments
+            pass
 
         self.buttons: List[QtWidgets.QToolButton] = []
         self._build_buttons()
@@ -108,6 +227,56 @@ class DonutHub(QtWidgets.QWidget):
         self.proc: Optional[subprocess.Popen[str]] = None
         if self.jar_path is not None:
             QtCore.QTimer.singleShot(200, self._start_java)
+
+    # ------------------------------------------------------------------
+    # Public API for integration with the view widget
+    def update_donut_buttons(self, donut: dict) -> None:
+        """Update button labels/ids from a sanitized donut config."""
+        try:
+            cfg = sanitize_donut_state(donut if isinstance(donut, dict) else None)
+        except Exception:
+            cfg = default_donut_config()
+        descriptors = cfg.get("buttons", [])
+        # Ensure we have at least the same number of internal buttons
+        # We keep existing icon buttons but update text/tooltips and ids.
+        for idx, (button, descriptor) in enumerate(zip(self.buttons, descriptors)):
+            if isinstance(descriptor, dict):
+                label = descriptor.get("label")
+                ident = descriptor.get("id")
+            else:
+                label = None
+                ident = None
+            text = (label or f"Bouton {idx + 1}").strip()
+            try:
+                # Use tooltip and accessible name to surface the label
+                button.setToolTip(text)
+                button.setAccessibleName(text)
+                # Also set text for possible text-mode toolbuttons
+                button.setText(text)
+            except Exception:
+                pass
+            # store id property for external usage
+            try:
+                button.setProperty("buttonId", ident if isinstance(ident, int) else idx + 1)
+            except Exception:
+                pass
+
+    def set_angle_offset(self, degrees: float) -> None:
+        """Set rotation offset (degrees) for button layout and re-position."""
+        try:
+            self._angle_offset_deg = float(degrees) % 360.0
+        except Exception:
+            self._angle_offset_deg = 0.0
+        self._position_all()
+
+    def request_layout_update(self) -> None:
+        """Public hook to request recomputing button positions and emit layout.
+
+        Prefer calling this over directly invoking :pymeth:`_position_all` so
+        external code does not reach into private methods.
+        """
+        self._position_all()
+
 
     # ------------------------------------------------------------------
     # Buttons
@@ -124,6 +293,19 @@ class DonutHub(QtWidgets.QWidget):
             icon_path = self.icon_map.get(key)
             if icon_path:
                 button.setIcon(QtGui.QIcon(str(icon_path)))
+                # Use the icon filename (stem) as a user-friendly tooltip when possible
+                try:
+                    tip = Path(str(icon_path)).stem
+                except Exception:
+                    tip = key
+            else:
+                tip = key
+            # Normalize tip for display
+            try:
+                disp_tip = str(tip).replace("-", " ").replace("_", " ").capitalize()
+            except Exception:
+                disp_tip = str(key)
+            button.setToolTip(disp_tip)
             button.setStyleSheet(
                 f"""
                 QToolButton {{
@@ -157,11 +339,24 @@ class DonutHub(QtWidgets.QWidget):
         total = len(self.buttons)
         radius_mid = (self.R_outer + self.R_inner) // 2
         for index, button in enumerate(self.buttons):
-            angle = math.radians(-90 + index * (360.0 / total))
+            angle = math.radians(self._angle_offset_deg - 90 + index * (360.0 / total))
             x = int(cx + radius_mid * math.cos(angle) - self.icon_size / 2)
             y = int(cy + radius_mid * math.sin(angle) - self.icon_size / 2)
             button.move(x, y)
         self.update()
+
+        # Emit layout (centers and radii) so the renderer can use it.
+        try:
+            centers = []
+            radii = []
+            for button in self.buttons:
+                geom = button.geometry()
+                centers.append((geom.x() + geom.width() / 2.0, geom.y() + geom.height() / 2.0))
+                radii.append(geom.width() / 2.0)
+            # Emit as plain Python lists
+            self.donutLayoutChanged.emit(centers, radii)
+        except Exception:
+            pass
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
@@ -288,6 +483,25 @@ def _resolve_icon(path: Path | str) -> Path:
     # Try resolving relative to repo root for convenience
     relative = ROOT / Path(path)
     return relative if relative.exists() else candidate
+
+
+def _collect_png_icons() -> Dict[str, Path]:
+    """Return a mapping of lowercase stem -> Path for all PNG files found in `PNG/`.
+
+    This lets users drop images in the repository `PNG/` folder. Filenames without
+    extension that match segment keys (e.g. "music.png") are used; otherwise the
+    caller can assign images by order.
+    """
+    out: Dict[str, Path] = {}
+    try:
+        if not PNG_DIR.exists() or not PNG_DIR.is_dir():
+            return out
+    except Exception:
+        return out
+
+    for p in sorted(PNG_DIR.glob("*.png")):
+        out[p.stem.lower()] = p
+    return out
 
 
 DEFAULT_ICONS: Dict[str, Path | str] = {
