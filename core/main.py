@@ -3,10 +3,31 @@ import io
 import math
 import sys
 from pathlib import Path
-from typing import cast
-from PyQt5 import QtCore, QtWidgets, QtGui
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QSurfaceFormat
+from typing import NoReturn, cast
+
+
+def _handle_qt_import_error(exc: ImportError) -> NoReturn:
+    """Exit with a helpful message when the Qt bindings cannot be imported."""
+
+    details = str(exc)
+    message_lines = [
+        "Impossible de lancer Dyxten : l'import de PyQt5 a échoué.",
+        "Vérifiez que PyQt5 est installé et que les bibliothèques OpenGL requises sont disponibles.",
+    ]
+    if "libGL.so.1" in details:
+        message_lines.append(
+            "Indice : la bibliothèque système libGL.so.1 est manquante. Installez les paquets Mesa/OpenGL appropriés."
+        )
+    message_lines.append(f"Erreur d'origine : {details}")
+    raise SystemExit("\n".join(message_lines)) from exc
+
+
+try:
+    from PyQt5 import QtCore, QtWidgets, QtGui
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtGui import QSurfaceFormat
+except ImportError as exc:  # pragma: no cover - dépendances environnementales
+    _handle_qt_import_error(exc)
 
 # --- autorise l'exécution directe ---
 ROOT = Path(__file__).resolve().parents[1]
@@ -306,8 +327,38 @@ class ViewWindow(QtWidgets.QMainWindow):
         return super().eventFilter(watched, event)
 
 
-def main() -> int:
+def main(headless: bool = False) -> int:
+    """Start the application and return the exit code.
+
+    When ``headless`` is True the function will perform minimal verification
+    and return 0 without instantiating any Qt objects. This is useful for
+    unit tests or import-time calls that must not start the GUI event loop.
+    """
     _fail_fast_verify()
+    if headless:
+        # Avoid creating a QApplication and opening windows during tests.
+        return 0
+
+    # Install a simple excepthook that writes unhandled Python exceptions to
+    # <repo>/run_exception.txt. This helps capture tracebacks coming from the
+    # GUI event loop or other threads where exceptions might otherwise be lost.
+    def _write_unhandled(exc_type, exc_value, exc_tb):
+        try:
+            out_path = ROOT / "run_exception.txt"
+            import traceback as _tb
+
+            with out_path.open("w", encoding="utf-8") as f:
+                _tb.print_exception(exc_type, exc_value, exc_tb, file=f)
+        except Exception:
+            # Best-effort only; don't let the hook raise.
+            pass
+        # Delegate to the default hook to preserve console behaviour
+        try:
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+        except Exception:
+            pass
+
+    sys.excepthook = _write_unhandled
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     app = QtWidgets.QApplication(sys.argv)

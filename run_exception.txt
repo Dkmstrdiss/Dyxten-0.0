@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1477, in paintGL
+    self._render_with_painter(painter)
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1399, in _render_with_painter
+    items = self.engine.step(width, height)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 962, in step
+    radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'DyxtenEngine' object has no attribute '_compute_marker_radii'

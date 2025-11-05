@@ -878,6 +878,45 @@ class DyxtenEngine:
         del width, height
         return self._marker_radii
 
+    def _compute_marker_radii(self, width: float, height: float) -> Tuple[float, float, float]:
+        """Compute the radii of the red, yellow and blue marker circles.
+
+        This is a copy of the helper used by the view widget but adapted to run
+        on the engine so calls from :meth:`step` can compute radii without
+        depending on the widget instance.
+        """
+
+        if width <= 0.0 or height <= 0.0:
+            return 0.0, 0.0, 0.0
+        min_dim = max(1.0, min(width, height))
+        base_area = (width * height) / 3.0
+        base_radius = math.sqrt(max(base_area, 0.0) / math.pi)
+        radius_red = base_radius * 0.5
+        radius_yellow = radius_red * 1.15
+        radius_blue = radius_yellow * 1.10
+        max_radius = min_dim / 2.0
+        radius_red = min(radius_red, max_radius)
+        radius_yellow = min(radius_yellow, max_radius)
+        radius_blue = min(radius_blue, max_radius)
+
+        system = self.state.get("system", {})
+        marker_cfg = system.get("markerCircles")
+        if isinstance(marker_cfg, Mapping):
+            def _resolve(key: str, fallback: float) -> float:
+                raw = marker_cfg.get(key, fallback / min_dim)
+                try:
+                    ratio = float(raw)
+                except (TypeError, ValueError):
+                    ratio = fallback / min_dim
+                ratio = clamp(ratio, 0.0, 0.5)
+                return ratio * min_dim
+
+            radius_red = _resolve("red", radius_red)
+            radius_yellow = _resolve("yellow", radius_yellow)
+            radius_blue = _resolve("blue", radius_blue)
+
+        return radius_red, radius_yellow, radius_blue
+
     def _pick_color(self, item: RenderItem, now_ms: float) -> QtGui.QColor:
         appearance = self.state.get("appearance", {})
         palette = appearance.get("palette", "uniform")
@@ -945,6 +984,7 @@ class DyxtenEngine:
         cam_radius = float(cam.get("camRadius", 3.2) or 3.2)
         fov = float(cam.get("fov", 600) or 600)
         fov = clamp(float(fov), 1.0, 5000.0)
+        system = self.state.get("system", {})
 
         cos_theta = math.cos(cam_theta)
         sin_theta = math.sin(cam_theta)
@@ -970,7 +1010,6 @@ class DyxtenEngine:
         projected: List[Dict[str, object]] = []
         screen_grid: Dict[Tuple[int, int], List[Tuple[float, float]]] = {}
         dist = self.state.get("distribution", {})
-        system = self.state.get("system", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
         cell = max(1.0, dmin_px) if dmin_px > 0 else 1.0
         donut_centers, donut_radii, fallback_orbit_radius = self._compute_donut_orbits(width, height)
@@ -1293,7 +1332,7 @@ class _ViewWidgetBase:
         radius_yellow = min(radius_yellow, max_radius)
         radius_blue = min(radius_blue, max_radius)
 
-        system = self.state.get("system", {})
+        system = self.engine.state.get("system", {})
         marker_cfg = system.get("markerCircles")
         if isinstance(marker_cfg, Mapping):
             def _resolve(key: str, fallback: float) -> float:
