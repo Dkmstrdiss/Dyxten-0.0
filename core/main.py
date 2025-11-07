@@ -396,6 +396,7 @@ def main(headless: bool = False) -> int:
 
     # Show after arranging; ViewWindow won't auto-center when external layout is enabled
     view_win.show()
+    
     # Return the application's exit code instead of calling sys.exit here.
     # This allows callers (tests, importers) to invoke main() without
     # raising SystemExit; the script entrypoint below will still

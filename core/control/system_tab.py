@@ -27,6 +27,8 @@ class SystemTab(QtWidgets.QWidget):
         self.sp_gravity_falloff = QtWidgets.QDoubleSpinBox(); self.sp_gravity_falloff.setRange(0.2,5.0); self.sp_gravity_falloff.setSingleStep(0.1); self.sp_gravity_falloff.setDecimals(3); self.sp_gravity_falloff.setValue(d["donutGravityFalloff"])
         self.sp_ring_offset = QtWidgets.QDoubleSpinBox(); self.sp_ring_offset.setRange(-48.0,120.0); self.sp_ring_offset.setSingleStep(1.0); self.sp_ring_offset.setDecimals(1); self.sp_ring_offset.setValue(d["donutGravityRingOffset"])
         self._orbit_widget, self._orbit_slider, self._orbit_spin = self._create_orbit_speed_controls(d["orbitSpeed"])
+        self._button_size_widget, self._button_size_slider, self._button_size_spin = self._create_button_size_controls(d.get("donutButtonSize", 80))
+        self._radius_ratio_widget, self._radius_ratio_slider, self._radius_ratio_spin = self._create_radius_ratio_controls(d.get("donutRadiusRatio", 0.35))
         self._circle_controls = self._create_circle_controls(d.get("markerCircles", {}))
         self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
         self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
@@ -36,9 +38,10 @@ class SystemTab(QtWidgets.QWidget):
         row(fl, "Gravité donut (progression)", self.sp_gravity_falloff, TOOLTIPS["system.donutGravityFalloff"], lambda: self.sp_gravity_falloff.setValue(d["donutGravityFalloff"]))
         row(fl, "Anneau donut (offset px)", self.sp_ring_offset, TOOLTIPS["system.donutGravityRingOffset"], lambda: self.sp_ring_offset.setValue(d["donutGravityRingOffset"]))
         row(fl, "Vitesse orbitale", self._orbit_widget, TOOLTIPS["system.orbitSpeed"], lambda: self._set_orbit_speed(d["orbitSpeed"]))
+        row(fl, "Taille des boutons", self._button_size_widget, TOOLTIPS["system.donutButtonSize"], lambda: self._set_button_size(d.get("donutButtonSize", 80)))
+        row(fl, "Diamètre du donut hub", self._radius_ratio_widget, TOOLTIPS["system.donutRadiusRatio"], lambda: self._set_radius_ratio(d.get("donutRadiusRatio", 0.35)))
         row(fl, "Diamètre cercle rouge", self._circle_controls["red"][0], TOOLTIPS["system.markerCircles.red"], lambda: self._set_circle_value("red", d["markerCircles"]["red"]))
         row(fl, "Diamètre cercle jaune", self._circle_controls["yellow"][0], TOOLTIPS["system.markerCircles.yellow"], lambda: self._set_circle_value("yellow", d["markerCircles"]["yellow"]))
-        row(fl, "Diamètre cercle bleu", self._circle_controls["blue"][0], TOOLTIPS["system.markerCircles.blue"], lambda: self._set_circle_value("blue", d["markerCircles"]["blue"]))
         row(fl, "Tri par profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
         row(fl, "Fenêtre transparente", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
         for w in [
@@ -48,6 +51,8 @@ class SystemTab(QtWidgets.QWidget):
             self.sp_gravity_falloff,
             self.sp_ring_offset,
             self._orbit_spin,
+            self._button_size_spin,
+            self._radius_ratio_spin,
             self.chk_depthSort,
             self.chk_transparent,
         ]:
@@ -65,6 +70,8 @@ class SystemTab(QtWidgets.QWidget):
         register_linkable_widget(self.sp_gravity_falloff, section="system", key="donutGravityFalloff", tab="Système")
         register_linkable_widget(self.sp_ring_offset, section="system", key="donutGravityRingOffset", tab="Système")
         register_linkable_widget(self._orbit_spin, section="system", key="orbitSpeed", tab="Système")
+        register_linkable_widget(self._button_size_spin, section="system", key="donutButtonSize", tab="Système")
+        register_linkable_widget(self._radius_ratio_spin, section="system", key="donutRadiusRatio", tab="Système")
         self._sync_subprofile_state()
     def collect(self):
         return dict(
@@ -74,9 +81,11 @@ class SystemTab(QtWidgets.QWidget):
             donutGravityFalloff=self.sp_gravity_falloff.value(),
             donutGravityRingOffset=self.sp_ring_offset.value(),
             orbitSpeed=self._orbit_spin.value(),
+            donutButtonSize=self._button_size_spin.value(),
+            donutRadiusRatio=self._radius_ratio_spin.value(),
             markerCircles={
-                color: spin.value() / 200.0
-                for color, (_container, _slider, spin) in self._circle_controls.items()
+                "red": self._circle_controls["red"][2].value() / 200.0,
+                "yellow": self._circle_controls["yellow"][2].value() / 200.0,
             },
             depthSort=self.chk_depthSort.isChecked(),
             transparent=self.chk_transparent.isChecked(),
@@ -99,10 +108,21 @@ class SystemTab(QtWidgets.QWidget):
         except (TypeError, ValueError):
             orbit_value = d["orbitSpeed"]
         self._set_orbit_speed(orbit_value)
+        try:
+            button_size_value = float(cfg.get("donutButtonSize", d.get("donutButtonSize", 80)))
+        except (TypeError, ValueError):
+            button_size_value = d.get("donutButtonSize", 80)
+        self._set_button_size(button_size_value)
+        try:
+            radius_ratio_value = float(cfg.get("donutRadiusRatio", d.get("donutRadiusRatio", 0.35)))
+        except (TypeError, ValueError):
+            radius_ratio_value = d.get("donutRadiusRatio", 0.35)
+        self._set_radius_ratio(radius_ratio_value)
         marker_cfg = cfg.get("markerCircles", {})
         if not isinstance(marker_cfg, dict):
             marker_cfg = {}
-        for color in ("red", "yellow", "blue"):
+        # Only set red and yellow; blue is controlled by donutRadiusRatio
+        for color in ("red", "yellow"):
             default_value = d["markerCircles"].get(color, 0.0)
             raw = marker_cfg.get(color, default_value)
             try:
@@ -157,10 +177,53 @@ class SystemTab(QtWidgets.QWidget):
         container.setLayout(layout)
         return container, slider, spin
 
+    def _create_button_size_controls(self, value: float):
+        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider.setRange(20, 200)
+        slider.setSingleStep(1)
+        spin = QtWidgets.QSpinBox()
+        spin.setRange(20, 200)
+        spin.setSingleStep(1)
+        spin.setSuffix(" px")
+        spin.setValue(int(value))
+        slider.setValue(spin.value())
+        slider.valueChanged.connect(lambda val: spin.setValue(val))
+        spin.valueChanged.connect(lambda val: slider.setValue(val))
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(slider, 1)
+        layout.addWidget(spin)
+        container.setLayout(layout)
+        return container, slider, spin
+
+    def _create_radius_ratio_controls(self, value: float):
+        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider.setRange(5, 90)
+        slider.setSingleStep(1)
+        spin = QtWidgets.QDoubleSpinBox()
+        spin.setRange(0.05, 0.90)
+        spin.setDecimals(2)
+        spin.setSingleStep(0.01)
+        spin.setValue(float(value))
+        slider.setValue(int(round(spin.value() * 100)))
+        slider.valueChanged.connect(lambda val: spin.setValue(val / 100.0))
+        spin.valueChanged.connect(lambda val: slider.setValue(int(round(val * 100))))
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(slider, 1)
+        layout.addWidget(spin)
+        container.setLayout(layout)
+        return container, slider, spin
+
     def _create_circle_controls(self, overrides: dict):
         controls = {}
         defaults = DEFAULTS["system"]["markerCircles"]
-        for color in ("red", "yellow", "blue"):
+        # Only create controls for red and yellow; blue is controlled by donutRadiusRatio
+        for color in ("red", "yellow"):
             default_value = float(defaults.get(color, 0.0))
             value = overrides.get(color, default_value)
             try:
@@ -215,3 +278,17 @@ class SystemTab(QtWidgets.QWidget):
             spin.setValue(ratio * 200.0)
         with QtCore.QSignalBlocker(slider):
             slider.setValue(int(round(spin.value())))
+
+    def _set_button_size(self, value: float):
+        value = max(20.0, min(200.0, float(value)))
+        with QtCore.QSignalBlocker(self._button_size_spin):
+            self._button_size_spin.setValue(int(value))
+        with QtCore.QSignalBlocker(self._button_size_slider):
+            self._button_size_slider.setValue(int(value))
+
+    def _set_radius_ratio(self, value: float):
+        value = max(0.05, min(0.90, float(value)))
+        with QtCore.QSignalBlocker(self._radius_ratio_spin):
+            self._radius_ratio_spin.setValue(value)
+        with QtCore.QSignalBlocker(self._radius_ratio_slider):
+            self._radius_ratio_slider.setValue(int(round(value * 100)))

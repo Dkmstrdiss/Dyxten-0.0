@@ -913,7 +913,14 @@ class DyxtenEngine:
 
             radius_red = _resolve("red", radius_red)
             radius_yellow = _resolve("yellow", radius_yellow)
-            radius_blue = _resolve("blue", radius_blue)
+            # Blue circle now uses donutRadiusRatio directly
+            donut_radius_ratio = system.get("donutRadiusRatio", 0.35)
+            try:
+                donut_radius_ratio = float(donut_radius_ratio)
+            except (TypeError, ValueError):
+                donut_radius_ratio = 0.35
+            donut_radius_ratio = clamp(donut_radius_ratio, 0.05, 0.90)
+            radius_blue = min_dim * donut_radius_ratio
 
         return radius_red, radius_yellow, radius_blue
 
@@ -1345,7 +1352,14 @@ class _ViewWidgetBase:
 
             radius_red = _resolve("red", radius_red)
             radius_yellow = _resolve("yellow", radius_yellow)
-            radius_blue = _resolve("blue", radius_blue)
+            # Blue circle now uses donutRadiusRatio directly
+            donut_radius_ratio = system.get("donutRadiusRatio", 0.35)
+            try:
+                donut_radius_ratio = float(donut_radius_ratio)
+            except (TypeError, ValueError):
+                donut_radius_ratio = 0.35
+            donut_radius_ratio = clamp(donut_radius_ratio, 0.05, 0.90)
+            radius_blue = min_dim * donut_radius_ratio
 
         return radius_red, radius_yellow, radius_blue
 
@@ -1434,6 +1448,23 @@ class _ViewWidgetBase:
         width = max(1, self.width())
         height = max(1, self.height())
         radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
+        
+        # Apply circular mask based on red circle
+        center_x = width / 2.0
+        center_y = height / 2.0
+        if radius_red > 0:
+            # Create circular clipping path
+            clip_path = QtGui.QPainterPath()
+            clip_path.addEllipse(
+                QtCore.QRectF(
+                    center_x - radius_red,
+                    center_y - radius_red,
+                    radius_red * 2.0,
+                    radius_red * 2.0
+                )
+            )
+            painter.setClipPath(clip_path)
+        
         items = self.engine.step(width, height)
         blend_mode = (
             self.engine.state.get("appearance", {}).get("blendMode", "source-over")
@@ -1449,12 +1480,13 @@ class _ViewWidgetBase:
             else:
                 painter.drawEllipse(QtCore.QRectF(item.sx - item.r, item.sy - item.r, item.r * 2, item.r * 2))
 
+        # Remove clipping for marker circles
+        painter.setClipping(False)
+        
         # Draw permanent concentric marker circles centred on the viewport
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
         painter.setBrush(QtCore.Qt.NoBrush)
 
-        center_x = width / 2.0
-        center_y = height / 2.0
         if width > 0 and height > 0:
             def _draw_marker_circle(color: QtGui.QColor, radius: float) -> None:
                 if radius <= 0.0:

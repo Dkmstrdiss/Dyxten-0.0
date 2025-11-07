@@ -107,6 +107,8 @@ DEFAULTS = dict(
         donutGravityRingOffset=4.0,
         orbitSpeed=1.0,
         markerCircles=dict(red=0.16, yellow=0.19, blue=0.22),
+        donutButtonSize=80,
+        donutRadiusRatio=0.35,
     ),
     donut=default_donut_config(),
     controller=dict(
@@ -1254,7 +1256,8 @@ TOOLTIPS = {
     "system.orbitSpeed":"Modifie la vitesse de rotation des particules autour des boutons du donut.",
     "system.markerCircles.red":"Ajuste le diamètre du cercle de repère rouge centré sur la fenêtre.",
     "system.markerCircles.yellow":"Ajuste le diamètre du cercle de repère jaune centré sur la fenêtre.",
-    "system.markerCircles.blue":"Ajuste le diamètre du cercle de repère bleu centré sur la fenêtre.",
+    "system.donutButtonSize":"Contrôle la taille des boutons du donut hub (en pixels).",
+    "system.donutRadiusRatio":"Ajuste le diamètre du cercle sur lequel sont disposés les boutons du donut hub (en fraction de la fenêtre). Contrôle également le diamètre du cercle de repère bleu.",
     "controller.tracks[].enabled":"Active ou désactive la piste correspondante pour appliquer la modulation.",
     "controller.tracks[].waveform":"Choisit la source de modulation pour la piste (forme mathématique, micro ou lecture système).",
     "controller.tracks[].amplitude":"Détermine l’intensité relative de la modulation autour du centre.",

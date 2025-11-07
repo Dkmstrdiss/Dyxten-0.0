@@ -518,6 +518,12 @@ class ControlWindow(QtWidgets.QMainWindow):
             if hub is not None:
                 try:
                     hub.update_donut_buttons(donut)
+                    # Update DonutHub geometry from system settings
+                    try:
+                        system_cfg = self.state.get("system", {})
+                        hub.update_geometry_from_system(system_cfg)
+                    except Exception:
+                        pass
                     hub.request_layout_update()
                 except Exception:
                     # fallback to view_win helper

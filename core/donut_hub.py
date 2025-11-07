@@ -147,7 +147,8 @@ class DonutHub(QtWidgets.QWidget):
         # angle offset (degrees) applied when positioning buttons
         self._angle_offset_deg = 0.0
 
-        # Donut geometry
+        # Donut geometry - use default radius ratio
+        self._radius_ratio = _DEFAULT_RADIUS_RATIO  # 0.35
         self.R_outer = 260
         self.R_inner = 160
         self.core_diam = 360
@@ -282,6 +283,52 @@ class DonutHub(QtWidgets.QWidget):
         """
         self._position_all()
 
+    def update_geometry_from_system(self, system_cfg: dict) -> None:
+        """Update button size and radius ratio from system configuration.
+        
+        Parameters
+        ----------
+        system_cfg : dict
+            System configuration containing donutButtonSize and donutRadiusRatio.
+        """
+        try:
+            # Update button size
+            new_size = int(system_cfg.get("donutButtonSize", 80))
+            new_size = max(20, min(200, new_size))
+            if new_size != self.icon_size:
+                self.icon_size = new_size
+                # Update existing buttons
+                for button in self.buttons:
+                    button.setFixedSize(self.icon_size, self.icon_size)
+                    button.setIconSize(QtCore.QSize(self.icon_size - 8, self.icon_size - 8))
+                    button.setStyleSheet(
+                        f"""
+                        QToolButton {{
+                            background: transparent;
+                            border: none;
+                            border-radius: {self.icon_size // 2}px;
+                        }}
+                        QToolButton:hover {{ background: rgba(255,255,255,0.04); }}
+                        """
+                    )
+            
+            # Update radius ratio
+            new_ratio = float(system_cfg.get("donutRadiusRatio", _DEFAULT_RADIUS_RATIO))
+            new_ratio = max(0.05, min(0.90, new_ratio))
+            self._radius_ratio = new_ratio
+            
+            # Update R_outer and R_inner for reference (though _position_all uses _radius_ratio now)
+            min_dim = min(self.width(), self.height())
+            if min_dim > 0:
+                radius_mid = int(min_dim * new_ratio)
+                self.R_inner = int(radius_mid * 0.85)
+                self.R_outer = int(radius_mid * 1.15)
+            
+            # Reposition buttons with new geometry
+            self._position_all()
+        except Exception:
+            pass
+
 
     # ------------------------------------------------------------------
     # Buttons
@@ -340,9 +387,15 @@ class DonutHub(QtWidgets.QWidget):
         # position Java core
         self.core.move(cx - self.core_diam // 2, cy - self.core_diam // 2)
 
+        # Calculate radius based on _radius_ratio and window size
+        min_dim = min(self.width(), self.height())
+        if min_dim > 0:
+            radius_mid = int(min_dim * self._radius_ratio)
+        else:
+            radius_mid = (self.R_outer + self.R_inner) // 2
+
         # position buttons along the ring
         total = len(self.buttons)
-        radius_mid = (self.R_outer + self.R_inner) // 2
         for index, button in enumerate(self.buttons):
             angle = math.radians(self._angle_offset_deg - 90 + index * (360.0 / total))
             x = int(cx + radius_mid * math.cos(angle) - self.icon_size / 2)
