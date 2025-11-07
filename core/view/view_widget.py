@@ -1012,8 +1012,10 @@ class DyxtenEngine:
         dist = self.state.get("distribution", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
         cell = max(1.0, dmin_px) if dmin_px > 0 else 1.0
-        donut_centers, donut_radii, fallback_orbit_radius = self._compute_donut_orbits(width, height)
-        donut_count = len(donut_centers)
+        # Disable orbital particle behaviour around donut buttons
+        # (requested: remove orbital particles and their functioning)
+        donut_centers, donut_radii, fallback_orbit_radius = [], [], 0.0
+        donut_count = 0
         try:
             gravity_strength = clamp01(float(system.get("donutGravityStrength", 1.0)))
         except (TypeError, ValueError):
@@ -1028,11 +1030,8 @@ class DyxtenEngine:
         except (TypeError, ValueError):
             ring_offset = 6.0
         ring_offset = clamp(ring_offset, -48.0, 120.0)
-        try:
-            orbit_speed_multiplier = float(system.get("orbitSpeed", 1.0))
-        except (TypeError, ValueError):
-            orbit_speed_multiplier = 1.0
-        orbit_speed_multiplier = max(0.0, orbit_speed_multiplier)
+        # Orbit speed multiplier is unused since orbital behaviour is disabled
+        orbit_speed_multiplier = 0.0
         if not self.base_points:
             return []
 
