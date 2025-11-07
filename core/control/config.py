@@ -107,8 +107,8 @@ DEFAULTS = dict(
         donutGravityRingOffset=4.0,
         orbitSpeed=1.0,
         markerCircles=dict(red=0.16, yellow=0.19, blue=0.22),
-        donutButtonSize=80,
-        donutRadiusRatio=0.35,
+        donutButtonSize=100,
+        donutRadiusRatio=0.25,
     ),
     donut=default_donut_config(),
     controller=dict(
