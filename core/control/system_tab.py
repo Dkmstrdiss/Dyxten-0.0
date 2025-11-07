@@ -53,7 +53,11 @@ class SystemTab(QtWidgets.QWidget):
         ]:
             if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
             else: w.valueChanged.connect(self.emit_delta)
-        for _container, _slider, spin in self._circle_controls.values():
+        for _container, slider, spin in self._circle_controls.values():
+            # Emit on both spin and slider changes. The slider updates the spin with
+            # a QSignalBlocker, so spin.valueChanged won't fire when dragging the slider.
+            # Hooking the slider ensures live updates in the view window.
+            slider.valueChanged.connect(self.emit_delta)
             spin.valueChanged.connect(self.emit_delta)
         register_linkable_widget(self.sp_Nmax, section="system", key="Nmax", tab="Système")
         register_linkable_widget(self.sp_dpr, section="system", key="dprClamp", tab="Système")

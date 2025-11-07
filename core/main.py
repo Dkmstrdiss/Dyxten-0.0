@@ -121,6 +121,7 @@ class ViewWindow(QtWidgets.QMainWindow):
     def __init__(self, screen: QtGui.QScreen):
         super().__init__(None)
         self._target_screen = screen
+        self._external_layout = False  # when True, don't auto-center/resize on show
         self.view = DyxtenViewWidget(self)
 
         w = QtWidgets.QWidget()
@@ -179,8 +180,13 @@ class ViewWindow(QtWidgets.QMainWindow):
         self.setGeometry(left, top, width, height)
 
     def showEvent(self, event: QtGui.QShowEvent):
-        self._apply_screen_geometry(self._target_screen)
+        # Respect external layout requests (e.g., side-by-side tiling)
+        if not getattr(self, "_external_layout", False):
+            self._apply_screen_geometry(self._target_screen)
         super().showEvent(event)
+
+    def set_external_layout(self, enabled: bool) -> None:
+        self._external_layout = bool(enabled)
 
     def set_transparent(self, enabled: bool):
         enabled = bool(enabled)
@@ -358,9 +364,38 @@ def main(headless: bool = False) -> int:
     screens = QtGui.QGuiApplication.screens()
     primary = QtGui.QGuiApplication.primaryScreen()
     second = screens[1] if len(screens) > 1 else primary
+
+    # Create both windows targeting the secondary screen
     view_win = ViewWindow(second)
+    view_win.set_external_layout(True)
+    control_win = ControlWindow(app, second, view_win)
+
+    # Arrange side-by-side on the secondary screen: View (left), Control (right)
+    try:
+        geo = second.availableGeometry()
+        half_w = max(200, geo.width() // 2)
+        full_h = max(200, geo.height())
+        left_x = geo.left()
+        top_y = geo.top()
+
+        # View window on the left half
+        if view_win.windowHandle():
+            view_win.windowHandle().setScreen(second)
+        view_win.setGeometry(left_x, top_y, half_w, full_h)
+
+        # Control window on the right half
+        if control_win.windowHandle():
+            control_win.windowHandle().setScreen(second)
+        right_x = left_x + half_w
+        right_w = geo.width() - (right_x - left_x)
+        control_win.resize(right_w, full_h)
+        control_win.move(right_x, top_y)
+    except Exception:
+        # Fallback: let each window manage its own geometry
+        pass
+
+    # Show after arranging; ViewWindow won't auto-center when external layout is enabled
     view_win.show()
-    _ = ControlWindow(app, second, view_win)
     # Return the application's exit code instead of calling sys.exit here.
     # This allows callers (tests, importers) to invoke main() without
     # raising SystemExit; the script entrypoint below will still
