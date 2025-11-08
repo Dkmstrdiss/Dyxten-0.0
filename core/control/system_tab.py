@@ -23,12 +23,24 @@ class SystemTab(QtWidgets.QWidget):
         outer.addWidget(container)
         self.sp_Nmax = QtWidgets.QSpinBox(); self.sp_Nmax.setRange(100,500000); self.sp_Nmax.setValue(d["Nmax"])
         self.sp_dpr  = QtWidgets.QDoubleSpinBox(); self.sp_dpr.setRange(1.0,2.0); self.sp_dpr.setSingleStep(0.1); self.sp_dpr.setValue(d["dprClamp"])
-    # Sliders retirés: gravité/anneau/orbite (désactivés dans la vue)
+        self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
+        self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
+        
+        row(fl, "Particules max", self.sp_Nmax, TOOLTIPS["system.Nmax"], lambda: self.sp_Nmax.setValue(d["Nmax"]))
+        row(fl, "Limite haute résolution", self.sp_dpr, TOOLTIPS["system.dprClamp"], lambda: self.sp_dpr.setValue(d["dprClamp"]))
+        row(fl, "Tri par profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
+        row(fl, "Fenêtre transparente", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
+
+        # Encadré pour les contrôles du donut hub et orbite
+        groupbox = QtWidgets.QGroupBox("Paramètres du donut hub et orbite")
+        groupbox.setStyleSheet("QGroupBox { color: white; }")
+        groupbox_layout = QtWidgets.QFormLayout(groupbox)
+        groupbox_layout.setContentsMargins(8, 8, 8, 8)
+        outer.addWidget(groupbox)
+        
         self._button_size_widget, self._button_size_slider, self._button_size_spin = self._create_button_size_controls(d.get("donutButtonSize", 80))
         self._radius_ratio_widget, self._radius_ratio_slider, self._radius_ratio_spin = self._create_radius_ratio_controls(d.get("donutRadiusRatio", 0.35))
         self._circle_controls = self._create_circle_controls(d.get("markerCircles", {}))
-        self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
-        self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
         
         # Menu déroulant unique pour accrochage/décrochage
         self.combo_orbit_mode = QtWidgets.QComboBox()
@@ -41,16 +53,11 @@ class SystemTab(QtWidgets.QWidget):
         else:
             self.combo_orbit_mode.setCurrentText("default")
         
-        row(fl, "Particules max", self.sp_Nmax, TOOLTIPS["system.Nmax"], lambda: self.sp_Nmax.setValue(d["Nmax"]))
-        row(fl, "Limite haute résolution", self.sp_dpr, TOOLTIPS["system.dprClamp"], lambda: self.sp_dpr.setValue(d["dprClamp"]))
-    # Contrôles retirés de l'UI : Gravité donut (force/progression), Rayon orbital, Vitesse orbitale
-        row(fl, "Taille des boutons", self._button_size_widget, TOOLTIPS["system.donutButtonSize"], lambda: self._set_button_size(d.get("donutButtonSize", 80)))
-        row(fl, "Diamètre du donut hub", self._radius_ratio_widget, TOOLTIPS["system.donutRadiusRatio"], lambda: self._set_radius_ratio(d.get("donutRadiusRatio", 0.35)))
-        row(fl, "Diamètre cercle rouge", self._circle_controls["red"][0], TOOLTIPS["system.markerCircles.red"], lambda: self._set_circle_value("red", d["markerCircles"]["red"]))
-        row(fl, "Diamètre cercle jaune", self._circle_controls["yellow"][0], TOOLTIPS["system.markerCircles.yellow"], lambda: self._set_circle_value("yellow", d["markerCircles"]["yellow"]))
-        row(fl, "Mode accrochage/décrochage orbite", self.combo_orbit_mode, TOOLTIPS["system.orbiterSnapMode"], lambda: self.combo_orbit_mode.setCurrentText(snap_mode))
-        row(fl, "Tri par profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
-        row(fl, "Fenêtre transparente", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
+        row(groupbox_layout, "Taille des boutons", self._button_size_widget, TOOLTIPS["system.donutButtonSize"], lambda: self._set_button_size(d.get("donutButtonSize", 80)))
+        row(groupbox_layout, "Diamètre du donut hub", self._radius_ratio_widget, TOOLTIPS["system.donutRadiusRatio"], lambda: self._set_radius_ratio(d.get("donutRadiusRatio", 0.35)))
+        row(groupbox_layout, "Diamètre cercle rouge", self._circle_controls["red"][0], TOOLTIPS["system.markerCircles.red"], lambda: self._set_circle_value("red", d["markerCircles"]["red"]))
+        row(groupbox_layout, "Diamètre cercle jaune", self._circle_controls["yellow"][0], TOOLTIPS["system.markerCircles.yellow"], lambda: self._set_circle_value("yellow", d["markerCircles"]["yellow"]))
+        row(groupbox_layout, "Mode accrochage/décrochage orbite", self.combo_orbit_mode, TOOLTIPS["system.orbiterSnapMode"], lambda: self.combo_orbit_mode.setCurrentText(snap_mode))
         for w in [
             self.sp_Nmax,
             self.sp_dpr,
