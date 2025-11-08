@@ -606,6 +606,20 @@ class DyxtenEngine:
         self._last_step_note = ""
         self._marker_radii: Tuple[float, float, float] = (0.0, 0.0, 0.0)
         self._donut_layout: List[Tuple[float, float, float]] = []
+        # Empreintes persistantes déposées par les particules lorsqu'elles
+        # franchissent le bord du cercle rouge. Chaque entrée :
+        # (x, y, QColor, rayon, timestamp_ms)
+        self._imprints: List[Tuple[float, float, QtGui.QColor, float, float]] = []
+        # Positions précédentes des particules pour détecter un passage du bord
+        # clé = seed (index de particule), valeur = (sx, sy, dist_center)
+        self._last_particle_positions: Dict[int, Tuple[float, float, float]] = {}
+        # Limite de sécurité pour éviter une croissance mémoire illimitée.
+        self._max_imprints = 5000
+        # Particules orbitales déclenchées par chaque empreinte
+        self._orbiters: List[Dict[str, object]] = []
+        # Positions calculées pour affichage à la dernière frame: (sx, sy, QColor, r, alpha)
+        self._orbiters_draw: List[Tuple[float, float, QtGui.QColor, float, float]] = []
+        self._max_orbiters = 512
         self.rebuild_geometry()
 
     # ------------------------------------------------------------------ helpers
@@ -1222,6 +1236,10 @@ class DyxtenEngine:
         opacity = float(appearance.get("opacity", 1.0) or 1.0)
         alpha_depth = float(appearance.get("alphaDepth", 0.0) or 0.0)
 
+        # Check for collisions with red circle mask and create imprints
+        collision_threshold = radius_red * 0.98  # Slightly inside the red circle
+        imprint_radius = float(self.state.get("appearance", {}).get("px", 2.0) or 2.0) * 1.5
+        
         for item in items:
             base_color = self._pick_color(item, now)
             visibility = 1.0
@@ -1232,6 +1250,165 @@ class DyxtenEngine:
             else:
                 depth_alpha = 1.0
             item.alpha = clamp01(opacity * depth_alpha * clamp01(visibility))
+            
+            # Detect collision with red circle boundary
+            if radius_red > 0 and item.role == "cloud":
+                particle_idx = item.world.seed
+                dist_from_center = math.hypot(item.sx - cx, item.sy - cy)
+                
+                # Check if particle is near or crossing the red circle boundary
+                if abs(dist_from_center - collision_threshold) < item.r * 2.0:
+                    # Check if particle was previously inside and is now outside (or vice versa)
+                    prev_pos = self._last_particle_positions.get(particle_idx)
+                    if prev_pos is not None:
+                        prev_dist = prev_pos[2]
+                        # Collision detected: particle crossed the boundary
+                        if (prev_dist < collision_threshold and dist_from_center >= collision_threshold) or \
+                           (prev_dist >= collision_threshold and dist_from_center < collision_threshold):
+                            # Create imprint at collision point
+                            angle = math.atan2(item.sy - cy, item.sx - cx)
+                            collision_x = cx + math.cos(angle) * collision_threshold
+                            collision_y = cy + math.sin(angle) * collision_threshold
+                            self._imprints.append((collision_x, collision_y, item.color, imprint_radius, now))
+                            # Appliquer limite mémoire douce
+                            if len(self._imprints) > self._max_imprints:
+                                # Conserver seulement les empreintes les plus récentes
+                                self._imprints = self._imprints[-self._max_imprints:]
+                            # Créer un orbiteur lié à cette empreinte
+                            try:
+                                centers, radii, fallback_orbit_radius = self._compute_donut_orbits(width, height)
+                                if centers:
+                                    bx_idx = 0
+                                    best_d2 = float("inf")
+                                    for i_btn, (bx_c, by_c) in enumerate(centers):
+                                        d2 = (collision_x - bx_c) ** 2 + (collision_y - by_c) ** 2
+                                        if d2 < best_d2:
+                                            best_d2 = d2
+                                            bx_idx = i_btn
+                                    bx, by = centers[bx_idx]
+                                    base_button_r = 0.0
+                                    if bx_idx < len(radii):
+                                        base_button_r = float(radii[bx_idx]) or 0.0
+                                    try:
+                                        ring_offset = float(self.state.get("system", {}).get("donutGravityRingOffset", 6.0))
+                                    except (TypeError, ValueError):
+                                        ring_offset = 6.0
+                                    orbit_r = max(8.0, (base_button_r or fallback_orbit_radius) + ring_offset)
+                                else:
+                                    bx, by = cx, cy
+                                    orbit_r = max(24.0, min(width, height) * 0.05)
+                                ang0 = math.atan2(collision_y - by, collision_x - bx)
+                                try:
+                                    orbit_speed_factor = float(self.state.get("system", {}).get("orbitSpeed", 1.0))
+                                except (TypeError, ValueError):
+                                    orbit_speed_factor = 1.0
+                                angle_speed = 1.8 * orbit_speed_factor
+                                if len(self._orbiters) < self._max_orbiters:
+                                    self._orbiters.append({
+                                        "imprint": (collision_x, collision_y),
+                                        "imprint_time": float(now),
+                                        "color": QtGui.QColor(item.color),
+                                        "r": max(1.0, item.r * 0.85),
+                                        "phase": "out",
+                                        "t": 0.0,
+                                        "duration_out": 700.0,
+                                        "duration_back": 700.0,
+                                        "orbit_center": (bx, by),
+                                        "orbit_radius": float(orbit_r),
+                                        "angle": float(ang0),
+                                        "angle_speed": float(angle_speed),
+                                        # Exiger au moins un tour complet (2π rad) avant retour
+                                        "angle_accum": 0.0,
+                                        "required_turns": 1.0,
+                                        # Sécurité si angle_speed trop faible
+                                        "orbit_elapsed_ms": 0.0,
+                                        "max_orbit_ms": 4000.0,
+                                        "pos_orbit": (bx + math.cos(ang0) * orbit_r, by + math.sin(ang0) * orbit_r),
+                                    })
+                            except Exception:
+                                pass
+                
+                # Update particle position tracking
+                self._last_particle_positions[particle_idx] = (item.sx, item.sy, dist_from_center)
+
+        # Mise à jour des orbiters
+        orbiters_draw: List[Tuple[float, float, QtGui.QColor, float, float]] = []
+        if self._orbiters:
+            survivors: List[Dict[str, object]] = []
+            for ob in self._orbiters:
+                try:
+                    phase = ob.get("phase", "out")  # type: ignore[assignment]
+                    t_phase = float(ob.get("t", 0.0))
+                    ix, iy = ob.get("imprint", (cx, cy))  # type: ignore[assignment]
+                    bx, by = ob.get("orbit_center", (cx, cy))  # type: ignore[assignment]
+                    orbit_r = float(ob.get("orbit_radius", 32.0))
+                    angle = float(ob.get("angle", 0.0))
+                    angle_speed = float(ob.get("angle_speed", 1.5))
+                    pos_orbit = ob.get("pos_orbit")  # type: ignore[assignment]
+                    if not isinstance(pos_orbit, tuple) or len(pos_orbit) != 2:
+                        pos_orbit = (bx + math.cos(angle) * orbit_r, by + math.sin(angle) * orbit_r)
+                    px, py = float(pos_orbit[0]), float(pos_orbit[1])
+                    r_draw = float(ob.get("r", 2.0))
+                    qcolor = ob.get("color", QtGui.QColor("#FFFFFF"))  # type: ignore[assignment]
+                    if not isinstance(qcolor, QtGui.QColor):
+                        qcolor = QtGui.QColor(str(qcolor))
+                    if phase == "out":
+                        dur = max(1.0, float(ob.get("duration_out", 600.0)))
+                        t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
+                        sx = ix + (px - ix) * t_phase
+                        sy = iy + (py - iy) * t_phase
+                        if t_phase >= 1.0:
+                            phase = "orbit"
+                            t_phase = 0.0
+                    elif phase == "orbit":
+                        dtheta = angle_speed * dt
+                        angle += dtheta
+                        px = bx + math.cos(angle) * orbit_r
+                        py = by + math.sin(angle) * orbit_r
+                        sx, sy = px, py
+                        ob["angle"] = angle
+                        ob["pos_orbit"] = (px, py)
+                        # Accumuler l'angle parcouru et la durée pour garantir >= 2π
+                        accum = float(ob.get("angle_accum", 0.0)) + abs(dtheta)
+                        ob["angle_accum"] = accum
+                        elapsed = float(ob.get("orbit_elapsed_ms", 0.0)) + dt * 1000.0
+                        ob["orbit_elapsed_ms"] = elapsed
+                        target = max(0.5, float(ob.get("required_turns", 1.0))) * (2.0 * math.pi)
+                        max_ms = float(ob.get("max_orbit_ms", 4000.0))
+                        if accum >= target or elapsed >= max_ms:
+                            phase = "back"
+                            t_phase = 0.0
+                    else:  # back
+                        dur = max(1.0, float(ob.get("duration_back", 600.0)))
+                        t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
+                        sx = px + (ix - px) * t_phase
+                        sy = py + (iy - py) * t_phase
+                        if t_phase >= 1.0:
+                            # Suppression de l'empreinte associée à l'arrivée
+                            try:
+                                itime = float(ob.get("imprint_time", -1.0))
+                                # Supprimer l'entrée d'empreinte avec mêmes (x,y,time) (tolérance spatiale)
+                                eps = 0.75
+                                filtered = []
+                                for ex, ey, ecol, er, et in self._imprints:
+                                    if itime >= 0.0 and abs(et - itime) < 1e-6 and (abs(ex - ix) <= eps and abs(ey - iy) <= eps):
+                                        # skip => removed
+                                        continue
+                                    filtered.append((ex, ey, ecol, er, et))
+                                self._imprints = filtered
+                            except Exception:
+                                pass
+                            phase = "done"
+                    if phase != "done":
+                        ob["phase"] = phase
+                        ob["t"] = t_phase
+                        alpha_o = 0.95 if phase == "orbit" else 0.85
+                        orbiters_draw.append((sx, sy, qcolor, r_draw, alpha_o))
+                        survivors.append(ob)
+                except Exception:
+                    continue
+            self._orbiters = survivors
+        self._orbiters_draw = orbiters_draw
 
         if self.state.get("system", {}).get("depthSort", True):
             items.sort(key=lambda it: it.depth, reverse=True)
@@ -1452,6 +1629,37 @@ class _ViewWidgetBase:
         # Apply circular mask based on red circle
         center_x = width / 2.0
         center_y = height / 2.0
+        
+        # Draw imprints first (under everything)
+        if self.engine._imprints:
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+            painter.setPen(QtCore.Qt.NoPen)
+            current_time = self.engine.now_ms
+            imprints_to_keep = []
+            for imp_x, imp_y, imp_color, imp_radius, imp_time in self.engine._imprints:
+                # Fade out old imprints over time (optional, or keep them permanent)
+                age_sec = (current_time - imp_time) / 1000.0
+                # Make imprints permanent by not fading them
+                alpha = 0.6  # Permanent opacity
+                if alpha > 0.01:
+                    color = QtGui.QColor(imp_color)
+                    color.setAlphaF(alpha)
+                    painter.setBrush(color)
+                    painter.drawEllipse(QtCore.QRectF(imp_x - imp_radius, imp_y - imp_radius, imp_radius * 2, imp_radius * 2))
+                    imprints_to_keep.append((imp_x, imp_y, imp_color, imp_radius, imp_time))
+            self.engine._imprints = imprints_to_keep
+
+        # Dessiner les orbiters avant le clipping (ils peuvent dépasser le cercle)
+        if self.engine._orbiters_draw:
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+            painter.setPen(QtCore.Qt.NoPen)
+            for sx, sy, color, r_draw, alpha in self.engine._orbiters_draw:
+                col = QtGui.QColor(color)
+                col.setAlphaF(clamp01(alpha))
+                painter.setBrush(col)
+                painter.drawEllipse(QtCore.QRectF(sx - r_draw, sy - r_draw, r_draw * 2, r_draw * 2))
+        
+        # Apply circular mask based on red circle
         if radius_red > 0:
             # Create circular clipping path
             clip_path = QtGui.QPainterPath()
