@@ -1,7 +1,15 @@
 Traceback (most recent call last):
-  File "D:\Dyxten-0.0\core\donut_hub.py", line 373, in resizeEvent
-    self._position_all()
-  File "D:\Dyxten-0.0\core\donut_hub.py", line 347, in _position_all
-    if isinstance(self._buttons_orbit_radius_px, (int, float)) and self._buttons_orbit_radius_px > 0:
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'DonutHub' object has no attribute '_buttons_orbit_radius_px'
+  File "d:\Dyxten-0.0\core\main.py", line 408, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "d:\Dyxten-0.0\core\main.py", line 371, in main
+    control_win = ControlWindow(app, second, view_win)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\control\control_window.py", line 274, in __init__
+    self.load_profile(self.current_profile)
+  File "D:\Dyxten-0.0\core\control\control_window.py", line 322, in load_profile
+    self.tab_system.set_defaults(self.state.get("system"))
+  File "D:\Dyxten-0.0\core\control\system_tab.py", line 129, in set_defaults
+    with QtCore.QSignalBlocker(self.combo_snap_mode):
+                               ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'SystemTab' object has no attribute 'combo_snap_mode'

@@ -1047,10 +1047,10 @@ class DyxtenEngine:
             gravity_falloff = 1.0
         gravity_falloff = clamp(gravity_falloff, 0.2, 5.0)
         try:
-            ring_offset = float(system.get("donutGravityRingOffset", 6.0))
+            ring_offset = float(system.get("donutGravityRingOffset", 12.0))
         except (TypeError, ValueError):
-            ring_offset = 6.0
-        ring_offset = clamp(ring_offset, -48.0, 120.0)
+            ring_offset = 12.0
+        ring_offset = clamp(ring_offset, 0.0, 150.0)
         # Orbit speed multiplier is unused since orbital behaviour is disabled
         orbit_speed_multiplier = 0.0
         if not self.base_points:
@@ -1289,20 +1289,15 @@ class DyxtenEngine:
                                     base_button_r = 0.0
                                     if bx_idx < len(radii):
                                         base_button_r = float(radii[bx_idx]) or 0.0
-                                    try:
-                                        ring_offset = float(self.state.get("system", {}).get("donutGravityRingOffset", 6.0))
-                                    except (TypeError, ValueError):
-                                        ring_offset = 6.0
+                                    # Ignorer la config système : utiliser un offset fixe pour l'orbite
+                                    ring_offset = 12.0
                                     orbit_r = max(8.0, (base_button_r or fallback_orbit_radius) + ring_offset)
                                 else:
                                     bx, by = cx, cy
                                     orbit_r = max(24.0, min(width, height) * 0.05)
                                 ang0 = math.atan2(collision_y - by, collision_x - bx)
-                                try:
-                                    orbit_speed_factor = float(self.state.get("system", {}).get("orbitSpeed", 1.0))
-                                except (TypeError, ValueError):
-                                    orbit_speed_factor = 1.0
-                                angle_speed = 1.8 * orbit_speed_factor
+                                # Vitesse d'orbite fixe (slider retiré de l'onglet Système)
+                                angle_speed = 1.6
                                 if len(self._orbiters) < self._max_orbiters:
                                     self._orbiters.append({
                                         "imprint": (collision_x, collision_y),
@@ -1333,7 +1328,12 @@ class DyxtenEngine:
 
         # Mise à jour des orbiters
         orbiters_draw: List[Tuple[float, float, QtGui.QColor, float, float]] = []
-        if self._orbiters:
+        # Désactiver tout fonctionnement orbital si le mode est 'none'
+        snap_mode = self.state.get("system", {}).get("orbiterSnapMode", "default")
+        if snap_mode == "none":
+            self._orbiters = []
+            self._orbiters_draw = []
+        elif self._orbiters:
             survivors: List[Dict[str, object]] = []
             for ob in self._orbiters:
                 try:
@@ -1352,11 +1352,19 @@ class DyxtenEngine:
                     qcolor = ob.get("color", QtGui.QColor("#FFFFFF"))  # type: ignore[assignment]
                     if not isinstance(qcolor, QtGui.QColor):
                         qcolor = QtGui.QColor(str(qcolor))
+                    # Récupérer les modes d'animation depuis le state
+                    detach_mode = self.state.get("system", {}).get("orbiterDetachMode", "default")
+                    transition_mode = snap_mode if phase == "out" else detach_mode
+                    # ...existing code...
                     if phase == "out":
                         dur = max(1.0, float(ob.get("duration_out", 600.0)))
                         t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
-                        sx = ix + (px - ix) * t_phase
-                        sy = iy + (py - iy) * t_phase
+                        if transition_mode == "none":
+                            t_eased = t_phase
+                        else:
+                            t_eased = 1.0 - pow(1.0 - t_phase, 3.0)
+                        sx = ix + (px - ix) * t_eased
+                        sy = iy + (py - iy) * t_eased
                         if t_phase >= 1.0:
                             phase = "orbit"
                             t_phase = 0.0
@@ -1368,7 +1376,6 @@ class DyxtenEngine:
                         sx, sy = px, py
                         ob["angle"] = angle
                         ob["pos_orbit"] = (px, py)
-                        # Accumuler l'angle parcouru et la durée pour garantir >= 2π
                         accum = float(ob.get("angle_accum", 0.0)) + abs(dtheta)
                         ob["angle_accum"] = accum
                         elapsed = float(ob.get("orbit_elapsed_ms", 0.0)) + dt * 1000.0
@@ -1378,21 +1385,22 @@ class DyxtenEngine:
                         if accum >= target or elapsed >= max_ms:
                             phase = "back"
                             t_phase = 0.0
-                    else:  # back
+                    else:
                         dur = max(1.0, float(ob.get("duration_back", 600.0)))
                         t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
-                        sx = px + (ix - px) * t_phase
-                        sy = py + (iy - py) * t_phase
+                        if transition_mode == "none":
+                            t_eased = t_phase
+                        else:
+                            t_eased = 1.0 - pow(1.0 - t_phase, 3.0)
+                        sx = px + (ix - px) * t_eased
+                        sy = py + (iy - py) * t_eased
                         if t_phase >= 1.0:
-                            # Suppression de l'empreinte associée à l'arrivée
                             try:
                                 itime = float(ob.get("imprint_time", -1.0))
-                                # Supprimer l'entrée d'empreinte avec mêmes (x,y,time) (tolérance spatiale)
                                 eps = 0.75
                                 filtered = []
                                 for ex, ey, ecol, er, et in self._imprints:
                                     if itime >= 0.0 and abs(et - itime) < 1e-6 and (abs(ex - ix) <= eps and abs(ey - iy) <= eps):
-                                        # skip => removed
                                         continue
                                     filtered.append((ex, ey, ecol, er, et))
                                 self._imprints = filtered
@@ -1402,13 +1410,18 @@ class DyxtenEngine:
                     if phase != "done":
                         ob["phase"] = phase
                         ob["t"] = t_phase
-                        alpha_o = 0.95 if phase == "orbit" else 0.85
+                        if phase == "orbit":
+                            alpha_o = 0.95
+                        elif phase == "out":
+                            alpha_o = 0.5 + 0.45 * t_phase
+                        else:
+                            alpha_o = 0.95 - 0.10 * t_phase
                         orbiters_draw.append((sx, sy, qcolor, r_draw, alpha_o))
                         survivors.append(ob)
                 except Exception:
                     continue
             self._orbiters = survivors
-        self._orbiters_draw = orbiters_draw
+            self._orbiters_draw = orbiters_draw
 
         if self.state.get("system", {}).get("depthSort", True):
             items.sort(key=lambda it: it.depth, reverse=True)
