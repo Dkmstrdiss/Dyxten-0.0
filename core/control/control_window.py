@@ -15,6 +15,7 @@ try:
     from .dynamics_tab import DynamicsTab
     from .distribution_tab import DistributionTab
     from .system_tab import SystemTab
+    from .orbit_tab import OrbitTab
     from .link_controller_tab import LinkControllerTab
     from .profile_manager import ProfileManager, SubProfileManager
     from ..donut_hub import default_donut_config, sanitize_donut_state
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.dynamics_tab import DynamicsTab  # type: ignore
     from core.control.distribution_tab import DistributionTab  # type: ignore
     from core.control.system_tab import SystemTab  # type: ignore
+    from core.control.orbit_tab import OrbitTab  # type: ignore
     from core.control.link_controller_tab import LinkControllerTab  # type: ignore
     from core.control.profile_manager import ProfileManager, SubProfileManager  # type: ignore
     from core.donut_hub import default_donut_config, sanitize_donut_state  # type: ignore
@@ -190,6 +192,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_appearance = AppearanceTab()
         self.tab_dynamics = DynamicsTab()
         self.tab_distribution = DistributionTab()
+        self.tab_orbit = OrbitTab()
         self.tab_system = SystemTab()
         self.tab_controller = LinkControllerTab()
 
@@ -199,6 +202,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_appearance,
             self.tab_dynamics,
             self.tab_distribution,
+            self.tab_orbit,
             self.tab_system,
             self.tab_controller,
         ]:
@@ -209,6 +213,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_appearance.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_dynamics.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_distribution.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_orbit.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_system.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_controller.attach_subprofile_manager(self.subprofile_mgr)
 
@@ -219,6 +224,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.tab_appearance, "Apparence")
         self.tabs.addTab(self.tab_dynamics, "Dynamique")
         self.tabs.addTab(self.tab_distribution, "Distribution")
+        self.tabs.addTab(self.tab_orbit, "Trajet orbitale")
         self.tabs.addTab(self.tab_system, "Système")
         controller_tab = self._wrap_scrollable_tab(self.tab_controller)
         self.tabs.addTab(controller_tab, "Link to Controller")
@@ -319,6 +325,7 @@ class ControlWindow(QtWidgets.QMainWindow):
                 self.state.get("distribution"),
                 self.state.get("mask"),
             )
+            self.tab_orbit.set_defaults(self.state.get("orbit"))
             self.tab_system.set_defaults(self.state.get("system"))
             self.tab_controller.set_defaults(self.state.get("controller"))
         finally:
@@ -342,6 +349,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             dynamics=self.tab_dynamics.collect(),
             distribution=self.tab_distribution.collect_distribution(),
             mask=self.tab_distribution.collect_mask(),
+            orbit=self.tab_orbit.collect(),
             system=self.tab_system.collect(),
             controller=self.tab_controller.collect(),
             donut=copy.deepcopy(self.state.get("donut", default_donut_config())),
@@ -557,6 +565,28 @@ class ControlWindow(QtWidgets.QMainWindow):
             max_key = f"rot{axis}Max"
             if max_key not in dynamics:
                 dynamics[max_key] = defaults.get(max_key, 360.0)
+        system_state = state.setdefault("system", {})
+        orbit_state = state.setdefault("orbit", {})
+        orbit_defaults = DEFAULTS.get("orbit", {})
+        legacy_orbit_keys = [
+            "donutGravityStrength",
+            "donutGravityFalloff",
+            "donutGravityRingOffset",
+            "orbitSpeed",
+            "orbiterSnapMode",
+            "orbiterDetachMode",
+            "orbiterApproachTrajectory",
+            "orbiterReturnTrajectory",
+            "orbiterApproachDuration",
+            "orbiterReturnDuration",
+            "orbiterRequiredTurns",
+            "orbiterMaxOrbitMs",
+        ]
+        for key in legacy_orbit_keys:
+            if key in system_state and key not in orbit_state:
+                orbit_state[key] = system_state.pop(key)
+        for key, value in orbit_defaults.items():
+            orbit_state.setdefault(key, value)
         state["donut"] = sanitize_donut_state(state.get("donut"))
 
     # ----------------------------------------------------------------- thème & bannière

@@ -214,15 +214,32 @@
       "dprClamp": 2.0,
       "depthSort": true,
       "transparent": true,
-      "donutGravityStrength": 1.0,
-      "donutGravityFalloff": 1.0,
-      "donutGravityRingOffset": 4.0,
-      "orbitSpeed": 1.0,
       "markerCircles": {
         "red": 0.16,
         "yellow": 0.19,
         "blue": 0.22
       }
+    }
+  },
+  "orbit": {
+    "Default": {
+      "donutGravityStrength": 1.0,
+      "donutGravityFalloff": 1.0,
+      "donutGravityRingOffset": 12.0,
+      "orbitSpeed": 1.0,
+      "orbiterTransitionMode": "default",
+      "orbiterSnapMode": "default",
+      "orbiterDetachMode": "default",
+      "orbiterTrajectory": "line",
+      "orbiterApproachTrajectory": "line",
+      "orbiterReturnTrajectory": "line",
+      "orbiterTransitionDuration": 700.0,
+      "orbiterApproachDuration": 700.0,
+      "orbiterReturnDuration": 700.0,
+      "orbiterTrajectoryBend": 0.35,
+      "orbiterTrajectoryArcDirection": "auto",
+      "orbiterRequiredTurns": 1.0,
+      "orbiterMaxOrbitMs": 4000.0
     }
   }
 }

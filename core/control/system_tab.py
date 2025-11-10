@@ -31,33 +31,21 @@ class SystemTab(QtWidgets.QWidget):
         row(fl, "Tri par profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
         row(fl, "Fenêtre transparente", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
 
-        # Encadré pour les contrôles du donut hub et orbite
-        groupbox = QtWidgets.QGroupBox("Paramètres du donut hub et orbite")
+        # Encadré pour les contrôles du donut hub
+        groupbox = QtWidgets.QGroupBox("Paramètres du donut hub")
         groupbox.setStyleSheet("QGroupBox { color: white; }")
         groupbox_layout = QtWidgets.QFormLayout(groupbox)
         groupbox_layout.setContentsMargins(8, 8, 8, 8)
         outer.addWidget(groupbox)
-        
+
         self._button_size_widget, self._button_size_slider, self._button_size_spin = self._create_button_size_controls(d.get("donutButtonSize", 80))
         self._radius_ratio_widget, self._radius_ratio_slider, self._radius_ratio_spin = self._create_radius_ratio_controls(d.get("donutRadiusRatio", 0.35))
         self._circle_controls = self._create_circle_controls(d.get("markerCircles", {}))
-        
-        # Menu déroulant unique pour accrochage/décrochage
-        self.combo_orbit_mode = QtWidgets.QComboBox()
-        self.combo_orbit_mode.addItems(["default", "none"])
-        # Si les deux modes sont identiques, on prend la valeur, sinon on prend 'default'
-        snap_mode = d.get("orbiterSnapMode", "default")
-        detach_mode = d.get("orbiterDetachMode", "default")
-        if snap_mode == detach_mode:
-            self.combo_orbit_mode.setCurrentText(snap_mode)
-        else:
-            self.combo_orbit_mode.setCurrentText("default")
         
         row(groupbox_layout, "Taille des boutons", self._button_size_widget, TOOLTIPS["system.donutButtonSize"], lambda: self._set_button_size(d.get("donutButtonSize", 80)))
         row(groupbox_layout, "Diamètre du donut hub", self._radius_ratio_widget, TOOLTIPS["system.donutRadiusRatio"], lambda: self._set_radius_ratio(d.get("donutRadiusRatio", 0.35)))
         row(groupbox_layout, "Diamètre cercle rouge", self._circle_controls["red"][0], TOOLTIPS["system.markerCircles.red"], lambda: self._set_circle_value("red", d["markerCircles"]["red"]))
         row(groupbox_layout, "Diamètre cercle jaune", self._circle_controls["yellow"][0], TOOLTIPS["system.markerCircles.yellow"], lambda: self._set_circle_value("yellow", d["markerCircles"]["yellow"]))
-        row(groupbox_layout, "Mode accrochage/décrochage orbite", self.combo_orbit_mode, TOOLTIPS["system.orbiterSnapMode"], lambda: self.combo_orbit_mode.setCurrentText(snap_mode))
         for w in [
             self.sp_Nmax,
             self.sp_dpr,
@@ -65,7 +53,6 @@ class SystemTab(QtWidgets.QWidget):
             self._radius_ratio_spin,
             self.chk_depthSort,
             self.chk_transparent,
-            self.combo_orbit_mode,
         ]:
             if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
             elif isinstance(w, QtWidgets.QComboBox): w.currentTextChanged.connect(self.emit_delta)
@@ -80,16 +67,10 @@ class SystemTab(QtWidgets.QWidget):
         register_linkable_widget(self.sp_dpr, section="system", key="dprClamp", tab="Système")
         register_linkable_widget(self._button_size_spin, section="system", key="donutButtonSize", tab="Système")
         register_linkable_widget(self._radius_ratio_spin, section="system", key="donutRadiusRatio", tab="Système")
-        register_linkable_widget(self.combo_orbit_mode, section="system", key="orbiterSnapMode", tab="Système")
-        register_linkable_widget(self.combo_orbit_mode, section="system", key="orbiterDetachMode", tab="Système")
         self._sync_subprofile_state()
     def collect(self):
-        # Un seul mode pour accrochage/décrochage
-        orbit_mode = self.combo_orbit_mode.currentText()
         return dict(
             Nmax=self.sp_Nmax.value(),
-            orbiterSnapMode=orbit_mode,
-            orbiterDetachMode=orbit_mode,
             dprClamp=self.sp_dpr.value(),
             donutButtonSize=self._button_size_spin.value(),
             donutRadiusRatio=self._radius_ratio_spin.value(),
@@ -133,14 +114,6 @@ class SystemTab(QtWidgets.QWidget):
             self.chk_depthSort.setChecked(bool(cfg.get("depthSort", d["depthSort"])))
         with QtCore.QSignalBlocker(self.chk_transparent):
             self.chk_transparent.setChecked(bool(cfg.get("transparent", d["transparent"])))
-        with QtCore.QSignalBlocker(self.combo_orbit_mode):
-            # On prend le mode si les deux sont identiques, sinon 'default'
-            snap_mode = str(cfg.get("orbiterSnapMode", d.get("orbiterSnapMode", "default")))
-            detach_mode = str(cfg.get("orbiterDetachMode", d.get("orbiterDetachMode", "default")))
-            if snap_mode == detach_mode:
-                self.combo_orbit_mode.setCurrentText(snap_mode)
-            else:
-                self.combo_orbit_mode.setCurrentText("default")
         self._sync_subprofile_state()
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a):

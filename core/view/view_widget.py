@@ -657,6 +657,16 @@ class DyxtenEngine:
     def rebuild_geometry(self) -> None:
         geo = self.state.get("geometry", {})
         system = self.state.get("system", {})
+        if not isinstance(system, Mapping):
+            system = {}
+        orbit_cfg = self.state.get("orbit", {})
+        if not isinstance(orbit_cfg, Mapping):
+            orbit_cfg = {}
+
+        def _orbit_value(key: str, fallback: object) -> object:
+            if key in orbit_cfg:
+                return orbit_cfg.get(key, fallback)
+            return system.get(key, fallback)
         topology = geo.get("topology", "uv_sphere")
         generator = self._GEOMETRY_GENERATORS.get(topology, _gen_uv_sphere)
         cap = int(system.get("Nmax", 0) or 0)
@@ -1033,26 +1043,49 @@ class DyxtenEngine:
         dist = self.state.get("distribution", {})
         dmin_px = float(dist.get("dmin_px", 0.0) or 0.0)
         cell = max(1.0, dmin_px) if dmin_px > 0 else 1.0
-        # Disable orbital particle behaviour around donut buttons
-        # (requested: remove orbital particles and their functioning)
-        donut_centers, donut_radii, fallback_orbit_radius = [], [], 0.0
-        donut_count = 0
-        try:
-            gravity_strength = clamp01(float(system.get("donutGravityStrength", 1.0)))
-        except (TypeError, ValueError):
-            gravity_strength = 1.0
-        try:
-            gravity_falloff = float(system.get("donutGravityFalloff", 1.0))
-        except (TypeError, ValueError):
-            gravity_falloff = 1.0
-        gravity_falloff = clamp(gravity_falloff, 0.2, 5.0)
-        try:
-            ring_offset = float(system.get("donutGravityRingOffset", 12.0))
-        except (TypeError, ValueError):
-            ring_offset = 12.0
-        ring_offset = clamp(ring_offset, 0.0, 150.0)
-        # Orbit speed multiplier is unused since orbital behaviour is disabled
-        orbit_speed_multiplier = 0.0
+        donut_centers, donut_radii, fallback_orbit_radius = self._compute_donut_orbits(width, height)
+        donut_count = len(donut_centers)
+
+        orbit_cfg = self.state.get("orbit", {})
+        if not isinstance(orbit_cfg, Mapping):
+            orbit_cfg = {}
+
+        def _orbit_value(key: str, fallback: object) -> object:
+            if key in orbit_cfg:
+                return orbit_cfg.get(key, fallback)
+            return system.get(key, fallback)
+
+        def _safe_float_key(name: str, fallback: float) -> float:
+            try:
+                return float(_orbit_value(name, fallback))
+            except (TypeError, ValueError):
+                return fallback
+
+        gravity_strength = clamp01(_safe_float_key("donutGravityStrength", 1.0))
+        gravity_falloff = clamp(_safe_float_key("donutGravityFalloff", 1.0), 0.2, 5.0)
+        ring_offset = clamp(_safe_float_key("donutGravityRingOffset", 12.0), 0.0, 150.0)
+        orbit_speed_multiplier = clamp(_safe_float_key("orbitSpeed", 1.0), 0.0, 5.0)
+        transition_duration_cfg = max(1.0, _safe_float_key("orbiterTransitionDuration", -1.0))
+        if transition_duration_cfg <= 0.0:
+            approach_duration_cfg = max(1.0, _safe_float_key("orbiterApproachDuration", 700.0))
+            return_duration_cfg = max(1.0, _safe_float_key("orbiterReturnDuration", approach_duration_cfg))
+        else:
+            approach_duration_cfg = transition_duration_cfg
+            return_duration_cfg = transition_duration_cfg
+        required_turns_cfg = max(0.0, _safe_float_key("orbiterRequiredTurns", 1.0))
+        max_orbit_ms_cfg = max(100.0, _safe_float_key("orbiterMaxOrbitMs", 4000.0))
+        transition_mode_cfg = str(_orbit_value("orbiterTransitionMode", "") or "")
+        snap_mode_cfg = transition_mode_cfg or str(_orbit_value("orbiterSnapMode", "default") or "default")
+        detach_mode_cfg = transition_mode_cfg or str(_orbit_value("orbiterDetachMode", snap_mode_cfg) or snap_mode_cfg)
+        trajectory_mode_cfg = str(_orbit_value("orbiterTrajectory", "") or "")
+        if trajectory_mode_cfg:
+            approach_traj_cfg = trajectory_mode_cfg
+            return_traj_cfg = trajectory_mode_cfg
+        else:
+            approach_traj_cfg = str(_orbit_value("orbiterApproachTrajectory", "line") or "line")
+            return_traj_cfg = str(_orbit_value("orbiterReturnTrajectory", approach_traj_cfg) or approach_traj_cfg)
+        trajectory_bend_cfg = clamp(_safe_float_key("orbiterTrajectoryBend", 0.35), -2.0, 2.0)
+        trajectory_arc_direction_cfg = str(_orbit_value("orbiterTrajectoryArcDirection", "auto") or "auto")
         if not self.base_points:
             return []
 
@@ -1289,16 +1322,14 @@ class DyxtenEngine:
                                     base_button_r = 0.0
                                     if bx_idx < len(radii):
                                         base_button_r = float(radii[bx_idx]) or 0.0
-                                    # Ignorer la config système : utiliser un offset fixe pour l'orbite
-                                    ring_offset = 12.0
                                     orbit_r = max(8.0, (base_button_r or fallback_orbit_radius) + ring_offset)
                                 else:
                                     bx, by = cx, cy
                                     orbit_r = max(24.0, min(width, height) * 0.05)
                                 ang0 = math.atan2(collision_y - by, collision_x - bx)
-                                # Vitesse d'orbite fixe (slider retiré de l'onglet Système)
-                                angle_speed = 1.6
-                                if len(self._orbiters) < self._max_orbiters:
+                                base_speed = 0.6 + 1.2 * _rand_for_index(idx, 733)
+                                angle_speed = max(0.0, base_speed * orbit_speed_multiplier)
+                                if snap_mode_cfg != "off" and len(self._orbiters) < self._max_orbiters:
                                     self._orbiters.append({
                                         "imprint": (collision_x, collision_y),
                                         "imprint_time": float(now),
@@ -1306,19 +1337,24 @@ class DyxtenEngine:
                                         "r": max(1.0, item.r * 0.85),
                                         "phase": "out",
                                         "t": 0.0,
-                                        "duration_out": 700.0,
-                                        "duration_back": 700.0,
+                                        "duration_out": float(approach_duration_cfg),
+                                        "duration_back": float(return_duration_cfg),
                                         "orbit_center": (bx, by),
                                         "orbit_radius": float(orbit_r),
                                         "angle": float(ang0),
                                         "angle_speed": float(angle_speed),
+                                        "base_speed": float(base_speed),
                                         # Exiger au moins un tour complet (2π rad) avant retour
                                         "angle_accum": 0.0,
-                                        "required_turns": 1.0,
+                                        "required_turns": float(required_turns_cfg),
                                         # Sécurité si angle_speed trop faible
                                         "orbit_elapsed_ms": 0.0,
-                                        "max_orbit_ms": 4000.0,
+                                        "max_orbit_ms": float(max_orbit_ms_cfg),
                                         "pos_orbit": (bx + math.cos(ang0) * orbit_r, by + math.sin(ang0) * orbit_r),
+                                        "approach_mode": str(approach_traj_cfg),
+                                        "return_mode": str(return_traj_cfg),
+                                        "trajectory_bend": float(trajectory_bend_cfg),
+                                        "arc_direction": str(trajectory_arc_direction_cfg),
                                     })
                             except Exception:
                                 pass
@@ -1328,22 +1364,101 @@ class DyxtenEngine:
 
         # Mise à jour des orbiters
         orbiters_draw: List[Tuple[float, float, QtGui.QColor, float, float]] = []
-        # Désactiver tout fonctionnement orbital si le mode est 'none'
-        snap_mode = self.state.get("system", {}).get("orbiterSnapMode", "default")
-        if snap_mode == "none":
-            self._orbiters = []
-            self._orbiters_draw = []
-        elif self._orbiters:
+        if self._orbiters:
+            def _ease_value(mode: str, value: float) -> float:
+                value = clamp01(value)
+                key = (mode or "default").lower()
+                if key in ("none", "linear"):
+                    return value
+                if key == "ease_in":
+                    return value * value * value
+                if key == "ease_in_out":
+                    if value < 0.5:
+                        return 4.0 * value * value * value
+                    return 1.0 - pow(-2.0 * value + 2.0, 3.0) / 2.0
+                return 1.0 - pow(1.0 - value, 3.0)
+
+            def _trajectory_point(
+                mode: str,
+                start_x: float,
+                start_y: float,
+                end_x: float,
+                end_y: float,
+                t_value: float,
+                center: Tuple[float, float] | None,
+                orbit_radius: float,
+                *,
+                bezier_bend: float,
+                arc_direction: str,
+            ) -> Tuple[float, float]:
+                key = (mode or "line").lower()
+                if center is not None:
+                    cx, cy = center
+                else:
+                    cx, cy = 0.0, 0.0
+                if key == "arc" and center is not None:
+                    start_angle = math.atan2(start_y - cy, start_x - cx)
+                    end_angle = math.atan2(end_y - cy, end_x - cx)
+                    base_delta = (end_angle - start_angle + math.pi) % (2.0 * math.pi) - math.pi
+                    direction_key = (arc_direction or "auto").lower()
+                    if direction_key in ("cw", "ccw"):
+                        diff_full = (end_angle - start_angle) % (2.0 * math.pi)
+                        if diff_full <= 0.0:
+                            diff_full = 2.0 * math.pi
+                        if direction_key == "cw":
+                            delta = diff_full - 2.0 * math.pi
+                        else:
+                            delta = diff_full
+                    else:
+                        delta = base_delta
+                    angle = start_angle + delta * t_value
+                    start_radius = math.hypot(start_x - cx, start_y - cy)
+                    end_radius = math.hypot(end_x - cx, end_y - cy)
+                    radius = start_radius + (end_radius - start_radius) * t_value
+                    return cx + math.cos(angle) * radius, cy + math.sin(angle) * radius
+                if key == "bezier":
+                    mx = (start_x + end_x) / 2.0
+                    my = (start_y + end_y) / 2.0
+                    dx = end_x - start_x
+                    dy = end_y - start_y
+                    length = math.hypot(dx, dy)
+                    if length <= 1e-6:
+                        ctrl_x, ctrl_y = mx, my
+                    else:
+                        nx = -dy / length
+                        ny = dx / length
+                        bend = clamp(bezier_bend, -2.0, 2.0)
+                        if abs(bend) <= 1e-5:
+                            ctrl_x, ctrl_y = mx, my
+                        else:
+                            scale_factor = 1.0
+                            if orbit_radius > 0.0 and length > 0.0:
+                                scale_factor = clamp(orbit_radius / max(length, 1.0), 0.3, 2.0)
+                            ctrl_x = mx + nx * length * bend * scale_factor
+                            ctrl_y = my + ny * length * bend * scale_factor
+                    omt = 1.0 - t_value
+                    x = omt * omt * start_x + 2.0 * omt * t_value * ctrl_x + t_value * t_value * end_x
+                    y = omt * omt * start_y + 2.0 * omt * t_value * ctrl_y + t_value * t_value * end_y
+                    return x, y
+                return start_x + (end_x - start_x) * t_value, start_y + (end_y - start_y) * t_value
+
             survivors: List[Dict[str, object]] = []
+            snap_mode_lower = snap_mode_cfg.lower()
+            detach_mode_lower = detach_mode_cfg.lower()
             for ob in self._orbiters:
                 try:
-                    phase = ob.get("phase", "out")  # type: ignore[assignment]
+                    phase = str(ob.get("phase", "out"))
                     t_phase = float(ob.get("t", 0.0))
                     ix, iy = ob.get("imprint", (cx, cy))  # type: ignore[assignment]
                     bx, by = ob.get("orbit_center", (cx, cy))  # type: ignore[assignment]
                     orbit_r = float(ob.get("orbit_radius", 32.0))
                     angle = float(ob.get("angle", 0.0))
-                    angle_speed = float(ob.get("angle_speed", 1.5))
+                    base_speed = float(ob.get("base_speed", ob.get("angle_speed", 1.0)))
+                    if not math.isfinite(base_speed):
+                        base_speed = 0.0
+                    angle_speed = max(0.0, base_speed * orbit_speed_multiplier)
+                    ob["base_speed"] = base_speed
+                    ob["angle_speed"] = angle_speed
                     pos_orbit = ob.get("pos_orbit")  # type: ignore[assignment]
                     if not isinstance(pos_orbit, tuple) or len(pos_orbit) != 2:
                         pos_orbit = (bx + math.cos(angle) * orbit_r, by + math.sin(angle) * orbit_r)
@@ -1352,22 +1467,41 @@ class DyxtenEngine:
                     qcolor = ob.get("color", QtGui.QColor("#FFFFFF"))  # type: ignore[assignment]
                     if not isinstance(qcolor, QtGui.QColor):
                         qcolor = QtGui.QColor(str(qcolor))
-                    # Récupérer les modes d'animation depuis le state
-                    detach_mode = self.state.get("system", {}).get("orbiterDetachMode", "default")
-                    transition_mode = snap_mode if phase == "out" else detach_mode
-                    # ...existing code...
+
+                    ob["duration_out"] = float(approach_duration_cfg)
+                    ob["duration_back"] = float(return_duration_cfg)
+                    ob["required_turns"] = float(required_turns_cfg)
+                    ob["max_orbit_ms"] = float(max_orbit_ms_cfg)
+                    ob["approach_mode"] = str(approach_traj_cfg)
+                    ob["return_mode"] = str(return_traj_cfg)
+                    ob["trajectory_bend"] = float(trajectory_bend_cfg)
+                    ob["arc_direction"] = str(trajectory_arc_direction_cfg)
+
                     if phase == "out":
-                        dur = max(1.0, float(ob.get("duration_out", 600.0)))
-                        t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
-                        if transition_mode == "none":
-                            t_eased = t_phase
-                        else:
-                            t_eased = 1.0 - pow(1.0 - t_phase, 3.0)
-                        sx = ix + (px - ix) * t_eased
-                        sy = iy + (py - iy) * t_eased
-                        if t_phase >= 1.0:
+                        if snap_mode_lower == "off":
                             phase = "orbit"
                             t_phase = 0.0
+                            sx, sy = px, py
+                        else:
+                            dur = max(1.0, float(ob.get("duration_out", approach_duration_cfg)))
+                            t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
+                            t_eased = _ease_value(snap_mode_lower, t_phase)
+                            traj_mode = str(ob.get("approach_mode", approach_traj_cfg))
+                            sx, sy = _trajectory_point(
+                                traj_mode,
+                                ix,
+                                iy,
+                                px,
+                                py,
+                                t_eased,
+                                (bx, by),
+                                orbit_r,
+                                bezier_bend=float(ob.get("trajectory_bend", trajectory_bend_cfg)),
+                                arc_direction=str(ob.get("arc_direction", trajectory_arc_direction_cfg)),
+                            )
+                            if t_phase >= 1.0:
+                                phase = "orbit"
+                                t_phase = 0.0
                     elif phase == "orbit":
                         dtheta = angle_speed * dt
                         angle += dtheta
@@ -1380,33 +1514,66 @@ class DyxtenEngine:
                         ob["angle_accum"] = accum
                         elapsed = float(ob.get("orbit_elapsed_ms", 0.0)) + dt * 1000.0
                         ob["orbit_elapsed_ms"] = elapsed
-                        target = max(0.5, float(ob.get("required_turns", 1.0))) * (2.0 * math.pi)
-                        max_ms = float(ob.get("max_orbit_ms", 4000.0))
-                        if accum >= target or elapsed >= max_ms:
+                        required_turns = max(0.0, float(ob.get("required_turns", required_turns_cfg)))
+                        target = required_turns * (2.0 * math.pi)
+                        max_ms = float(ob.get("max_orbit_ms", max_orbit_ms_cfg))
+                        if target <= 0.0 or accum >= target or elapsed >= max_ms:
                             phase = "back"
                             t_phase = 0.0
                     else:
-                        dur = max(1.0, float(ob.get("duration_back", 600.0)))
-                        t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
-                        if transition_mode == "none":
-                            t_eased = t_phase
-                        else:
-                            t_eased = 1.0 - pow(1.0 - t_phase, 3.0)
-                        sx = px + (ix - px) * t_eased
-                        sy = py + (iy - py) * t_eased
-                        if t_phase >= 1.0:
+                        if detach_mode_lower == "off":
                             try:
                                 itime = float(ob.get("imprint_time", -1.0))
                                 eps = 0.75
                                 filtered = []
                                 for ex, ey, ecol, er, et in self._imprints:
-                                    if itime >= 0.0 and abs(et - itime) < 1e-6 and (abs(ex - ix) <= eps and abs(ey - iy) <= eps):
+                                    if (
+                                        itime >= 0.0
+                                        and abs(et - itime) < 1e-6
+                                        and (abs(ex - ix) <= eps and abs(ey - iy) <= eps)
+                                    ):
                                         continue
                                     filtered.append((ex, ey, ecol, er, et))
                                 self._imprints = filtered
                             except Exception:
                                 pass
                             phase = "done"
+                            sx, sy = ix, iy
+                        else:
+                            dur = max(1.0, float(ob.get("duration_back", return_duration_cfg)))
+                            t_phase = min(1.0, t_phase + dt * 1000.0 / dur)
+                            t_eased = _ease_value(detach_mode_lower, t_phase)
+                            traj_mode = str(ob.get("return_mode", return_traj_cfg))
+                            sx, sy = _trajectory_point(
+                                traj_mode,
+                                px,
+                                py,
+                                ix,
+                                iy,
+                                t_eased,
+                                (bx, by),
+                                orbit_r,
+                                bezier_bend=float(ob.get("trajectory_bend", trajectory_bend_cfg)),
+                                arc_direction=str(ob.get("arc_direction", trajectory_arc_direction_cfg)),
+                            )
+                            if t_phase >= 1.0:
+                                try:
+                                    itime = float(ob.get("imprint_time", -1.0))
+                                    eps = 0.75
+                                    filtered = []
+                                    for ex, ey, ecol, er, et in self._imprints:
+                                        if (
+                                            itime >= 0.0
+                                            and abs(et - itime) < 1e-6
+                                            and (abs(ex - ix) <= eps and abs(ey - iy) <= eps)
+                                        ):
+                                            continue
+                                        filtered.append((ex, ey, ecol, er, et))
+                                    self._imprints = filtered
+                                except Exception:
+                                    pass
+                                phase = "done"
+
                     if phase != "done":
                         ob["phase"] = phase
                         ob["t"] = t_phase
@@ -1422,6 +1589,8 @@ class DyxtenEngine:
                     continue
             self._orbiters = survivors
             self._orbiters_draw = orbiters_draw
+        else:
+            self._orbiters_draw = []
 
         if self.state.get("system", {}).get("depthSort", True):
             items.sort(key=lambda it: it.depth, reverse=True)
