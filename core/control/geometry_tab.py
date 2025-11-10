@@ -93,6 +93,13 @@ def _param_group(name: str) -> str:
         "torus_knot_q",
         "strip_w",
         "strip_n",
+        "loops",
+        "radius_scale",
+        "ridge_amp",
+        "twist_rate",
+        "vertical_amp",
+        "warp_amp",
+        "jitter_amp",
     }:
         return "Courbes & flux"
     if name.startswith("noisy_") or name.startswith("blob_") or name.startswith("gyroid_") or name.startswith("schwarz_") or name.startswith("metaballs_") or name in {"heart_scale", "df_ops"}:
@@ -167,6 +174,13 @@ PARAM_SPECS = {
     "torus_knot_q": dict(type="int", label="Nœud q", tip="geometry.torus_knot_q", min=1, max=64),
     "strip_w": dict(type="double", label="Largeur ruban", tip="geometry.strip_w", min=0.05, max=2.0, step=0.01, decimals=3),
     "strip_n": dict(type="int", label="Nombre de torsions", tip="geometry.strip_n", min=1, max=20),
+    "loops": dict(type="double", label="Tours paramétriques", tip="geometry.loops", min=0.25, max=32.0, step=0.1, decimals=3),
+    "radius_scale": dict(type="double", label="Échelle radiale", tip="geometry.radius_scale", min=0.1, max=5.0, step=0.05, decimals=3),
+    "ridge_amp": dict(type="double", label="Modulation radiale", tip="geometry.ridge_amp", min=0.0, max=2.0, step=0.05, decimals=3),
+    "twist_rate": dict(type="double", label="Taux de torsion", tip="geometry.twist_rate", min=-6.0, max=6.0, step=0.1, decimals=3),
+    "vertical_amp": dict(type="double", label="Amplitude verticale", tip="geometry.vertical_amp", min=0.0, max=5.0, step=0.05, decimals=3),
+    "warp_amp": dict(type="double", label="Déformation orbitale", tip="geometry.warp_amp", min=-3.0, max=3.0, step=0.05, decimals=3),
+    "jitter_amp": dict(type="double", label="Jitter harmonique", tip="geometry.jitter_amp", min=0.0, max=2.0, step=0.05, decimals=3),
 
     "blob_noise_amp": dict(type="double", label="Blob amplitude", tip="geometry.blob_noise_amp", min=0.0, max=3.0, step=0.05, decimals=3),
     "blob_noise_scale": dict(type="double", label="Blob échelle", tip="geometry.blob_noise_scale", min=0.1, max=10.0, step=0.05, decimals=3),
@@ -611,14 +625,26 @@ class GeometryTab(QtWidgets.QWidget):
         target = cfg.get("topology", defaults.get("topology", all_topos[0]))
         self._select_topology(target)
         for name, widget in self.param_widgets.items():
-            val = cfg.get(name, defaults.get(name))
+            # Treat explicit None in the provided config as "unset" and
+            # fall back to the default value. This avoids passing None to
+            # float()/int() which raises TypeError.
+            raw = cfg.get(name, defaults.get(name))
+            if raw is None:
+                raw = defaults.get(name)
             with QtCore.QSignalBlocker(widget):
                 if isinstance(widget, QtWidgets.QDoubleSpinBox):
-                    widget.setValue(float(val))
+                    try:
+                        widget.setValue(float(raw))
+                    except (TypeError, ValueError):
+                        widget.setValue(float(defaults.get(name, 0.0)))
                 elif isinstance(widget, QtWidgets.QSpinBox):
-                    widget.setValue(int(val))
+                    try:
+                        widget.setValue(int(raw))
+                    except (TypeError, ValueError):
+                        widget.setValue(int(defaults.get(name, 0)))
                 else:
-                    widget.setText(str(val or ""))
+                    # For text widgets treat None as empty string
+                    widget.setText(str(raw or ""))
         self._apply_topology_state(emit=False)
         self._sync_subprofile_state()
 

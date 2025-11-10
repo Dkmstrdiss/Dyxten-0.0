@@ -203,6 +203,101 @@ class OrbitTab(QtWidgets.QWidget):
             ),
         )
 
+        self.spin_spiral_turns = QtWidgets.QDoubleSpinBox()
+        self.spin_spiral_turns.setRange(0.25, 12.0)
+        self.spin_spiral_turns.setDecimals(2)
+        self.spin_spiral_turns.setSingleStep(0.1)
+        self.spin_spiral_turns.setValue(float(defaults.get("orbiterSpiralTurns", 1.5)))
+
+        self.spin_spiral_tightness = QtWidgets.QDoubleSpinBox()
+        self.spin_spiral_tightness.setRange(-2.0, 2.0)
+        self.spin_spiral_tightness.setDecimals(2)
+        self.spin_spiral_tightness.setSingleStep(0.05)
+        self.spin_spiral_tightness.setValue(float(defaults.get("orbiterSpiralTightness", 0.35)))
+
+        self._spiral_turns_row = row(
+            transition_layout,
+            "Tours spirale",
+            self.spin_spiral_turns,
+            TOOLTIPS["orbit.orbiterSpiralTurns"],
+            lambda: self.spin_spiral_turns.setValue(float(defaults.get("orbiterSpiralTurns", 1.5))),
+        )
+        self._spiral_tightness_row = row(
+            transition_layout,
+            "Tension spirale",
+            self.spin_spiral_tightness,
+            TOOLTIPS["orbit.orbiterSpiralTightness"],
+            lambda: self.spin_spiral_tightness.setValue(float(defaults.get("orbiterSpiralTightness", 0.35))),
+        )
+
+        self.spin_wave_amplitude = QtWidgets.QDoubleSpinBox()
+        self.spin_wave_amplitude.setRange(0.0, 5.0)
+        self.spin_wave_amplitude.setDecimals(2)
+        self.spin_wave_amplitude.setSingleStep(0.05)
+        self.spin_wave_amplitude.setValue(float(defaults.get("orbiterWaveAmplitude", 0.3)))
+
+        self.spin_wave_frequency = QtWidgets.QDoubleSpinBox()
+        self.spin_wave_frequency.setRange(0.0, 20.0)
+        self.spin_wave_frequency.setDecimals(2)
+        self.spin_wave_frequency.setSingleStep(0.1)
+        self.spin_wave_frequency.setValue(float(defaults.get("orbiterWaveFrequency", 3.0)))
+
+        self._wave_amplitude_row = row(
+            transition_layout,
+            "Amplitude onde",
+            self.spin_wave_amplitude,
+            TOOLTIPS["orbit.orbiterWaveAmplitude"],
+            lambda: self.spin_wave_amplitude.setValue(float(defaults.get("orbiterWaveAmplitude", 0.3))),
+        )
+        self._wave_frequency_row = row(
+            transition_layout,
+            "Fréquence onde",
+            self.spin_wave_frequency,
+            TOOLTIPS["orbit.orbiterWaveFrequency"],
+            lambda: self.spin_wave_frequency.setValue(float(defaults.get("orbiterWaveFrequency", 3.0))),
+        )
+
+        self.spin_trail_blend = QtWidgets.QDoubleSpinBox()
+        self.spin_trail_blend.setRange(0.0, 1.0)
+        self.spin_trail_blend.setDecimals(2)
+        self.spin_trail_blend.setSingleStep(0.05)
+        self.spin_trail_blend.setValue(float(defaults.get("orbiterTrailBlend", 0.7)))
+
+        self.spin_trail_smoothing = QtWidgets.QDoubleSpinBox()
+        self.spin_trail_smoothing.setRange(0.0, 1.0)
+        self.spin_trail_smoothing.setDecimals(2)
+        self.spin_trail_smoothing.setSingleStep(0.05)
+        self.spin_trail_smoothing.setValue(float(defaults.get("orbiterTrailSmoothing", 0.4)))
+
+        self.spin_trail_memory = QtWidgets.QDoubleSpinBox()
+        self.spin_trail_memory.setRange(0.25, 12.0)
+        self.spin_trail_memory.setDecimals(2)
+        self.spin_trail_memory.setSingleStep(0.25)
+        self.spin_trail_memory.setSuffix(" s")
+        self.spin_trail_memory.setValue(float(defaults.get("orbiterTrailMemorySeconds", 2.0)))
+
+        self._trail_blend_row = row(
+            transition_layout,
+            "Fusion trajectoire initiale",
+            self.spin_trail_blend,
+            TOOLTIPS["orbit.orbiterTrailBlend"],
+            lambda: self.spin_trail_blend.setValue(float(defaults.get("orbiterTrailBlend", 0.7))),
+        )
+        self._trail_smoothing_row = row(
+            transition_layout,
+            "Lissage trajectoire",
+            self.spin_trail_smoothing,
+            TOOLTIPS["orbit.orbiterTrailSmoothing"],
+            lambda: self.spin_trail_smoothing.setValue(float(defaults.get("orbiterTrailSmoothing", 0.4))),
+        )
+        self._trail_memory_row = row(
+            transition_layout,
+            "Mémoire trajectoire",
+            self.spin_trail_memory,
+            TOOLTIPS["orbit.orbiterTrailMemorySeconds"],
+            lambda: self.spin_trail_memory.setValue(float(defaults.get("orbiterTrailMemorySeconds", 2.0))),
+        )
+
         form_layout.addRow(transition_group)
 
         # --- Orbite ------------------------------------------------------------
@@ -262,6 +357,13 @@ class OrbitTab(QtWidgets.QWidget):
             self.spin_required_turns,
             self.spin_max_orbit,
             self.spin_transition_duration,
+            self.spin_spiral_turns,
+            self.spin_spiral_tightness,
+            self.spin_wave_amplitude,
+            self.spin_wave_frequency,
+            self.spin_trail_blend,
+            self.spin_trail_smoothing,
+            self.spin_trail_memory,
         ]:
             widget.valueChanged.connect(self.emit_delta)
 
@@ -329,6 +431,48 @@ class OrbitTab(QtWidgets.QWidget):
             key="orbiterTrajectoryBend",
             tab=self._TAB_LABEL,
         )
+        register_linkable_widget(
+            self.spin_spiral_turns,
+            section="orbit",
+            key="orbiterSpiralTurns",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_spiral_tightness,
+            section="orbit",
+            key="orbiterSpiralTightness",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_wave_amplitude,
+            section="orbit",
+            key="orbiterWaveAmplitude",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_wave_frequency,
+            section="orbit",
+            key="orbiterWaveFrequency",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_trail_blend,
+            section="orbit",
+            key="orbiterTrailBlend",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_trail_smoothing,
+            section="orbit",
+            key="orbiterTrailSmoothing",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_trail_memory,
+            section="orbit",
+            key="orbiterTrailMemorySeconds",
+            tab=self._TAB_LABEL,
+        )
 
         self._sync_subprofile_state()
 
@@ -348,6 +492,9 @@ class OrbitTab(QtWidgets.QWidget):
         combo.addItem("Ligne directe", "line")
         combo.addItem("Courbe fluide", "bezier")
         combo.addItem("Arc circulaire", "arc")
+        combo.addItem("Spirale vers orbite", "spiral")
+        combo.addItem("Ondulation sinusoïdale", "wave")
+        combo.addItem("Trajectoire initiale", "initial_path")
         return combo
 
     def _set_combo_value(
@@ -411,6 +558,14 @@ class OrbitTab(QtWidgets.QWidget):
         mode = str(self.combo_trajectory.currentData())
         self._set_row_visible(self._bezier_param_row, mode == "bezier")
         self._set_row_visible(self._arc_param_row, mode == "arc")
+        self._set_row_visible(self._spiral_turns_row, mode == "spiral")
+        self._set_row_visible(self._spiral_tightness_row, mode == "spiral")
+        self._set_row_visible(self._wave_amplitude_row, mode == "wave")
+        self._set_row_visible(self._wave_frequency_row, mode == "wave")
+        show_trail = mode == "initial_path"
+        self._set_row_visible(self._trail_blend_row, show_trail)
+        self._set_row_visible(self._trail_smoothing_row, show_trail)
+        self._set_row_visible(self._trail_memory_row, show_trail)
 
     def _on_bezier_slider_changed(self, raw: int) -> None:
         self._set_bezier_bend(raw / 100.0)
@@ -447,6 +602,13 @@ class OrbitTab(QtWidgets.QWidget):
             orbiterReturnDuration=transition_duration,
             orbiterTrajectoryBend=bezier_bend,
             orbiterTrajectoryArcDirection=arc_direction,
+            orbiterSpiralTurns=float(self.spin_spiral_turns.value()),
+            orbiterSpiralTightness=float(self.spin_spiral_tightness.value()),
+            orbiterWaveAmplitude=float(self.spin_wave_amplitude.value()),
+            orbiterWaveFrequency=float(self.spin_wave_frequency.value()),
+            orbiterTrailBlend=float(self.spin_trail_blend.value()),
+            orbiterTrailSmoothing=float(self.spin_trail_smoothing.value()),
+            orbiterTrailMemorySeconds=float(self.spin_trail_memory.value()),
             orbiterRequiredTurns=float(self.spin_required_turns.value()),
             orbiterMaxOrbitMs=int(self.spin_max_orbit.value()),
         )
@@ -502,6 +664,21 @@ class OrbitTab(QtWidgets.QWidget):
         )
 
         self._set_bezier_bend(float(_get_value("orbiterTrajectoryBend", 0.35)))
+
+        with QtCore.QSignalBlocker(self.spin_spiral_turns):
+            self.spin_spiral_turns.setValue(float(_get_value("orbiterSpiralTurns", 1.5)))
+        with QtCore.QSignalBlocker(self.spin_spiral_tightness):
+            self.spin_spiral_tightness.setValue(float(_get_value("orbiterSpiralTightness", 0.35)))
+        with QtCore.QSignalBlocker(self.spin_wave_amplitude):
+            self.spin_wave_amplitude.setValue(float(_get_value("orbiterWaveAmplitude", 0.3)))
+        with QtCore.QSignalBlocker(self.spin_wave_frequency):
+            self.spin_wave_frequency.setValue(float(_get_value("orbiterWaveFrequency", 3.0)))
+        with QtCore.QSignalBlocker(self.spin_trail_blend):
+            self.spin_trail_blend.setValue(float(_get_value("orbiterTrailBlend", 0.7)))
+        with QtCore.QSignalBlocker(self.spin_trail_smoothing):
+            self.spin_trail_smoothing.setValue(float(_get_value("orbiterTrailSmoothing", 0.4)))
+        with QtCore.QSignalBlocker(self.spin_trail_memory):
+            self.spin_trail_memory.setValue(float(_get_value("orbiterTrailMemorySeconds", 2.0)))
 
         self._sync_trajectory_params()
 

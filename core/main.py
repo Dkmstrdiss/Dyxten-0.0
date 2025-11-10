@@ -224,6 +224,14 @@ class ViewWindow(QtWidgets.QMainWindow):
         self.view.update()
         self.update()
 
+    def reset_visual_state(self) -> None:
+        try:
+            reset = getattr(self.view, "reset_visual_state", None)
+            if callable(reset):
+                reset()
+        except Exception:
+            pass
+
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
         self._sync_button_overlay()

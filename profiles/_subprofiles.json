@@ -238,6 +238,13 @@
       "orbiterReturnDuration": 700.0,
       "orbiterTrajectoryBend": 0.35,
       "orbiterTrajectoryArcDirection": "auto",
+      "orbiterSpiralTurns": 1.5,
+      "orbiterSpiralTightness": 0.35,
+      "orbiterWaveAmplitude": 0.3,
+      "orbiterWaveFrequency": 3.0,
+      "orbiterTrailBlend": 0.7,
+      "orbiterTrailSmoothing": 0.4,
+      "orbiterTrailMemorySeconds": 2.0,
       "orbiterRequiredTurns": 1.0,
       "orbiterMaxOrbitMs": 4000.0
     }

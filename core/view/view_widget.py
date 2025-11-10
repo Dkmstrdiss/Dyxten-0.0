@@ -30,8 +30,10 @@ import os
 import random
 import sys
 import time
+from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Deque, Dict, List, Mapping, Optional, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -608,11 +610,15 @@ class DyxtenEngine:
         self._donut_layout: List[Tuple[float, float, float]] = []
         # Empreintes persistantes déposées par les particules lorsqu'elles
         # franchissent le bord du cercle rouge. Chaque entrée :
-        # (x, y, QColor, rayon, timestamp_ms)
-        self._imprints: List[Tuple[float, float, QtGui.QColor, float, float]] = []
+        # (x, y, QColor, rayon, timestamp_ms, identifiant)
+        self._imprints: List[Tuple[float, float, QtGui.QColor, float, float, int]] = []
+        self._imprint_counter = 0
         # Positions précédentes des particules pour détecter un passage du bord
         # clé = seed (index de particule), valeur = (sx, sy, dist_center)
         self._last_particle_positions: Dict[int, Tuple[float, float, float]] = {}
+        # Historique des trajectoires des particules (pour trajectoire initiale)
+        self._particle_traces: Dict[int, Deque[Tuple[float, float]]] = {}
+        self._trail_max_points = 90
         # Limite de sécurité pour éviter une croissance mémoire illimitée.
         self._max_imprints = 5000
         # Particules orbitales déclenchées par chaque empreinte
@@ -645,6 +651,24 @@ class DyxtenEngine:
                 else:
                     self.state[key][sub_key] = sub_value  # type: ignore[index]
         self.gradient = _parse_gradient_stops(self.state.get("appearance", {}).get("colors"))
+
+    def _remove_imprint_by_id(self, imprint_id: Optional[int]) -> None:
+        if imprint_id is None:
+            return
+        self._imprints = [entry for entry in self._imprints if entry[5] != imprint_id]
+
+    def reset_visual_state(self) -> None:
+        """Clear transient visual elements while preserving configuration."""
+
+        self._imprints.clear()
+        self._imprint_counter = 0
+        self._orbiters.clear()
+        self._orbiters_draw.clear()
+        self._last_particle_positions.clear()
+        self._particle_traces.clear()
+        self._start_time = time.perf_counter()
+        self._last_ms = 0.0
+        self.rebuild_geometry()
 
     def set_params(self, payload: Mapping[str, object]) -> None:
         if not isinstance(payload, Mapping):
@@ -691,6 +715,8 @@ class DyxtenEngine:
         if dmin > 0:
             centered = _enforce_min_distance(centered, dmin)
         self.base_points = centered
+        self._particle_traces.clear()
+        self._last_particle_positions.clear()
         count = len(centered)
         if count != self._last_base_count:
             self._debug(
@@ -1051,6 +1077,8 @@ class DyxtenEngine:
             orbit_cfg = {}
 
         def _orbit_value(key: str, fallback: object) -> object:
+            # Prefer an explicit orbit-specific override when present, otherwise
+            # fall back to the system-level configuration.
             if key in orbit_cfg:
                 return orbit_cfg.get(key, fallback)
             return system.get(key, fallback)
@@ -1086,6 +1114,18 @@ class DyxtenEngine:
             return_traj_cfg = str(_orbit_value("orbiterReturnTrajectory", approach_traj_cfg) or approach_traj_cfg)
         trajectory_bend_cfg = clamp(_safe_float_key("orbiterTrajectoryBend", 0.35), -2.0, 2.0)
         trajectory_arc_direction_cfg = str(_orbit_value("orbiterTrajectoryArcDirection", "auto") or "auto")
+        spiral_turns_cfg = clamp(_safe_float_key("orbiterSpiralTurns", 1.5), 0.1, 24.0)
+        spiral_tightness_cfg = clamp(_safe_float_key("orbiterSpiralTightness", 0.35), -2.0, 2.0)
+        wave_amplitude_cfg = clamp(_safe_float_key("orbiterWaveAmplitude", 0.3), 0.0, 5.0)
+        wave_frequency_cfg = clamp(_safe_float_key("orbiterWaveFrequency", 3.0), 0.0, 20.0)
+        trail_blend_cfg = clamp01(_safe_float_key("orbiterTrailBlend", 0.7))
+        trail_smoothing_cfg = clamp01(_safe_float_key("orbiterTrailSmoothing", 0.4))
+        trail_memory_seconds_cfg = clamp(_safe_float_key("orbiterTrailMemorySeconds", 2.0), 0.1, 12.0)
+        desired_trail_points = max(8, min(600, int(trail_memory_seconds_cfg * 60.0)))
+        if desired_trail_points != self._trail_max_points:
+            self._trail_max_points = desired_trail_points
+            for seed, trace in list(self._particle_traces.items()):
+                self._particle_traces[seed] = deque(trace, maxlen=self._trail_max_points)
         if not self.base_points:
             return []
 
@@ -1283,10 +1323,19 @@ class DyxtenEngine:
             else:
                 depth_alpha = 1.0
             item.alpha = clamp01(opacity * depth_alpha * clamp01(visibility))
-            
+
+            particle_idx = item.world.seed
+            trace = self._particle_traces.get(particle_idx)
+            if trace is None:
+                trace = deque(maxlen=self._trail_max_points)
+                self._particle_traces[particle_idx] = trace
+            elif trace.maxlen != self._trail_max_points:
+                trace = deque(trace, maxlen=self._trail_max_points)
+                self._particle_traces[particle_idx] = trace
+            trace.append((item.sx, item.sy))
+
             # Detect collision with red circle boundary
             if radius_red > 0 and item.role == "cloud":
-                particle_idx = item.world.seed
                 dist_from_center = math.hypot(item.sx - cx, item.sy - cy)
                 
                 # Check if particle is near or crossing the red circle boundary
@@ -1302,7 +1351,10 @@ class DyxtenEngine:
                             angle = math.atan2(item.sy - cy, item.sx - cx)
                             collision_x = cx + math.cos(angle) * collision_threshold
                             collision_y = cy + math.sin(angle) * collision_threshold
-                            self._imprints.append((collision_x, collision_y, item.color, imprint_radius, now))
+                            imprint_id = self._imprint_counter
+                            self._imprint_counter += 1
+                            imprint_color = QtGui.QColor(item.color)
+                            self._imprints.append((collision_x, collision_y, imprint_color, imprint_radius, now, imprint_id))
                             # Appliquer limite mémoire douce
                             if len(self._imprints) > self._max_imprints:
                                 # Conserver seulement les empreintes les plus récentes
@@ -1330,10 +1382,18 @@ class DyxtenEngine:
                                 base_speed = 0.6 + 1.2 * _rand_for_index(idx, 733)
                                 angle_speed = max(0.0, base_speed * orbit_speed_multiplier)
                                 if snap_mode_cfg != "off" and len(self._orbiters) < self._max_orbiters:
+                                    trace_snapshot = list(self._particle_traces.get(particle_idx, []))
+                                    if not trace_snapshot or (
+                                        abs(trace_snapshot[-1][0] - collision_x) > 0.5
+                                        or abs(trace_snapshot[-1][1] - collision_y) > 0.5
+                                    ):
+                                        trace_snapshot.append((collision_x, collision_y))
+                                    if len(trace_snapshot) > self._trail_max_points:
+                                        trace_snapshot = trace_snapshot[-self._trail_max_points :]
                                     self._orbiters.append({
                                         "imprint": (collision_x, collision_y),
                                         "imprint_time": float(now),
-                                        "color": QtGui.QColor(item.color),
+                                        "color": imprint_color,
                                         "r": max(1.0, item.r * 0.85),
                                         "phase": "out",
                                         "t": 0.0,
@@ -1355,6 +1415,16 @@ class DyxtenEngine:
                                         "return_mode": str(return_traj_cfg),
                                         "trajectory_bend": float(trajectory_bend_cfg),
                                         "arc_direction": str(trajectory_arc_direction_cfg),
+                                        "spiral_turns": float(spiral_turns_cfg),
+                                        "spiral_tightness": float(spiral_tightness_cfg),
+                                        "wave_amplitude": float(wave_amplitude_cfg),
+                                        "wave_frequency": float(wave_frequency_cfg),
+                                        "trail_blend": float(trail_blend_cfg),
+                                        "trail_smoothing": float(trail_smoothing_cfg),
+                                        "trail": trace_snapshot,
+                                        "imprint_id": imprint_id,
+                                        "imprint_cleared": False,
+                                        "imprint_radius": float(imprint_radius),
                                     })
                             except Exception:
                                 pass
@@ -1390,12 +1460,22 @@ class DyxtenEngine:
                 *,
                 bezier_bend: float,
                 arc_direction: str,
+                spiral_turns: float,
+                spiral_tightness: float,
+                wave_amplitude: float,
+                wave_frequency: float,
+                trail: Optional[Sequence[Tuple[float, float]]],
+                trail_blend: float,
+                trail_smoothing: float,
+                phase: str,
             ) -> Tuple[float, float]:
                 key = (mode or "line").lower()
                 if center is not None:
                     cx, cy = center
                 else:
                     cx, cy = 0.0, 0.0
+                trail_blend = clamp01(float(trail_blend))
+                phase = (phase or "").lower()
                 if key == "arc" and center is not None:
                     start_angle = math.atan2(start_y - cy, start_x - cx)
                     end_angle = math.atan2(end_y - cy, end_x - cx)
@@ -1440,6 +1520,90 @@ class DyxtenEngine:
                     x = omt * omt * start_x + 2.0 * omt * t_value * ctrl_x + t_value * t_value * end_x
                     y = omt * omt * start_y + 2.0 * omt * t_value * ctrl_y + t_value * t_value * end_y
                     return x, y
+                if key == "spiral" and center is not None:
+                    turns = max(0.01, float(spiral_turns))
+                    tight = clamp(float(spiral_tightness), -2.0, 2.0)
+                    start_angle = math.atan2(start_y - cy, start_x - cx)
+                    end_angle = math.atan2(end_y - cy, end_x - cx)
+                    base_radius_start = math.hypot(start_x - cx, start_y - cy)
+                    base_radius_end = math.hypot(end_x - cx, end_y - cy)
+                    interp_radius = base_radius_start + (base_radius_end - base_radius_start) * t_value
+                    angle = start_angle + turns * 2.0 * math.pi * t_value
+                    spiral_scale = 1.0 + tight * (t_value - 0.5)
+                    radius = max(0.0, interp_radius * spiral_scale)
+                    return cx + math.cos(angle) * radius, cy + math.sin(angle) * radius
+                if key == "wave":
+                    base_x = start_x + (end_x - start_x) * t_value
+                    base_y = start_y + (end_y - start_y) * t_value
+                    dx = end_x - start_x
+                    dy = end_y - start_y
+                    length = math.hypot(dx, dy)
+                    if length <= 1e-6:
+                        return base_x, base_y
+                    nx = -dy / length
+                    ny = dx / length
+                    amp = max(0.0, float(wave_amplitude)) * length * 0.5
+                    freq = max(0.0, float(wave_frequency))
+                    offset = math.sin(t_value * math.pi * freq) * amp
+                    return base_x + nx * offset, base_y + ny * offset
+                if key == "initial_path":
+                    path_points: List[Tuple[float, float]] = []
+                    if trail:
+                        if phase == "out":
+                            core_path = list(reversed(trail))
+                        else:
+                            core_path = list(trail)
+                        # Filtrer les doublons consécutifs
+                        filtered: List[Tuple[float, float]] = []
+                        for px, py in core_path:
+                            if not filtered or (abs(filtered[-1][0] - px) > 0.01 or abs(filtered[-1][1] - py) > 0.01):
+                                filtered.append((px, py))
+                        path_points.extend(filtered)
+                    if not path_points or (abs(path_points[-1][0] - end_x) > 0.01 or abs(path_points[-1][1] - end_y) > 0.01):
+                        path_points.append((end_x, end_y))
+                    path_points.insert(0, (start_x, start_y))
+                    if trail_smoothing > 0.0 and len(path_points) > 3:
+                        radius = max(1, int(round(1 + trail_smoothing * 4)))
+                        smoothed: List[Tuple[float, float]] = []
+                        for idx in range(len(path_points)):
+                            start_idx = max(0, idx - radius)
+                            end_idx = min(len(path_points), idx + radius + 1)
+                            window = path_points[start_idx:end_idx]
+                            if not window:
+                                continue
+                            sx = sum(p[0] for p in window) / len(window)
+                            sy = sum(p[1] for p in window) / len(window)
+                            smoothed.append((sx, sy))
+                        if smoothed:
+                            path_points = smoothed
+                    distances = [0.0]
+                    total = 0.0
+                    for idx in range(len(path_points) - 1):
+                        seg = math.hypot(
+                            path_points[idx + 1][0] - path_points[idx][0],
+                            path_points[idx + 1][1] - path_points[idx][1],
+                        )
+                        total += seg
+                        distances.append(total)
+                    if total <= 1e-6:
+                        path_x, path_y = path_points[-1]
+                    else:
+                        target = clamp(t_value * total, 0.0, total)
+                        path_x, path_y = path_points[-1]
+                        for idx in range(len(path_points) - 1):
+                            seg_start = distances[idx]
+                            seg_end = distances[idx + 1]
+                            if seg_end >= target:
+                                seg_len = max(1e-6, seg_end - seg_start)
+                                local = (target - seg_start) / seg_len
+                                sx = path_points[idx][0] + (path_points[idx + 1][0] - path_points[idx][0]) * local
+                                sy = path_points[idx][1] + (path_points[idx + 1][1] - path_points[idx][1]) * local
+                                path_x, path_y = sx, sy
+                                break
+                    lin_x = start_x + (end_x - start_x) * t_value
+                    lin_y = start_y + (end_y - start_y) * t_value
+                    blend = trail_blend
+                    return lin_x * (1.0 - blend) + path_x * blend, lin_y * (1.0 - blend) + path_y * blend
                 return start_x + (end_x - start_x) * t_value, start_y + (end_y - start_y) * t_value
 
             survivors: List[Dict[str, object]] = []
@@ -1468,6 +1632,22 @@ class DyxtenEngine:
                     if not isinstance(qcolor, QtGui.QColor):
                         qcolor = QtGui.QColor(str(qcolor))
 
+                    spiral_turns = float(ob.get("spiral_turns", spiral_turns_cfg))
+                    spiral_tightness = float(ob.get("spiral_tightness", spiral_tightness_cfg))
+                    wave_amplitude = float(ob.get("wave_amplitude", wave_amplitude_cfg))
+                    wave_frequency = float(ob.get("wave_frequency", wave_frequency_cfg))
+                    trail_blend = float(ob.get("trail_blend", trail_blend_cfg))
+                    trail_smoothing = float(ob.get("trail_smoothing", trail_smoothing_cfg))
+                    trail_data = ob.get("trail")
+                    imprint_id = ob.get("imprint_id")
+                    imprint_cleared = bool(ob.get("imprint_cleared", False))
+                    ob["spiral_turns"] = spiral_turns
+                    ob["spiral_tightness"] = spiral_tightness
+                    ob["wave_amplitude"] = wave_amplitude
+                    ob["wave_frequency"] = wave_frequency
+                    ob["trail_blend"] = trail_blend
+                    ob["trail_smoothing"] = trail_smoothing
+
                     ob["duration_out"] = float(approach_duration_cfg)
                     ob["duration_back"] = float(return_duration_cfg)
                     ob["required_turns"] = float(required_turns_cfg)
@@ -1476,6 +1656,8 @@ class DyxtenEngine:
                     ob["return_mode"] = str(return_traj_cfg)
                     ob["trajectory_bend"] = float(trajectory_bend_cfg)
                     ob["arc_direction"] = str(trajectory_arc_direction_cfg)
+
+                    imprint_radius = float(ob.get("imprint_radius", r_draw * 1.5))
 
                     if phase == "out":
                         if snap_mode_lower == "off":
@@ -1498,6 +1680,14 @@ class DyxtenEngine:
                                 orbit_r,
                                 bezier_bend=float(ob.get("trajectory_bend", trajectory_bend_cfg)),
                                 arc_direction=str(ob.get("arc_direction", trajectory_arc_direction_cfg)),
+                                spiral_turns=spiral_turns,
+                                spiral_tightness=spiral_tightness,
+                                wave_amplitude=wave_amplitude,
+                                wave_frequency=wave_frequency,
+                                trail=trail_data if isinstance(trail_data, Sequence) else None,
+                                trail_blend=trail_blend,
+                                trail_smoothing=trail_smoothing,
+                                phase="out",
                             )
                             if t_phase >= 1.0:
                                 phase = "orbit"
@@ -1522,21 +1712,9 @@ class DyxtenEngine:
                             t_phase = 0.0
                     else:
                         if detach_mode_lower == "off":
-                            try:
-                                itime = float(ob.get("imprint_time", -1.0))
-                                eps = 0.75
-                                filtered = []
-                                for ex, ey, ecol, er, et in self._imprints:
-                                    if (
-                                        itime >= 0.0
-                                        and abs(et - itime) < 1e-6
-                                        and (abs(ex - ix) <= eps and abs(ey - iy) <= eps)
-                                    ):
-                                        continue
-                                    filtered.append((ex, ey, ecol, er, et))
-                                self._imprints = filtered
-                            except Exception:
-                                pass
+                            if not imprint_cleared:
+                                self._remove_imprint_by_id(imprint_id if isinstance(imprint_id, int) else None)
+                                imprint_cleared = True
                             phase = "done"
                             sx, sy = ix, iy
                         else:
@@ -1555,28 +1733,35 @@ class DyxtenEngine:
                                 orbit_r,
                                 bezier_bend=float(ob.get("trajectory_bend", trajectory_bend_cfg)),
                                 arc_direction=str(ob.get("arc_direction", trajectory_arc_direction_cfg)),
+                                spiral_turns=spiral_turns,
+                                spiral_tightness=spiral_tightness,
+                                wave_amplitude=wave_amplitude,
+                                wave_frequency=wave_frequency,
+                                trail=trail_data if isinstance(trail_data, Sequence) else None,
+                                trail_blend=trail_blend,
+                                trail_smoothing=trail_smoothing,
+                                phase="back",
                             )
+                            if not imprint_cleared:
+                                if math.hypot(sx - ix, sy - iy) <= max(2.0, imprint_radius * 1.1):
+                                    self._remove_imprint_by_id(
+                                        imprint_id if isinstance(imprint_id, int) else None
+                                    )
+                                    imprint_cleared = True
                             if t_phase >= 1.0:
-                                try:
-                                    itime = float(ob.get("imprint_time", -1.0))
-                                    eps = 0.75
-                                    filtered = []
-                                    for ex, ey, ecol, er, et in self._imprints:
-                                        if (
-                                            itime >= 0.0
-                                            and abs(et - itime) < 1e-6
-                                            and (abs(ex - ix) <= eps and abs(ey - iy) <= eps)
-                                        ):
-                                            continue
-                                        filtered.append((ex, ey, ecol, er, et))
-                                    self._imprints = filtered
-                                except Exception:
-                                    pass
+                                if not imprint_cleared:
+                                    self._remove_imprint_by_id(imprint_id if isinstance(imprint_id, int) else None)
+                                    imprint_cleared = True
                                 phase = "done"
+
+                    if phase == "done" and not imprint_cleared:
+                        self._remove_imprint_by_id(imprint_id if isinstance(imprint_id, int) else None)
+                        imprint_cleared = True
 
                     if phase != "done":
                         ob["phase"] = phase
                         ob["t"] = t_phase
+                        ob["imprint_cleared"] = imprint_cleared
                         if phase == "orbit":
                             alpha_o = 0.95
                         elif phase == "out":
@@ -1793,6 +1978,12 @@ class _ViewWidgetBase:
         self._apply_clear_color()
         self.update()
 
+    def reset_visual_state(self) -> None:
+        """Expose a hook for the controller to reset transient rendering state."""
+
+        self.engine.reset_visual_state()
+        self.update()
+
     # ------------------------------------------------------------------ Rendering helpers
     def _render_with_painter(self, painter: QtGui.QPainter) -> None:
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
@@ -1818,7 +2009,7 @@ class _ViewWidgetBase:
             painter.setPen(QtCore.Qt.NoPen)
             current_time = self.engine.now_ms
             imprints_to_keep = []
-            for imp_x, imp_y, imp_color, imp_radius, imp_time in self.engine._imprints:
+            for imp_x, imp_y, imp_color, imp_radius, imp_time, imp_id in self.engine._imprints:
                 # Fade out old imprints over time (optional, or keep them permanent)
                 age_sec = (current_time - imp_time) / 1000.0
                 # Make imprints permanent by not fading them
@@ -1828,7 +2019,7 @@ class _ViewWidgetBase:
                     color.setAlphaF(alpha)
                     painter.setBrush(color)
                     painter.drawEllipse(QtCore.QRectF(imp_x - imp_radius, imp_y - imp_radius, imp_radius * 2, imp_radius * 2))
-                    imprints_to_keep.append((imp_x, imp_y, imp_color, imp_radius, imp_time))
+                    imprints_to_keep.append((imp_x, imp_y, imp_color, imp_radius, imp_time, imp_id))
             self.engine._imprints = imprints_to_keep
 
         # Dessiner les orbiters avant le clipping (ils peuvent dépasser le cercle)

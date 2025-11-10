@@ -1,0 +1,29 @@
+{
+  "geometry": {
+    "topology": "motif_orbital_swirl_layer",
+    "R": 1.0,
+    "N": 3600,
+    "loops": 5.8,
+    "radius_scale": 1.08,
+    "ridge_amp": 0.52,
+    "twist_rate": 1.2,
+    "vertical_amp": 0.5,
+    "warp_amp": 0.54,
+    "jitter_amp": 0.05,
+    "code": "import math\n\nFAMILY = \"swirl\"\nFEATURES = {'layer'}\n\ndef generate_motif_orbital_swirl_layer_geometry(params, N):\n    loops = float(params.get(\"loops\", 5.8))\n    radius_scale = float(params.get(\"radius_scale\", 1.08))\n    ridge_amp = float(params.get(\"ridge_amp\", 0.52))\n    twist_rate = float(params.get(\"twist_rate\", 1.2))\n    vertical_amp = float(params.get(\"vertical_amp\", 0.5))\n    warp_amp = float(params.get(\"warp_amp\", 0.54))\n    jitter_amp = float(params.get(\"jitter_amp\", 0.05))\n    base_radius = float(params.get(\"R\", 1.0) or 1.0) * radius_scale\n    target = max(1, int(N or params.get(\"N\", 3600)))\n    points = []\n    for i in range(target):\n        t = i / max(1, target - 1)\n        angle = t * loops * 2.0 * math.pi\n        radius = base_radius\n        if FAMILY == \"petal\":\n            radius *= 1.0 + ridge_amp * math.sin(angle * 0.5) + 0.25 * warp_amp * math.sin(angle * 2.5)\n        elif FAMILY == \"lattice\":\n            radius *= 1.0 + ridge_amp * math.cos(angle * 1.5 + warp_amp * 0.5)\n            angle += warp_amp * math.sin(angle * 3.0)\n        elif FAMILY == \"helix\":\n            angle += twist_rate * t\n            radius *= 1.0 + ridge_amp * math.sin(angle * 3.0)\n        elif FAMILY == \"bloom\":\n            radius *= 1.0 + ridge_amp * math.sin(angle * 4.0 + warp_amp) + 0.2 * math.sin(angle)\n        elif FAMILY == \"ripple\":\n            radius *= 1.0 + ridge_amp * math.sin(angle * 6.0 + warp_amp * math.sin(angle * 0.5))\n        elif FAMILY == \"fold\":\n            angle += ridge_amp * math.sin(angle * 0.5)\n            radius *= 1.0 + warp_amp * math.cos(angle * 3.0)\n        elif FAMILY == \"swirl\":\n            angle += ridge_amp * math.sin(t * math.pi * 2.0)\n            radius *= 1.0 + warp_amp * math.sin(angle * 5.0)\n        elif FAMILY == \"pinch\":\n            radius *= 1.0 / (1.0 + 0.5 * abs(math.sin(angle * max(0.5, ridge_amp))))\n            angle += warp_amp * math.sin(angle * 3.0)\n        x = radius * math.cos(angle)\n        y = radius * math.sin(angle)\n        z = vertical_amp * math.sin(t * math.pi * 2.0 + twist_rate * math.cos(angle * 0.5))\n        if \"layer\" in FEATURES:\n            z += vertical_amp * 0.35 * math.sin(angle * 2.0 + t * math.pi)\n        if \"tilt\" in FEATURES:\n            z += vertical_amp * 0.25 * t\n        if \"offset\" in FEATURES:\n            x += base_radius * 0.1 * math.cos(t * math.pi * 2.0)\n            y += base_radius * 0.1 * math.sin(t * math.pi * 2.0)\n        if \"feather\" in FEATURES:\n            extra = ridge_amp * 0.2 * math.sin(angle * 8.0)\n            radius2 = radius + extra\n            x, y = radius2 * math.cos(angle), radius2 * math.sin(angle)\n        if \"split\" in FEATURES and (i % 2) == 0:\n            z *= -1.0\n        if \"braid\" in FEATURES:\n            angle_b = angle + math.sin(t * math.pi * 4.0) * 0.2\n            x, y = radius * math.cos(angle_b), radius * math.sin(angle_b)\n        if \"flare\" in FEATURES:\n            radius3 = radius * (1.0 + 0.2 * math.sin(t * math.pi))\n            x, y = radius3 * math.cos(angle), radius3 * math.sin(angle)\n        if \"stack\" in FEATURES:\n            z += vertical_amp * (t - 0.5)\n        if jitter_amp > 0.0:\n            z += jitter_amp * math.sin(angle * 3.0) * math.cos(t * math.pi * 4.0)\n        points.append((x, y, z))\n    return points\n"
+  },
+  "meta": {
+    "label": "Motif orbital — Tourbillon stratifié",
+    "description": "Tourbillon multi-couches aux variations verticales.",
+    "category": "Formes dynamiques",
+    "parameters": [
+      "loops",
+      "radius_scale",
+      "ridge_amp",
+      "twist_rate",
+      "vertical_amp",
+      "warp_amp",
+      "jitter_amp"
+    ]
+  }
+}

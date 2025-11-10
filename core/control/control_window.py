@@ -174,6 +174,37 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.act_reload_profile.setToolTip("Recharger")
         self.act_reload_profile.setStatusTip("Recharger")
 
+        spacer_right = QtWidgets.QWidget()
+        spacer_right.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        toolbar.addWidget(spacer_right)
+
+        self.act_reset_visual = QtWidgets.QAction(
+            style.standardIcon(QtWidgets.QStyle.SP_DialogResetButton), "Reset visuel", self
+        )
+        self.act_reset_visual.setToolTip("Réinitialiser l'état visuel du modèle")
+        self.act_reset_visual.setStatusTip("Réinitialiser l'état visuel du modèle")
+        self.act_reset_visual.triggered.connect(self.reset_visual_model)
+        toolbar.addAction(self.act_reset_visual)
+        btn_reset = toolbar.widgetForAction(self.act_reset_visual)
+        if btn_reset is not None:
+            btn_reset.setStyleSheet(
+                """
+                QToolButton {
+                    background: #1f2a3a;
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 8px;
+                    color: #f0f4ff;
+                    padding: 4px 10px;
+                }
+                QToolButton:hover {
+                    background: #2b3b55;
+                }
+                QToolButton:pressed {
+                    background: #162030;
+                }
+                """
+            )
+
         # Barre de statut pour les messages utilisateur
         status = QtWidgets.QStatusBar()
         status.setObjectName("StatusBar")
@@ -340,6 +371,23 @@ class ControlWindow(QtWidgets.QMainWindow):
     def reload_profile(self):
         if self.current_profile:
             self.load_profile(self.current_profile)
+
+    def reset_visual_model(self):
+        """Request the view window to clear transient visuals without touching parameters."""
+
+        message = "Modèle visuel réinitialisé"
+        try:
+            if hasattr(self.view_win, "reset_visual_state") and callable(self.view_win.reset_visual_state):
+                self.view_win.reset_visual_state()
+            elif hasattr(self.view_win, "view") and hasattr(self.view_win.view, "reset_visual_state"):
+                self.view_win.view.reset_visual_state()  # type: ignore[call-arg]
+            else:
+                message = "Aucun moteur visuel à réinitialiser"
+        except Exception as exc:
+            message = f"Échec de la réinitialisation visuelle: {exc}"
+        status = self.statusBar()
+        if status is not None:
+            status.showMessage(message, 4000)
 
     def collect_state(self) -> dict:
         return dict(
