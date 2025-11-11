@@ -1,13 +1,10 @@
 Traceback (most recent call last):
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2117, in paintGL
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2184, in paintGL
     self._render_with_painter(painter)
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2038, in _render_with_painter
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2105, in _render_with_painter
     items = self.engine.step(width, height)
             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1081, in step
-    gravity_strength = clamp01(_safe_float_key("donutGravityStrength", 1.0))
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1077, in _safe_float_key
-    return float(_orbit_value(name, fallback))
-                 ^^^^^^^^^^^^
-NameError: name '_orbit_value' is not defined
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1487, in step
+    self._last_particle_positions[particle_idx] = (item.sx, item.sy, dist_from_center)
+                                  ^^^^^^^^^^^^
+NameError: name 'particle_idx' is not defined

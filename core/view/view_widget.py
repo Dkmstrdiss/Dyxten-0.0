@@ -93,6 +93,19 @@ def to_rad(deg: float) -> float:
     return deg * math.pi / 180.0
 
 
+def _coerce_float(value: object, default: float = 0.0) -> float:
+    """Return ``value`` converted to ``float`` when possible."""
+
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return default
+
+
 def _map_blend_mode(name: str | None) -> QtGui.QPainter.CompositionMode:
     mode = (name or "").lower()
     mapping = {
@@ -626,6 +639,15 @@ class DyxtenEngine:
         # Positions calculées pour affichage à la dernière frame: (sx, sy, QColor, r, alpha)
         self._orbiters_draw: List[Tuple[float, float, QtGui.QColor, float, float]] = []
         self._max_orbiters = 512
+        self._mod_noise_warp = 0.0
+        self._mod_field_flow = 0.0
+        self._mod_repel_force = 0.0
+        self._mod_density_pulse = 0.0
+        self._mod_orient_x = 0.0
+        self._mod_orient_y = 0.0
+        self._mod_orient_z = 0.0
+        self._modifiers_active = False
+        self._update_modifier_flags()
         self.rebuild_geometry()
 
     # ------------------------------------------------------------------ helpers
@@ -651,6 +673,42 @@ class DyxtenEngine:
                 else:
                     self.state[key][sub_key] = sub_value  # type: ignore[index]
         self.gradient = _parse_gradient_stops(self.state.get("appearance", {}).get("colors"))
+        self._update_modifier_flags()
+
+    def _update_modifier_flags(self) -> None:
+        dist = self.state.get("distribution", {})
+        if not isinstance(dist, Mapping):
+            dist = {}
+        dyn = self.state.get("dynamics", {})
+        if not isinstance(dyn, Mapping):
+            dyn = {}
+
+        def _orient_value(key: str) -> float:
+            raw = dyn.get(key)
+            if raw is None:
+                raw = dist.get(key)
+            return _coerce_float(raw, 0.0)
+
+        self._mod_noise_warp = _coerce_float(dist.get("noiseWarp"), 0.0)
+        self._mod_field_flow = _coerce_float(dist.get("fieldFlow"), 0.0)
+        self._mod_repel_force = _coerce_float(dist.get("repelForce"), 0.0)
+        self._mod_density_pulse = _coerce_float(dist.get("densityPulse"), 0.0)
+        self._mod_orient_x = _orient_value("orientXDeg")
+        self._mod_orient_y = _orient_value("orientYDeg")
+        self._mod_orient_z = _orient_value("orientZDeg")
+
+        self._modifiers_active = any(
+            abs(value) > 1e-6
+            for value in (
+                self._mod_noise_warp,
+                self._mod_field_flow,
+                self._mod_repel_force,
+                self._mod_density_pulse,
+                self._mod_orient_x,
+                self._mod_orient_y,
+                self._mod_orient_z,
+            )
+        )
 
     def _remove_imprint_by_id(self, imprint_id: Optional[int]) -> None:
         if imprint_id is None:
@@ -727,13 +785,14 @@ class DyxtenEngine:
 
     # ---------------------------------------------------------------- animation helpers
     def _apply_point_modifiers(self, base: Point3D, seed: int, now_ms: float) -> Point3D:
+        if not self._modifiers_active:
+            return base
+
         g = self.state.get("geometry", {})
-        dist = self.state.get("distribution", {})
-        dyn = self.state.get("dynamics", {})
         R = float(g.get("R", 1.0) or 1.0)
         x, y, z = base.x, base.y, base.z
 
-        noise_warp = float(dist.get("noiseWarp", 0.0) or 0.0)
+        noise_warp = self._mod_noise_warp
         if noise_warp:
             amp = noise_warp * R * 0.4
             freq = 1.3
@@ -742,14 +801,14 @@ class DyxtenEngine:
             y += amp * (_value_noise3((base.x - anim) * freq, (base.y + anim) * freq, (base.z - anim) * freq) * 2 - 1)
             z += amp * (_value_noise3((base.x + anim * 0.5) * freq, (base.y + 2 * anim) * freq, (base.z - anim * 0.25) * freq) * 2 - 1)
 
-        flow = float(dist.get("fieldFlow", 0.0) or 0.0)
+        flow = self._mod_field_flow
         if flow:
             angle = (flow * 0.4 * now_ms * 0.001) + (flow * 0.3 * (y / max(1e-6, R)))
             cos_a = math.cos(angle)
             sin_a = math.sin(angle)
             x, z = cos_a * x - sin_a * z, sin_a * x + cos_a * z
 
-        repel = float(dist.get("repelForce", 0.0) or 0.0)
+        repel = self._mod_repel_force
         if repel:
             r = math.sqrt(x * x + y * y + z * z) or 1.0
             diff = R - r
@@ -758,27 +817,27 @@ class DyxtenEngine:
             y += diff * k * (y / r)
             z += diff * k * (z / r)
 
-        pulse = float(dist.get("densityPulse", 0.0) or 0.0)
+        pulse = self._mod_density_pulse
         if pulse:
             scale = 1 + 0.3 * pulse * math.sin(now_ms * 0.001 * 2 * math.pi)
             x *= scale
             y *= scale
             z *= scale
 
-        orient_x = dyn.get("orientXDeg") if dyn.get("orientXDeg") is not None else dist.get("orientXDeg")
-        orient_y = dyn.get("orientYDeg") if dyn.get("orientYDeg") is not None else dist.get("orientYDeg")
-        orient_z = dyn.get("orientZDeg") if dyn.get("orientZDeg") is not None else dist.get("orientZDeg")
+        orient_x = self._mod_orient_x
+        orient_y = self._mod_orient_y
+        orient_z = self._mod_orient_z
 
         if orient_x:
-            ox = to_rad(float(orient_x))
+            ox = to_rad(orient_x)
             cos_x, sin_x = math.cos(ox), math.sin(ox)
             y, z = cos_x * y - sin_x * z, sin_x * y + cos_x * z
         if orient_y:
-            oy = to_rad(float(orient_y))
+            oy = to_rad(orient_y)
             cos_y, sin_y = math.cos(oy), math.sin(oy)
             x, z = cos_y * x + sin_y * z, -sin_y * x + cos_y * z
         if orient_z:
-            oz = to_rad(float(orient_z))
+            oz = to_rad(orient_z)
             cos_z, sin_z = math.cos(oz), math.sin(oz)
             x, y = cos_z * x - sin_z * y, sin_z * x + cos_z * y
 
@@ -1102,6 +1161,12 @@ class DyxtenEngine:
             return_duration_cfg = transition_duration_cfg
         required_turns_cfg = max(0.0, _safe_float_key("orbiterRequiredTurns", 1.0))
         max_orbit_ms_cfg = max(100.0, _safe_float_key("orbiterMaxOrbitMs", 4000.0))
+        ease_in_power_cfg = clamp(
+            _safe_float_key("orbiterTransitionEaseInPower", 3.0), 0.5, 8.0
+        )
+        ease_out_power_cfg = clamp(
+            _safe_float_key("orbiterTransitionEaseOutPower", 3.0), 0.5, 8.0
+        )
         transition_mode_cfg = str(_orbit_value("orbiterTransitionMode", "") or "")
         snap_mode_cfg = transition_mode_cfg or str(_orbit_value("orbiterSnapMode", "default") or "default")
         detach_mode_cfg = transition_mode_cfg or str(_orbit_value("orbiterDetachMode", snap_mode_cfg) or snap_mode_cfg)
@@ -1312,7 +1377,7 @@ class DyxtenEngine:
         # Check for collisions with red circle mask and create imprints
         collision_threshold = radius_red * 0.98  # Slightly inside the red circle
         imprint_radius = float(self.state.get("appearance", {}).get("px", 2.0) or 2.0) * 1.5
-        
+
         for item in items:
             base_color = self._pick_color(item, now)
             visibility = 1.0
@@ -1323,30 +1388,24 @@ class DyxtenEngine:
             else:
                 depth_alpha = 1.0
             item.alpha = clamp01(opacity * depth_alpha * clamp01(visibility))
-
-            particle_idx = item.world.seed
-            trace = self._particle_traces.get(particle_idx)
-            if trace is None:
-                trace = deque(maxlen=self._trail_max_points)
-                self._particle_traces[particle_idx] = trace
-            elif trace.maxlen != self._trail_max_points:
-                trace = deque(trace, maxlen=self._trail_max_points)
-                self._particle_traces[particle_idx] = trace
-            trace.append((item.sx, item.sy))
-
-            # Detect collision with red circle boundary
+            
+            # Detect when a particle exits the red circle boundary
             if radius_red > 0 and item.role == "cloud":
                 dist_from_center = math.hypot(item.sx - cx, item.sy - cy)
-                
+                # Identify particle by its seed (index)
+                try:
+                    particle_idx = int(item.world.seed)
+                except Exception:
+                    particle_idx = None
+
                 # Check if particle is near or crossing the red circle boundary
                 if abs(dist_from_center - collision_threshold) < item.r * 2.0:
-                    # Check if particle was previously inside and is now outside (or vice versa)
+                    # Only consider particles leaving the field of view (inside -> outside)
                     prev_pos = self._last_particle_positions.get(particle_idx)
                     if prev_pos is not None:
                         prev_dist = prev_pos[2]
-                        # Collision detected: particle crossed the boundary
-                        if (prev_dist < collision_threshold and dist_from_center >= collision_threshold) or \
-                           (prev_dist >= collision_threshold and dist_from_center < collision_threshold):
+                        # Collision detected: particle crossed the boundary outward
+                        if prev_dist < collision_threshold <= dist_from_center:
                             # Create imprint at collision point
                             angle = math.atan2(item.sy - cy, item.sx - cx)
                             collision_x = cx + math.cos(angle) * collision_threshold
@@ -1441,12 +1500,14 @@ class DyxtenEngine:
                 if key in ("none", "linear"):
                     return value
                 if key == "ease_in":
-                    return value * value * value
+                    return pow(value, ease_in_power_cfg)
                 if key == "ease_in_out":
                     if value < 0.5:
-                        return 4.0 * value * value * value
-                    return 1.0 - pow(-2.0 * value + 2.0, 3.0) / 2.0
-                return 1.0 - pow(1.0 - value, 3.0)
+                        scaled = clamp01(value * 2.0)
+                        return 0.5 * pow(scaled, ease_in_power_cfg)
+                    scaled = clamp01((1.0 - value) * 2.0)
+                    return 1.0 - 0.5 * pow(scaled, ease_out_power_cfg)
+                return 1.0 - pow(1.0 - value, ease_out_power_cfg)
 
             def _trajectory_point(
                 mode: str,
@@ -2159,8 +2220,17 @@ def _should_use_opengl(force_backend: Optional[str]) -> bool:
         return False
     if force_backend == "opengl":
         return True
+
+    env_backend = os.environ.get("DYXTEN_FORCE_BACKEND", "").strip().lower()
+    if env_backend == "raster":
+        return False
+    if env_backend == "opengl":
+        return True
+
     if os.environ.get("DYXTEN_FORCE_RASTER", "").strip().lower() in {"1", "true", "yes"}:
         return False
+    if os.environ.get("DYXTEN_FORCE_OPENGL", "").strip().lower() in {"1", "true", "yes"}:
+        return True
     return hasattr(QtWidgets, "QOpenGLWidget")
 
 

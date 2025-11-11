@@ -115,6 +115,22 @@ class OrbitTab(QtWidgets.QWidget):
             )
         )
 
+        self.spin_ease_in_power = QtWidgets.QDoubleSpinBox()
+        self.spin_ease_in_power.setRange(0.5, 8.0)
+        self.spin_ease_in_power.setDecimals(2)
+        self.spin_ease_in_power.setSingleStep(0.1)
+        self.spin_ease_in_power.setValue(
+            float(defaults.get("orbiterTransitionEaseInPower", 3.0))
+        )
+
+        self.spin_ease_out_power = QtWidgets.QDoubleSpinBox()
+        self.spin_ease_out_power.setRange(0.5, 8.0)
+        self.spin_ease_out_power.setDecimals(2)
+        self.spin_ease_out_power.setSingleStep(0.1)
+        self.spin_ease_out_power.setValue(
+            float(defaults.get("orbiterTransitionEaseOutPower", 3.0))
+        )
+
         row(
             transition_layout,
             "Mode d'easing",
@@ -124,6 +140,24 @@ class OrbitTab(QtWidgets.QWidget):
                 self.combo_transition_mode,
                 defaults.get("orbiterTransitionMode", defaults.get("orbiterSnapMode", "default")),
                 "default",
+            ),
+        )
+        row(
+            transition_layout,
+            "Puissance easing (entrée)",
+            self.spin_ease_in_power,
+            TOOLTIPS["orbit.orbiterTransitionEaseInPower"],
+            lambda: self.spin_ease_in_power.setValue(
+                float(defaults.get("orbiterTransitionEaseInPower", 3.0))
+            ),
+        )
+        row(
+            transition_layout,
+            "Puissance easing (retour)",
+            self.spin_ease_out_power,
+            TOOLTIPS["orbit.orbiterTransitionEaseOutPower"],
+            lambda: self.spin_ease_out_power.setValue(
+                float(defaults.get("orbiterTransitionEaseOutPower", 3.0))
             ),
         )
         row(
@@ -357,13 +391,8 @@ class OrbitTab(QtWidgets.QWidget):
             self.spin_required_turns,
             self.spin_max_orbit,
             self.spin_transition_duration,
-            self.spin_spiral_turns,
-            self.spin_spiral_tightness,
-            self.spin_wave_amplitude,
-            self.spin_wave_frequency,
-            self.spin_trail_blend,
-            self.spin_trail_smoothing,
-            self.spin_trail_memory,
+            self.spin_ease_in_power,
+            self.spin_ease_out_power,
         ]:
             widget.valueChanged.connect(self.emit_delta)
 
@@ -423,6 +452,18 @@ class OrbitTab(QtWidgets.QWidget):
             self.spin_transition_duration,
             section="orbit",
             key="orbiterTransitionDuration",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_ease_in_power,
+            section="orbit",
+            key="orbiterTransitionEaseInPower",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.spin_ease_out_power,
+            section="orbit",
+            key="orbiterTransitionEaseOutPower",
             tab=self._TAB_LABEL,
         )
         register_linkable_widget(
@@ -600,6 +641,8 @@ class OrbitTab(QtWidgets.QWidget):
             orbiterTransitionDuration=transition_duration,
             orbiterApproachDuration=transition_duration,
             orbiterReturnDuration=transition_duration,
+            orbiterTransitionEaseInPower=float(self.spin_ease_in_power.value()),
+            orbiterTransitionEaseOutPower=float(self.spin_ease_out_power.value()),
             orbiterTrajectoryBend=bezier_bend,
             orbiterTrajectoryArcDirection=arc_direction,
             orbiterSpiralTurns=float(self.spin_spiral_turns.value()),
@@ -640,6 +683,24 @@ class OrbitTab(QtWidgets.QWidget):
         )
         with QtCore.QSignalBlocker(self.spin_transition_duration):
             self.spin_transition_duration.setValue(duration_value)
+
+        with QtCore.QSignalBlocker(self.spin_ease_in_power):
+            try:
+                ease_in_value = float(
+                    _get_value("orbiterTransitionEaseInPower", 3.0)
+                )
+            except (TypeError, ValueError):
+                ease_in_value = 3.0
+            self.spin_ease_in_power.setValue(ease_in_value)
+
+        with QtCore.QSignalBlocker(self.spin_ease_out_power):
+            try:
+                ease_out_value = float(
+                    _get_value("orbiterTransitionEaseOutPower", 3.0)
+                )
+            except (TypeError, ValueError):
+                ease_out_value = 3.0
+            self.spin_ease_out_power.setValue(ease_out_value)
 
         transition_mode = _get_value(
             "orbiterTransitionMode", _get_value("orbiterSnapMode", "default")

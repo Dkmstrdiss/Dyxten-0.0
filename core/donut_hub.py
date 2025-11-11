@@ -27,7 +27,7 @@ from typing import List, Optional, Sequence
 
 # --- moved from core/donut.py to unify donut utilities with DonutHub ---
 DEFAULT_DONUT_BUTTON_COUNT = 10
-_DEFAULT_RADIUS_RATIO = 0.25
+_DEFAULT_RADIUS_RATIO = 0.35
 
 
 def _make_button(idx: int, label: Optional[str] = None, *, button_id: Optional[int] = None) -> dict:
@@ -148,7 +148,7 @@ class DonutHub(QtWidgets.QWidget):
         self._angle_offset_deg = 0.0
 
         # Donut geometry - use default radius ratio
-        self._radius_ratio = _DEFAULT_RADIUS_RATIO  # 0.25
+        self._radius_ratio = _DEFAULT_RADIUS_RATIO  # 0.35
         self.R_outer = 260
         self.R_inner = 160
         self.core_diam = 360
