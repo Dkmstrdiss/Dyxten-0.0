@@ -16,6 +16,7 @@ try:
     from .distribution_tab import DistributionTab
     from .system_tab import SystemTab
     from .orbit_tab import OrbitTab
+    from .indicator_tab import IndicatorTab
     from .link_controller_tab import LinkControllerTab
     from .profile_manager import ProfileManager, SubProfileManager
     from ..donut_hub import default_donut_config, sanitize_donut_state
@@ -28,6 +29,7 @@ except ImportError:  # pragma: no cover - compatibilité exécution directe
     from core.control.distribution_tab import DistributionTab  # type: ignore
     from core.control.system_tab import SystemTab  # type: ignore
     from core.control.orbit_tab import OrbitTab  # type: ignore
+    from core.control.indicator_tab import IndicatorTab  # type: ignore
     from core.control.link_controller_tab import LinkControllerTab  # type: ignore
     from core.control.profile_manager import ProfileManager, SubProfileManager  # type: ignore
     from core.donut_hub import default_donut_config, sanitize_donut_state  # type: ignore
@@ -225,7 +227,10 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_distribution = DistributionTab()
         self.tab_orbit = OrbitTab()
         self.tab_system = SystemTab()
+        self.tab_indicator = IndicatorTab()
         self.tab_controller = LinkControllerTab()
+
+        self.tab_indicator.set_system_tab(self.tab_system)
 
         for tab in [
             self.tab_camera,
@@ -233,6 +238,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.tab_appearance,
             self.tab_dynamics,
             self.tab_distribution,
+            self.tab_indicator,
             self.tab_orbit,
             self.tab_system,
             self.tab_controller,
@@ -244,6 +250,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tab_appearance.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_dynamics.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_distribution.attach_subprofile_manager(self.subprofile_mgr)
+        self.tab_indicator.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_orbit.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_system.attach_subprofile_manager(self.subprofile_mgr)
         self.tab_controller.attach_subprofile_manager(self.subprofile_mgr)
@@ -255,6 +262,7 @@ class ControlWindow(QtWidgets.QMainWindow):
         self.tabs.addTab(self.tab_appearance, "Apparence")
         self.tabs.addTab(self.tab_dynamics, "Dynamique")
         self.tabs.addTab(self.tab_distribution, "Distribution")
+        self.tabs.addTab(self.tab_indicator, "Indicateur")
         self.tabs.addTab(self.tab_orbit, "Trajet orbitale")
         self.tabs.addTab(self.tab_system, "Système")
         controller_tab = self._wrap_scrollable_tab(self.tab_controller)
@@ -356,6 +364,7 @@ class ControlWindow(QtWidgets.QMainWindow):
                 self.state.get("distribution"),
                 self.state.get("mask"),
             )
+            self.tab_indicator.set_defaults(self.state.get("indicator"))
             self.tab_orbit.set_defaults(self.state.get("orbit"))
             self.tab_system.set_defaults(self.state.get("system"))
             self.tab_controller.set_defaults(self.state.get("controller"))
@@ -398,6 +407,7 @@ class ControlWindow(QtWidgets.QMainWindow):
             distribution=self.tab_distribution.collect_distribution(),
             mask=self.tab_distribution.collect_mask(),
             orbit=self.tab_orbit.collect(),
+            indicator=self.tab_indicator.collect(),
             system=self.tab_system.collect(),
             controller=self.tab_controller.collect(),
             donut=copy.deepcopy(self.state.get("donut", default_donut_config())),
@@ -636,6 +646,38 @@ class ControlWindow(QtWidgets.QMainWindow):
         for key, value in orbit_defaults.items():
             orbit_state.setdefault(key, value)
         state["donut"] = sanitize_donut_state(state.get("donut"))
+
+        indicator_state = state.setdefault("indicator", {})
+        indicator_defaults = DEFAULTS.get("indicator", {})
+        if isinstance(indicator_state, dict):
+            center_defaults = indicator_defaults.get("centerLines", {})
+            if isinstance(center_defaults, dict):
+                buttons_default = center_defaults.get("buttons", {})
+                buttons_state = indicator_state.setdefault("centerLines", {}).get("buttons")
+                center_section = indicator_state.setdefault("centerLines", {})
+                center_section.setdefault("all", bool(center_defaults.get("all", False)))
+                if not isinstance(buttons_state, dict):
+                    center_section["buttons"] = copy.deepcopy(buttons_default)
+                else:
+                    for idx, flag in buttons_default.items():
+                        center_section["buttons"].setdefault(idx, flag)
+            if "yellowCircleRatio" not in indicator_state:
+                indicator_state["yellowCircleRatio"] = indicator_defaults.get("yellowCircleRatio", 0.19)
+            orbital_defaults = indicator_defaults.get("orbitalZones", {})
+            orbital_section = indicator_state.setdefault("orbitalZones", {})
+            if isinstance(orbital_defaults, dict):
+                orbital_section.setdefault("enabled", bool(orbital_defaults.get("enabled", True)))
+                default_diam = orbital_defaults.get("diameters", [])
+                if not isinstance(orbital_section.get("diameters"), list):
+                    orbital_section["diameters"] = list(default_diam)
+        marker_cfg = system_state.get("markerCircles")
+        if isinstance(marker_cfg, dict):
+            yellow_value = marker_cfg.get("yellow")
+            if yellow_value is not None:
+                try:
+                    indicator_state.setdefault("yellowCircleRatio", float(yellow_value))
+                except (TypeError, ValueError):
+                    indicator_state.setdefault("yellowCircleRatio", indicator_defaults.get("yellowCircleRatio", 0.19))
 
     # ----------------------------------------------------------------- thème & bannière
     def _apply_theme(self):

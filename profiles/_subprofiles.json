@@ -248,5 +248,40 @@
       "orbiterRequiredTurns": 1.0,
       "orbiterMaxOrbitMs": 4000.0
     }
+  },
+  "indicator": {
+    "Default": {
+      "centerLines": {
+        "all": false,
+        "buttons": {
+          "1": false,
+          "2": false,
+          "3": false,
+          "4": false,
+          "5": false,
+          "6": false,
+          "7": false,
+          "8": false,
+          "9": false,
+          "10": false
+        }
+      },
+      "yellowCircleRatio": 0.19,
+      "orbitalZones": {
+        "enabled": true,
+        "diameters": [
+          120.0,
+          120.0,
+          120.0,
+          120.0,
+          120.0,
+          120.0,
+          120.0,
+          120.0,
+          120.0,
+          120.0
+        ]
+      }
+    }
   }
 }

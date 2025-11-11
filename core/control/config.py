@@ -1,7 +1,7 @@
 
 from PyQt5 import QtCore
 
-from ..donut_hub import default_donut_config
+from ..donut_hub import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config
 
 
 DEFAULTS = dict(
@@ -133,6 +133,17 @@ DEFAULTS = dict(
         orbiterTrailMemorySeconds=2.0,
         orbiterRequiredTurns=1.0,
         orbiterMaxOrbitMs=4000.0,
+    ),
+    indicator=dict(
+        centerLines=dict(
+            all=False,
+            buttons={str(idx + 1): False for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
+        ),
+        yellowCircleRatio=0.19,
+        orbitalZones=dict(
+            enabled=True,
+            diameters=[120.0 for _ in range(DEFAULT_DONUT_BUTTON_COUNT)],
+        ),
     ),
     donut=default_donut_config(),
     controller=dict(
@@ -1311,6 +1322,11 @@ TOOLTIPS = {
     "orbit.orbiterTrailMemorySeconds":"Durée de l'historique de positions conservé pour reconstruire la trajectoire initiale.",
     "orbit.orbiterRequiredTurns":"Nombre de tours complets minimum avant de déclencher le retour.",
     "orbit.orbiterMaxOrbitMs":"Durée maximale passée en orbite avant retour forcé (en millisecondes).",
+    "indicator.centerLines.all":"Affiche des lignes reliant le centre du modèle à l’ensemble des boutons du donut.",
+    "indicator.centerLines.buttons":"Affiche une ligne reliant le centre du modèle au bouton sélectionné.",
+    "indicator.yellowCircleRatio":"Ajuste le diamètre du cercle de repère jaune (fraction de la dimension minimale de la fenêtre).",
+    "indicator.orbitalZones.enabled":"Affiche les zones orbitales vertes autour des boutons du donut.",
+    "indicator.orbitalZones.diameters":"Diamètre en pixels de chaque zone orbitale verte (les cercles restent tangents entre voisins).",
     "controller.tracks[].enabled":"Active ou désactive la piste correspondante pour appliquer la modulation.",
     "controller.tracks[].waveform":"Choisit la source de modulation pour la piste (forme mathématique, micro ou lecture système).",
     "controller.tracks[].amplitude":"Détermine l’intensité relative de la modulation autour du centre.",

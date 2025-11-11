@@ -1,10 +1,10 @@
 Traceback (most recent call last):
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2184, in paintGL
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2344, in paintGL
     self._render_with_painter(painter)
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2105, in _render_with_painter
-    items = self.engine.step(width, height)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1487, in step
-    self._last_particle_positions[particle_idx] = (item.sx, item.sy, dist_from_center)
-                                  ^^^^^^^^^^^^
-NameError: name 'particle_idx' is not defined
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2103, in _render_with_painter
+    radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1975, in _compute_marker_radii
+    indicator_cfg = self.state.get("indicator")
+                    ^^^^^^^^^^
+AttributeError: '_OpenGLViewWidget' object has no attribute 'state'

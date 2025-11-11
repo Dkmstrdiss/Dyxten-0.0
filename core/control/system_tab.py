@@ -40,12 +40,13 @@ class SystemTab(QtWidgets.QWidget):
 
         self._button_size_widget, self._button_size_slider, self._button_size_spin = self._create_button_size_controls(d.get("donutButtonSize", 80))
         self._radius_ratio_widget, self._radius_ratio_slider, self._radius_ratio_spin = self._create_radius_ratio_controls(d.get("donutRadiusRatio", 0.35))
-        self._circle_controls = self._create_circle_controls(d.get("markerCircles", {}))
-        
+        marker_defaults = d.get("markerCircles", {})
+        self._circle_controls = self._create_circle_controls(marker_defaults)
+        self._yellow_ratio = float(marker_defaults.get("yellow", 0.19))
+
         row(groupbox_layout, "Taille des boutons", self._button_size_widget, TOOLTIPS["system.donutButtonSize"], lambda: self._set_button_size(d.get("donutButtonSize", 80)))
         row(groupbox_layout, "Diamètre du donut hub", self._radius_ratio_widget, TOOLTIPS["system.donutRadiusRatio"], lambda: self._set_radius_ratio(d.get("donutRadiusRatio", 0.35)))
         row(groupbox_layout, "Diamètre cercle rouge", self._circle_controls["red"][0], TOOLTIPS["system.markerCircles.red"], lambda: self._set_circle_value("red", d["markerCircles"]["red"]))
-        row(groupbox_layout, "Diamètre cercle jaune", self._circle_controls["yellow"][0], TOOLTIPS["system.markerCircles.yellow"], lambda: self._set_circle_value("yellow", d["markerCircles"]["yellow"]))
         for w in [
             self.sp_Nmax,
             self.sp_dpr,
@@ -76,7 +77,7 @@ class SystemTab(QtWidgets.QWidget):
             donutRadiusRatio=self._radius_ratio_spin.value(),
             markerCircles={
                 "red": self._circle_controls["red"][2].value() / 200.0,
-                "yellow": self._circle_controls["yellow"][2].value() / 200.0,
+                "yellow": float(self._yellow_ratio),
             },
             depthSort=self.chk_depthSort.isChecked(),
             transparent=self.chk_transparent.isChecked(),
@@ -102,14 +103,20 @@ class SystemTab(QtWidgets.QWidget):
         if not isinstance(marker_cfg, dict):
             marker_cfg = {}
         # Only set red and yellow; blue is controlled by donutRadiusRatio
-        for color in ("red", "yellow"):
-            default_value = d["markerCircles"].get(color, 0.0)
-            raw = marker_cfg.get(color, default_value)
-            try:
-                value = float(raw)
-            except (TypeError, ValueError):
-                value = default_value
-            self._set_circle_value(color, value)
+        default_red = d["markerCircles"].get("red", 0.0)
+        raw_red = marker_cfg.get("red", default_red)
+        try:
+            red_value = float(raw_red)
+        except (TypeError, ValueError):
+            red_value = default_red
+        self._set_circle_value("red", red_value)
+
+        default_yellow = d["markerCircles"].get("yellow", 0.19)
+        raw_yellow = marker_cfg.get("yellow", default_yellow)
+        try:
+            self._yellow_ratio = max(0.0, min(0.5, float(raw_yellow)))
+        except (TypeError, ValueError):
+            self._yellow_ratio = max(0.0, min(0.5, float(default_yellow)))
         with QtCore.QSignalBlocker(self.chk_depthSort):
             self.chk_depthSort.setChecked(bool(cfg.get("depthSort", d["depthSort"])))
         with QtCore.QSignalBlocker(self.chk_transparent):
@@ -183,8 +190,8 @@ class SystemTab(QtWidgets.QWidget):
     def _create_circle_controls(self, overrides: dict):
         controls = {}
         defaults = DEFAULTS["system"]["markerCircles"]
-        # Only create controls for red and yellow; blue is controlled by donutRadiusRatio
-        for color in ("red", "yellow"):
+        # Only create controls for red; blue is controlled by donutRadiusRatio
+        for color in ("red",):
             default_value = float(defaults.get(color, 0.0))
             value = overrides.get(color, default_value)
             try:
@@ -222,6 +229,10 @@ class SystemTab(QtWidgets.QWidget):
             container.setLayout(layout)
             controls[color] = (container, slider, spin)
         return controls
+
+    def set_yellow_ratio(self, value: float) -> None:
+        self._yellow_ratio = max(0.0, min(0.5, float(value)))
+        self._sync_subprofile_state()
 
     # (Réglage de vitesse orbitale retiré)
 
