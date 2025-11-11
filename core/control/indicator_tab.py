@@ -107,9 +107,6 @@ class IndicatorTab(QtWidgets.QWidget):
         self.chk_orbital_enabled.setToolTip(TOOLTIPS.get("indicator.orbitalZones.enabled", ""))
         orbital_layout.addRow(self.chk_orbital_enabled)
 
-        # Orbital defaults come from the global defaults structure
-        orbit_defaults = defaults.get("orbitalZones", {})
-
         coverage_angle_default = float(orbit_defaults.get("coverageAngle", 0.0)) if isinstance(orbit_defaults, dict) else 0.0
         (
             self._coverage_angle_container,
@@ -395,7 +392,8 @@ class IndicatorTab(QtWidgets.QWidget):
             ):
                 diameters[source_index] = _clamp(value, 0.0, 400.0)
             adjusted = self._apply_mode_transform(diameters, source_index, value)
-            adjusted = self._enforce_orbital_coverage(adjusted)
+            baseline = list(adjusted)
+            adjusted = self._enforce_orbital_coverage(adjusted, baseline)
             self._update_orbit_controls(adjusted)
             self._last_diameters = list(adjusted)
         finally:
@@ -519,13 +517,26 @@ class IndicatorTab(QtWidgets.QWidget):
             return values
         return values
 
-    def _enforce_orbital_coverage(self, diameters: Sequence[float]) -> List[float]:
+    def _enforce_orbital_coverage(
+        self,
+        diameters: Sequence[float],
+        baseline: Optional[Sequence[float]] = None,
+    ) -> List[float]:
         if self._orbit_mode == "free":
             return list(diameters)
         values = [_clamp(float(v), 0.0, 400.0) for v in diameters]
         count = len(values)
         if count <= 1:
             return values
+        baseline_values: List[float]
+        if baseline is None:
+            baseline_values = list(values)
+        else:
+            baseline_values = [_clamp(float(v), 0.0, 400.0) for v in baseline]
+            if len(baseline_values) < count:
+                baseline_values.extend(values[len(baseline_values) :])
+            elif len(baseline_values) > count:
+                baseline_values = baseline_values[:count]
         spans = self._effective_spans(count, values)
         if not spans:
             return values
@@ -549,25 +560,20 @@ class IndicatorTab(QtWidgets.QWidget):
                 head_next = 400.0 - values[next_idx]
                 if head_current <= 1e-3 and head_next <= 1e-3:
                     continue
-                total_head = head_current + head_next if head_current + head_next > 0 else 1.0
-                add_current = min(deficit * (head_current / total_head), head_current)
-                add_next = min(deficit * (head_next / total_head), head_next)
-                used = add_current + add_next
-                if used + 1e-3 < deficit:
-                    remaining = deficit - used
-                    if head_current - add_current > head_next - add_next:
-                        extra = min(remaining, head_current - add_current)
-                        add_current += extra
-                        used += extra
-                    else:
-                        extra = min(remaining, head_next - add_next)
-                        add_next += extra
-                        used += extra
-                if add_current > 0.0:
-                    values[idx] += add_current
-                    adjusted = True
-                if add_next > 0.0:
-                    values[next_idx] += add_next
+                order = [
+                    (baseline_values[idx], head_current, idx),
+                    (baseline_values[next_idx], head_next, next_idx),
+                ]
+                order.sort(key=lambda item: (item[0], item[1]))
+                remaining = deficit
+                for _base, headroom, target_idx in reversed(order):
+                    if remaining <= 1e-3:
+                        break
+                    if headroom <= 1e-3:
+                        continue
+                    delta = min(headroom, remaining)
+                    values[target_idx] += delta
+                    remaining -= delta
                     adjusted = True
             if not adjusted:
                 break
