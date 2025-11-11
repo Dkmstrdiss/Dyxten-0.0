@@ -678,6 +678,14 @@ class ControlWindow(QtWidgets.QMainWindow):
                 if not isinstance(orbital_section.get("diameters"), list):
                     orbital_section["diameters"] = list(default_diam)
                 orbital_section.setdefault("mode", orbital_defaults.get("mode", "free"))
+                orbital_section.setdefault(
+                    "coverageAngle",
+                    float(orbital_defaults.get("coverageAngle", 0.0)),
+                )
+                orbital_section.setdefault(
+                    "coverageOffset",
+                    float(orbital_defaults.get("coverageOffset", 0.0)),
+                )
         marker_cfg = system_state.get("markerCircles")
         if isinstance(marker_cfg, dict):
             yellow_value = marker_cfg.get("yellow")

@@ -2211,6 +2211,14 @@ class _ViewWidgetBase:
                 radii: List[float] = []
                 if not isinstance(raw_diameters, Sequence):
                     raw_diameters = []
+                try:
+                    coverage_angle = float(orbital_cfg.get("coverageAngle", 0.0))
+                except (TypeError, ValueError):
+                    coverage_angle = 0.0
+                try:
+                    coverage_offset = float(orbital_cfg.get("coverageOffset", 0.0))
+                except (TypeError, ValueError):
+                    coverage_offset = 0.0
                 for idx in range(donut_count):
                     if idx < len(raw_diameters):
                         try:
@@ -2230,6 +2238,25 @@ class _ViewWidgetBase:
                         continue
                     bx, by = donut_centers[idx]
                     painter.drawEllipse(QtCore.QRectF(bx - radius, by - radius, radius * 2.0, radius * 2.0))
+
+                gap_angle = max(0.0, min(360.0, coverage_angle))
+                if gap_angle > 1e-3:
+                    base_angle = coverage_offset % 360.0
+                    hub_x = sum(bx for bx, _ in donut_centers) / donut_count
+                    hub_y = sum(by for _, by in donut_centers) / donut_count
+                    orbit_extent = max(radii) if radii else 0.0
+                    donut_extent = max(
+                        math.hypot(bx - hub_x, by - hub_y) for bx, by in donut_centers
+                    ) if donut_centers else 0.0
+                    line_length = max(orbit_extent, donut_extent, fallback_orbit_radius) + 40.0
+                    pen = QtGui.QPen(QtGui.QColor(255, 80, 80, 220), 2.0)
+                    pen.setCosmetic(True)
+                    painter.setPen(pen)
+                    for angle in (base_angle, (base_angle + gap_angle) % 360.0):
+                        rad = math.radians(angle)
+                        ex = hub_x + math.cos(rad) * line_length
+                        ey = hub_y + math.sin(rad) * line_length
+                        painter.drawLine(QtCore.QLineF(hub_x, hub_y, ex, ey))
 
         # Draw permanent concentric marker circles centred on the viewport
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)

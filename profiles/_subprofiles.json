@@ -281,7 +281,9 @@
           120.0,
           120.0
         ],
-        "mode": "free"
+        "mode": "free",
+        "coverageAngle": 0.0,
+        "coverageOffset": 0.0
       }
     }
   }

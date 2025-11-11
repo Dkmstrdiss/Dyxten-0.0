@@ -1,10 +1,14 @@
 Traceback (most recent call last):
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2344, in paintGL
-    self._render_with_painter(painter)
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 2103, in _render_with_painter
-    radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
-                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "D:\Dyxten-0.0\core\view\view_widget.py", line 1975, in _compute_marker_radii
-    indicator_cfg = self.state.get("indicator")
-                    ^^^^^^^^^^
-AttributeError: '_OpenGLViewWidget' object has no attribute 'state'
+  File "d:\Dyxten-0.0\core\main.py", line 416, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "d:\Dyxten-0.0\core\main.py", line 379, in main
+    control_win = ControlWindow(app, second, view_win)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\control\control_window.py", line 230, in __init__
+    self.tab_indicator = IndicatorTab()
+                         ^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\control\indicator_tab.py", line 110, in __init__
+    coverage_angle_default = float(orbit_defaults.get("coverageAngle", 0.0)) if isinstance(orbit_defaults, dict) else 0.0
+                                                                                           ^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'orbit_defaults' where it is not associated with a value

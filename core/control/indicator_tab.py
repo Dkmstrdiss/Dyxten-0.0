@@ -107,6 +107,37 @@ class IndicatorTab(QtWidgets.QWidget):
         self.chk_orbital_enabled.setToolTip(TOOLTIPS.get("indicator.orbitalZones.enabled", ""))
         orbital_layout.addRow(self.chk_orbital_enabled)
 
+        # Orbital defaults come from the global defaults structure
+        orbit_defaults = defaults.get("orbitalZones", {})
+
+        coverage_angle_default = float(orbit_defaults.get("coverageAngle", 0.0)) if isinstance(orbit_defaults, dict) else 0.0
+        (
+            self._coverage_angle_container,
+            self._coverage_angle_slider,
+            self._coverage_angle_spin,
+        ) = self._create_degree_controls(coverage_angle_default)
+        orbital_layout.addRow("Angle à exclure", self._coverage_angle_container)
+        register_linkable_widget(
+            self._coverage_angle_spin,
+            section="indicator",
+            key="orbitalZones.coverageAngle",
+            tab=self._TAB_LABEL,
+        )
+
+        coverage_offset_default = float(orbit_defaults.get("coverageOffset", 0.0)) if isinstance(orbit_defaults, dict) else 0.0
+        (
+            self._coverage_offset_container,
+            self._coverage_offset_slider,
+            self._coverage_offset_spin,
+        ) = self._create_degree_controls(coverage_offset_default)
+        orbital_layout.addRow("Angle de départ", self._coverage_offset_container)
+        register_linkable_widget(
+            self._coverage_offset_spin,
+            section="indicator",
+            key="orbitalZones.coverageOffset",
+            tab=self._TAB_LABEL,
+        )
+
         self.cb_orbit_mode = QtWidgets.QComboBox()
         for key, label in _ORBIT_MODE_OPTIONS:
             self.cb_orbit_mode.addItem(label, key)
@@ -145,9 +176,17 @@ class IndicatorTab(QtWidgets.QWidget):
         self._yellow_spin.valueChanged.connect(self._on_yellow_spin)
         self.chk_orbital_enabled.stateChanged.connect(self.emit_delta)
 
+        self._coverage_angle_slider.valueChanged.connect(lambda val: self._on_coverage_angle(float(val)))
+        self._coverage_angle_spin.valueChanged.connect(lambda val: self._on_coverage_angle(float(val)))
+        self._coverage_offset_slider.valueChanged.connect(lambda val: self._on_coverage_offset(float(val)))
+        self._coverage_offset_spin.valueChanged.connect(lambda val: self._on_coverage_offset(float(val)))
+
         self._random = random.Random()
         self._updating_orbits = False
         self._orbital_spans: List[float] = []
+        self._orbital_angles: List[float] = []
+        self._coverage_angle_deg = 0.0
+        self._coverage_offset_deg = 0.0
         self._orbit_mode = "free"
         self.cb_orbit_mode.currentIndexChanged.connect(self._on_orbit_mode_changed)
 
@@ -177,6 +216,8 @@ class IndicatorTab(QtWidgets.QWidget):
                 enabled=self.chk_orbital_enabled.isChecked(),
                 diameters=[control.spin.value() for control in self._orbit_controls],
                 mode=self._orbit_mode,
+                coverageAngle=self._coverage_angle_deg,
+                coverageOffset=self._coverage_offset_deg,
             ),
         )
 
@@ -205,6 +246,8 @@ class IndicatorTab(QtWidgets.QWidget):
         enabled = True
         diameters: Sequence[float] = []
         mode = "free"
+        coverage_angle = 0.0
+        coverage_offset = 0.0
         if isinstance(orbital_cfg, dict):
             enabled = bool(orbital_cfg.get("enabled", True))
             raw_diameters = orbital_cfg.get("diameters", [])
@@ -213,9 +256,21 @@ class IndicatorTab(QtWidgets.QWidget):
             raw_mode = orbital_cfg.get("mode")
             if isinstance(raw_mode, str):
                 mode = raw_mode
+            raw_cov_angle = orbital_cfg.get("coverageAngle")
+            raw_cov_offset = orbital_cfg.get("coverageOffset")
+            try:
+                coverage_angle = float(raw_cov_angle)
+            except (TypeError, ValueError):
+                coverage_angle = 0.0
+            try:
+                coverage_offset = float(raw_cov_offset)
+            except (TypeError, ValueError):
+                coverage_offset = 0.0
         with QtCore.QSignalBlocker(self.chk_orbital_enabled):
             self.chk_orbital_enabled.setChecked(enabled)
         self._set_orbit_mode(mode)
+        self._set_coverage_angle(coverage_angle)
+        self._set_coverage_offset(coverage_offset)
         for idx, control in enumerate(self._orbit_controls):
             value = diameters[idx] if idx < len(diameters) else control.spin.value()
             try:
@@ -237,6 +292,7 @@ class IndicatorTab(QtWidgets.QWidget):
             return
         count = min(len(centers), len(self._orbit_controls))
         spans: List[float] = []
+        points: List[Tuple[float, float]] = []
         for idx in range(count):
             try:
                 x1, y1 = centers[idx]
@@ -245,8 +301,24 @@ class IndicatorTab(QtWidgets.QWidget):
             except Exception:
                 continue
             spans.append(dist)
+            try:
+                points.append((float(x1), float(y1)))
+            except Exception:
+                points.append((0.0, 0.0))
         if spans and len(spans) < count:
             spans.extend([spans[-1]] * (count - len(spans)))
+        if points and len(points) < count:
+            points.extend([points[-1]] * (count - len(points)))
+        if points:
+            avg_x = sum(x for x, _ in points) / len(points)
+            avg_y = sum(y for _, y in points) / len(points)
+            angles: List[float] = []
+            for px, py in points:
+                ang = math.degrees(math.atan2(py - avg_y, px - avg_x)) % 360.0
+                angles.append(ang)
+            self._orbital_angles = angles
+        else:
+            self._orbital_angles = []
         self._orbital_spans = spans
         if self._orbit_controls:
             self._apply_orbit_adjustment(None, None, emit=False)
@@ -288,6 +360,22 @@ class IndicatorTab(QtWidgets.QWidget):
     def _on_orbit_spin(self, idx: int, value: float) -> None:
         self._apply_orbit_adjustment(idx, value)
 
+    def _on_coverage_angle(self, value: float) -> None:
+        clamped = _clamp(float(value), 0.0, 360.0)
+        if abs(clamped - self._coverage_angle_deg) <= 1e-3:
+            self._set_coverage_angle(clamped)
+            return
+        self._set_coverage_angle(clamped)
+        self._apply_orbit_adjustment(None, None)
+
+    def _on_coverage_offset(self, value: float) -> None:
+        normalized = float(value) % 360.0
+        if abs(((normalized - self._coverage_offset_deg + 180.0) % 360.0) - 180.0) <= 1e-3:
+            self._set_coverage_offset(normalized)
+            return
+        self._set_coverage_offset(normalized)
+        self._apply_orbit_adjustment(None, None)
+
     def _apply_orbit_adjustment(
         self,
         source_index: Optional[int],
@@ -308,13 +396,30 @@ class IndicatorTab(QtWidgets.QWidget):
                 diameters[source_index] = _clamp(value, 0.0, 400.0)
             adjusted = self._apply_mode_transform(diameters, source_index, value)
             adjusted = self._enforce_orbital_coverage(adjusted)
-            solved = self._solve_with_spans(adjusted)
-            self._update_orbit_controls(solved)
-            self._last_diameters = list(solved)
+            self._update_orbit_controls(adjusted)
+            self._last_diameters = list(adjusted)
         finally:
             self._updating_orbits = False
         if emit:
             self.emit_delta()
+
+    def _set_coverage_angle(self, value: float) -> None:
+        clamped = _clamp(float(value), 0.0, 360.0)
+        rounded = float(int(round(clamped)))
+        self._coverage_angle_deg = rounded
+        with QtCore.QSignalBlocker(self._coverage_angle_spin):
+            self._coverage_angle_spin.setValue(rounded)
+        with QtCore.QSignalBlocker(self._coverage_angle_slider):
+            self._coverage_angle_slider.setValue(int(rounded))
+
+    def _set_coverage_offset(self, value: float) -> None:
+        normalized = float(value) % 360.0
+        rounded = float(int(round(normalized)) % 360)
+        self._coverage_offset_deg = rounded
+        with QtCore.QSignalBlocker(self._coverage_offset_spin):
+            self._coverage_offset_spin.setValue(rounded)
+        with QtCore.QSignalBlocker(self._coverage_offset_slider):
+            self._coverage_offset_slider.setValue(int(rounded))
 
     def _apply_mode_transform(
         self,
@@ -424,11 +529,16 @@ class IndicatorTab(QtWidgets.QWidget):
         spans = self._effective_spans(count, values)
         if not spans:
             return values
+        mask = self._active_span_mask(count)
+        if not any(mask):
+            return values
         # Iteratively push neighbouring circles outwards until every span is
         # covered or all controls have reached their maximum range.
         for _ in range(count * 3):
             adjusted = False
             for idx in range(count):
+                if not mask[idx]:
+                    continue
                 next_idx = (idx + 1) % count
                 span = max(0.0, float(spans[idx])) * 2.0
                 current = values[idx] + values[next_idx]
@@ -463,14 +573,6 @@ class IndicatorTab(QtWidgets.QWidget):
                 break
         return values
 
-    def _solve_with_spans(self, diameters: List[float]) -> List[float]:
-        if not diameters:
-            return []
-        spans = self._effective_spans(len(diameters), diameters)
-        radii = [max(0.0, float(v) * 0.5) for v in diameters]
-        solved = solve_tangent_radii(radii, spans)
-        return [max(0.0, r * 2.0) for r in solved]
-
     def _effective_spans(self, count: int, diameters: Sequence[float]) -> List[float]:
         spans = list(self._orbital_spans[:count])
         if len(spans) < count:
@@ -480,6 +582,44 @@ class IndicatorTab(QtWidgets.QWidget):
                 spans.append(default_span)
         return spans
 
+    def _active_span_mask(self, count: int) -> List[bool]:
+        if count <= 0:
+            return []
+        if not self._orbital_angles or len(self._orbital_angles) < count:
+            return [True] * count
+        gap = _clamp(self._coverage_angle_deg, 0.0, 360.0)
+        if gap <= 1e-3:
+            return [True] * count
+        if gap >= 360.0 - 1e-3:
+            return [False] * count
+        offset = self._coverage_offset_deg % 360.0
+        mask: List[bool] = []
+        for idx in range(count):
+            a = self._orbital_angles[idx % len(self._orbital_angles)]
+            b = self._orbital_angles[(idx + 1) % len(self._orbital_angles)]
+            mid = self._mid_angle(a, b)
+            mask.append(not self._angle_in_gap(mid, offset, gap))
+        return mask
+
+    def _mid_angle(self, a_deg: float, b_deg: float) -> float:
+        a_rad = math.radians(a_deg)
+        b_rad = math.radians(b_deg)
+        x = math.cos(a_rad) + math.cos(b_rad)
+        y = math.sin(a_rad) + math.sin(b_rad)
+        if abs(x) < 1e-6 and abs(y) < 1e-6:
+            return (a_deg + b_deg) * 0.5 % 360.0
+        return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+    def _angle_in_gap(self, angle: float, offset: float, gap: float) -> bool:
+        angle = angle % 360.0
+        start = offset % 360.0
+        end = (start + gap) % 360.0
+        if gap >= 360.0 - 1e-3:
+            return True
+        if start <= end:
+            return start <= angle <= end
+        return angle >= start or angle <= end
+
     def _update_orbit_controls(self, diameters: Sequence[float]) -> None:
         for control, value in zip(self._orbit_controls, diameters):
             clamped = _clamp(float(value), 0.0, 400.0)
@@ -487,6 +627,29 @@ class IndicatorTab(QtWidgets.QWidget):
                 control.spin.setValue(clamped)
             with QtCore.QSignalBlocker(control.slider):
                 control.slider.setValue(int(round(clamped)))
+
+    def _create_degree_controls(self, value: float):
+        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider.setRange(0, 360)
+        slider.setSingleStep(1)
+        spin = QtWidgets.QDoubleSpinBox()
+        spin.setRange(0.0, 360.0)
+        spin.setDecimals(0)
+        spin.setSingleStep(1.0)
+        spin.setSuffix(" °")
+        slider.valueChanged.connect(lambda val: spin.setValue(float(val)))
+        spin.valueChanged.connect(lambda val: slider.setValue(int(round(val))))
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(slider, 1)
+        layout.addWidget(spin)
+        container.setLayout(layout)
+        clamped = float(int(round(max(0.0, min(360.0, float(value))))))
+        spin.setValue(clamped)
+        slider.setValue(int(clamped))
+        return container, slider, spin
 
     def _create_ratio_controls(self, ratio: float):
         slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
