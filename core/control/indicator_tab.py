@@ -307,6 +307,7 @@ class IndicatorTab(QtWidgets.QWidget):
             ):
                 diameters[source_index] = _clamp(value, 0.0, 400.0)
             adjusted = self._apply_mode_transform(diameters, source_index, value)
+            adjusted = self._enforce_orbital_coverage(adjusted)
             solved = self._solve_with_spans(adjusted)
             self._update_orbit_controls(solved)
             self._last_diameters = list(solved)
@@ -411,6 +412,55 @@ class IndicatorTab(QtWidgets.QWidget):
                 attenuation = math.exp(-(dist ** 2) / (2.0 * spread))
                 values[idx] = _clamp(avg + (peak_value - avg) * attenuation, 0.0, 400.0)
             return values
+        return values
+
+    def _enforce_orbital_coverage(self, diameters: Sequence[float]) -> List[float]:
+        if self._orbit_mode == "free":
+            return list(diameters)
+        values = [_clamp(float(v), 0.0, 400.0) for v in diameters]
+        count = len(values)
+        if count <= 1:
+            return values
+        spans = self._effective_spans(count, values)
+        if not spans:
+            return values
+        # Iteratively push neighbouring circles outwards until every span is
+        # covered or all controls have reached their maximum range.
+        for _ in range(count * 3):
+            adjusted = False
+            for idx in range(count):
+                next_idx = (idx + 1) % count
+                span = max(0.0, float(spans[idx])) * 2.0
+                current = values[idx] + values[next_idx]
+                if current + 1e-3 >= span:
+                    continue
+                deficit = span - current
+                head_current = 400.0 - values[idx]
+                head_next = 400.0 - values[next_idx]
+                if head_current <= 1e-3 and head_next <= 1e-3:
+                    continue
+                total_head = head_current + head_next if head_current + head_next > 0 else 1.0
+                add_current = min(deficit * (head_current / total_head), head_current)
+                add_next = min(deficit * (head_next / total_head), head_next)
+                used = add_current + add_next
+                if used + 1e-3 < deficit:
+                    remaining = deficit - used
+                    if head_current - add_current > head_next - add_next:
+                        extra = min(remaining, head_current - add_current)
+                        add_current += extra
+                        used += extra
+                    else:
+                        extra = min(remaining, head_next - add_next)
+                        add_next += extra
+                        used += extra
+                if add_current > 0.0:
+                    values[idx] += add_current
+                    adjusted = True
+                if add_next > 0.0:
+                    values[next_idx] += add_next
+                    adjusted = True
+            if not adjusted:
+                break
         return values
 
     def _solve_with_spans(self, diameters: List[float]) -> List[float]:

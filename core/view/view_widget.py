@@ -2208,7 +2208,7 @@ class _ViewWidgetBase:
             orbital_cfg = indicator_cfg.get("orbitalZones", {})
             if isinstance(orbital_cfg, Mapping) and orbital_cfg.get("enabled", True):
                 raw_diameters = orbital_cfg.get("diameters", [])
-                raw_radii: List[float] = []
+                radii: List[float] = []
                 if not isinstance(raw_diameters, Sequence):
                     raw_diameters = []
                 for idx in range(donut_count):
@@ -2220,21 +2220,12 @@ class _ViewWidgetBase:
                     else:
                         diameter = fallback_orbit_radius * 2.0
                     radius = max(0.0, float(diameter) * 0.5)
-                    raw_radii.append(radius)
-
-                distances: List[float] = []
-                for idx in range(donut_count):
-                    next_idx = (idx + 1) % donut_count
-                    x1, y1 = donut_centers[idx]
-                    x2, y2 = donut_centers[next_idx]
-                    distances.append(math.hypot(x2 - x1, y2 - y1))
-
-                solved_radii = solve_tangent_radii(raw_radii, distances)
+                    radii.append(radius)
                 pen = QtGui.QPen(QtGui.QColor(0, 255, 0, 170), 1.5)
                 pen.setCosmetic(True)
                 painter.setPen(pen)
                 painter.setBrush(QtCore.Qt.NoBrush)
-                for idx, radius in enumerate(solved_radii):
+                for idx, radius in enumerate(radii):
                     if radius <= 0.5:
                         continue
                     bx, by = donut_centers[idx]
