@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import math
+import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from PyQt5 import QtCore, QtWidgets
 
 from ..donut_hub import DEFAULT_DONUT_BUTTON_COUNT
+from ..orbital_utils import solve_tangent_radii
 from .config import DEFAULTS, TOOLTIPS
 from .link_registry import register_linkable_widget
 from .widgets import SubProfilePanel
@@ -16,6 +19,23 @@ class _OrbitControl:
     container: QtWidgets.QWidget
     slider: QtWidgets.QSlider
     spin: QtWidgets.QDoubleSpinBox
+
+
+_ORBIT_MODE_OPTIONS: List[Tuple[str, str]] = [
+    ("free", "Mode libre"),
+    ("uniform", "Diamètre uniforme verrouillé"),
+    ("ascending", "Progressif croissant"),
+    ("descending", "Progressif décroissant"),
+    ("random", "Compensation aléatoire"),
+    ("alternating", "Alternance pair/impair"),
+    ("mirrored", "Opposés symétriques"),
+    ("wave", "Onde sinusoïdale"),
+    ("focus", "Pic localisé"),
+]
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 class IndicatorTab(QtWidgets.QWidget):
@@ -87,6 +107,11 @@ class IndicatorTab(QtWidgets.QWidget):
         self.chk_orbital_enabled.setToolTip(TOOLTIPS.get("indicator.orbitalZones.enabled", ""))
         orbital_layout.addRow(self.chk_orbital_enabled)
 
+        self.cb_orbit_mode = QtWidgets.QComboBox()
+        for key, label in _ORBIT_MODE_OPTIONS:
+            self.cb_orbit_mode.addItem(label, key)
+        orbital_layout.addRow("Préréglage orbital", self.cb_orbit_mode)
+
         self._orbit_controls: List[_OrbitControl] = []
         orbit_defaults = defaults.get("orbitalZones", {})
         diameters: Sequence[float] = orbit_defaults.get("diameters", []) if isinstance(orbit_defaults, dict) else []
@@ -119,9 +144,18 @@ class IndicatorTab(QtWidgets.QWidget):
         self._yellow_slider.valueChanged.connect(self._on_yellow_slider)
         self._yellow_spin.valueChanged.connect(self._on_yellow_spin)
         self.chk_orbital_enabled.stateChanged.connect(self.emit_delta)
-        for control in self._orbit_controls:
-            control.slider.valueChanged.connect(self.emit_delta)
-            control.spin.valueChanged.connect(self.emit_delta)
+
+        self._random = random.Random()
+        self._updating_orbits = False
+        self._orbital_spans: List[float] = []
+        self._orbit_mode = "free"
+        self.cb_orbit_mode.currentIndexChanged.connect(self._on_orbit_mode_changed)
+
+        for idx, control in enumerate(self._orbit_controls):
+            control.slider.valueChanged.connect(lambda val, i=idx: self._on_orbit_slider(i, float(val)))
+            control.spin.valueChanged.connect(lambda val, i=idx: self._on_orbit_spin(i, float(val)))
+
+        self._last_diameters = [control.spin.value() for control in self._orbit_controls]
 
         self._system_tab: Optional[object] = None
         self.set_defaults(defaults)
@@ -142,6 +176,7 @@ class IndicatorTab(QtWidgets.QWidget):
             orbitalZones=dict(
                 enabled=self.chk_orbital_enabled.isChecked(),
                 diameters=[control.spin.value() for control in self._orbit_controls],
+                mode=self._orbit_mode,
             ),
         )
 
@@ -169,13 +204,18 @@ class IndicatorTab(QtWidgets.QWidget):
         orbital_cfg = cfg.get("orbitalZones", {}) if isinstance(cfg, dict) else {}
         enabled = True
         diameters: Sequence[float] = []
+        mode = "free"
         if isinstance(orbital_cfg, dict):
             enabled = bool(orbital_cfg.get("enabled", True))
             raw_diameters = orbital_cfg.get("diameters", [])
             if isinstance(raw_diameters, Sequence):
                 diameters = list(raw_diameters)
+            raw_mode = orbital_cfg.get("mode")
+            if isinstance(raw_mode, str):
+                mode = raw_mode
         with QtCore.QSignalBlocker(self.chk_orbital_enabled):
             self.chk_orbital_enabled.setChecked(enabled)
+        self._set_orbit_mode(mode)
         for idx, control in enumerate(self._orbit_controls):
             value = diameters[idx] if idx < len(diameters) else control.spin.value()
             try:
@@ -187,7 +227,29 @@ class IndicatorTab(QtWidgets.QWidget):
                 control.spin.setValue(value)
             with QtCore.QSignalBlocker(control.slider):
                 control.slider.setValue(int(round(value)))
+        self._last_diameters = [control.spin.value() for control in self._orbit_controls]
+        self._apply_orbit_adjustment(None, None, emit=False)
         self.emit_delta()
+
+    def update_orbital_layout(self, centers, radii=None) -> None:  # noqa: ANN001 - Qt signal payload
+        del radii
+        if not isinstance(centers, (list, tuple)):
+            return
+        count = min(len(centers), len(self._orbit_controls))
+        spans: List[float] = []
+        for idx in range(count):
+            try:
+                x1, y1 = centers[idx]
+                x2, y2 = centers[(idx + 1) % count]
+                dist = math.hypot(float(x2) - float(x1), float(y2) - float(y1))
+            except Exception:
+                continue
+            spans.append(dist)
+        if spans and len(spans) < count:
+            spans.extend([spans[-1]] * (count - len(spans)))
+        self._orbital_spans = spans
+        if self._orbit_controls:
+            self._apply_orbit_adjustment(None, None, emit=False)
 
     def attach_subprofile_manager(self, manager) -> None:
         self._subprofile_panel.bind(
@@ -201,6 +263,181 @@ class IndicatorTab(QtWidgets.QWidget):
         self._subprofile_panel.sync_from_data(self.collect())
 
     # ----------------------------------------------------------------- helpers
+    def _set_orbit_mode(self, mode: str) -> None:
+        if mode not in {key for key, _ in _ORBIT_MODE_OPTIONS}:
+            mode = "free"
+        self._orbit_mode = mode
+        index = self.cb_orbit_mode.findData(mode)
+        if index >= 0:
+            with QtCore.QSignalBlocker(self.cb_orbit_mode):
+                self.cb_orbit_mode.setCurrentIndex(index)
+
+    def _on_orbit_mode_changed(self, index: int) -> None:  # noqa: ANN001 - Qt slot signature
+        del index
+        data = self.cb_orbit_mode.currentData()
+        if not isinstance(data, str):
+            return
+        if data == self._orbit_mode:
+            return
+        self._orbit_mode = data
+        self._apply_orbit_adjustment(None, None)
+
+    def _on_orbit_slider(self, idx: int, value: float) -> None:
+        self._apply_orbit_adjustment(idx, value)
+
+    def _on_orbit_spin(self, idx: int, value: float) -> None:
+        self._apply_orbit_adjustment(idx, value)
+
+    def _apply_orbit_adjustment(
+        self,
+        source_index: Optional[int],
+        value: Optional[float],
+        *,
+        emit: bool = True,
+    ) -> None:
+        if self._updating_orbits:
+            return
+        self._updating_orbits = True
+        try:
+            diameters = [control.spin.value() for control in self._orbit_controls]
+            if (
+                source_index is not None
+                and value is not None
+                and 0 <= source_index < len(diameters)
+            ):
+                diameters[source_index] = _clamp(value, 0.0, 400.0)
+            adjusted = self._apply_mode_transform(diameters, source_index, value)
+            solved = self._solve_with_spans(adjusted)
+            self._update_orbit_controls(solved)
+            self._last_diameters = list(solved)
+        finally:
+            self._updating_orbits = False
+        if emit:
+            self.emit_delta()
+
+    def _apply_mode_transform(
+        self,
+        diameters: List[float],
+        source_index: Optional[int],
+        value: Optional[float],
+    ) -> List[float]:
+        values = [_clamp(v, 0.0, 400.0) for v in diameters]
+        count = len(values)
+        if count == 0:
+            return values
+        previous = self._last_diameters if len(self._last_diameters) == count else values
+        mode = self._orbit_mode
+        if mode == "free":
+            return values
+        if mode == "uniform":
+            if source_index is not None and value is not None:
+                target = _clamp(value, 0.0, 400.0)
+            else:
+                target = sum(values) / count if count else 0.0
+            return [target for _ in range(count)]
+        if mode == "ascending":
+            return sorted(values)
+        if mode == "descending":
+            return sorted(values, reverse=True)
+        if mode == "random":
+            if (
+                source_index is None
+                or value is None
+                or count <= 1
+                or not previous
+            ):
+                return values
+            base_previous = previous[min(source_index, len(previous) - 1)]
+            diff = _clamp(value, 0.0, 400.0) - base_previous
+            if abs(diff) > 1e-3:
+                candidates = [i for i in range(count) if i != source_index]
+                if candidates:
+                    target_idx = self._random.choice(candidates)
+                    values[target_idx] = _clamp(values[target_idx] - diff, 0.0, 400.0)
+            return values
+        if mode == "alternating":
+            high = max(values)
+            low = min(values)
+            if source_index is not None and value is not None:
+                if source_index % 2 == 0:
+                    high = _clamp(value, 0.0, 400.0)
+                else:
+                    low = _clamp(value, 0.0, 400.0)
+            if high < low:
+                high, low = low, high
+            for idx in range(count):
+                values[idx] = high if idx % 2 == 0 else low
+            return values
+        if mode == "mirrored":
+            half = count // 2 if count else 0
+            for idx in range(count):
+                pair_idx = (idx + half) % count if count else idx
+                if pair_idx == idx:
+                    continue
+                pair_avg = (values[idx] + values[pair_idx]) / 2.0
+                values[idx] = values[pair_idx] = pair_avg
+            if source_index is not None and value is not None and count:
+                pair_idx = (source_index + half) % count
+                mirrored = _clamp(value, 0.0, 400.0)
+                values[source_index] = values[pair_idx] = mirrored
+            return values
+        if mode == "wave":
+            avg = sum(values) / count
+            if source_index is not None and value is not None:
+                amplitude = _clamp(abs(value - avg), 5.0, 120.0)
+                phase_offset = (2.0 * math.pi * source_index) / count
+            else:
+                amplitude = max(20.0, (max(values) - min(values)) * 0.5 if max(values) != min(values) else 20.0)
+                phase_offset = 0.0
+            for idx in range(count):
+                phase = (2.0 * math.pi * idx) / count
+                values[idx] = _clamp(avg + amplitude * math.sin(phase - phase_offset), 0.0, 400.0)
+            if source_index is not None and value is not None:
+                values[source_index] = _clamp(value, 0.0, 400.0)
+            return values
+        if mode == "focus":
+            avg = sum(values) / count
+            if source_index is None:
+                peak_idx = max(range(count), key=lambda i: values[i]) if values else 0
+                peak_value = values[peak_idx] if values else avg
+            else:
+                peak_idx = source_index
+                peak_value = _clamp(value if value is not None else values[peak_idx], 0.0, 400.0)
+            spread = max(1.0, count / 3.0)
+            for idx in range(count):
+                forward = (idx - peak_idx) % count
+                backward = (peak_idx - idx) % count
+                dist = min(forward, backward)
+                attenuation = math.exp(-(dist ** 2) / (2.0 * spread))
+                values[idx] = _clamp(avg + (peak_value - avg) * attenuation, 0.0, 400.0)
+            return values
+        return values
+
+    def _solve_with_spans(self, diameters: List[float]) -> List[float]:
+        if not diameters:
+            return []
+        spans = self._effective_spans(len(diameters), diameters)
+        radii = [max(0.0, float(v) * 0.5) for v in diameters]
+        solved = solve_tangent_radii(radii, spans)
+        return [max(0.0, r * 2.0) for r in solved]
+
+    def _effective_spans(self, count: int, diameters: Sequence[float]) -> List[float]:
+        spans = list(self._orbital_spans[:count])
+        if len(spans) < count:
+            avg_radius = sum(max(0.0, d * 0.5) for d in diameters) / max(1, count)
+            default_span = max(20.0, avg_radius * 2.2)
+            while len(spans) < count:
+                spans.append(default_span)
+        return spans
+
+    def _update_orbit_controls(self, diameters: Sequence[float]) -> None:
+        for control, value in zip(self._orbit_controls, diameters):
+            clamped = _clamp(float(value), 0.0, 400.0)
+            with QtCore.QSignalBlocker(control.spin):
+                control.spin.setValue(clamped)
+            with QtCore.QSignalBlocker(control.slider):
+                control.slider.setValue(int(round(clamped)))
+
     def _create_ratio_controls(self, ratio: float):
         slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         slider.setRange(0, 100)
@@ -233,8 +470,6 @@ class IndicatorTab(QtWidgets.QWidget):
         spin.setDecimals(0)
         spin.setSingleStep(1.0)
         spin.setSuffix(" px")
-        slider.valueChanged.connect(lambda val, s=spin: s.setValue(float(val)))
-        spin.valueChanged.connect(lambda val, sl=slider: sl.setValue(int(round(val))))
         container = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)

@@ -143,6 +143,7 @@ DEFAULTS = dict(
         orbitalZones=dict(
             enabled=True,
             diameters=[120.0 for _ in range(DEFAULT_DONUT_BUTTON_COUNT)],
+            mode="free",
         ),
     ),
     donut=default_donut_config(),

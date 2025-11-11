@@ -38,6 +38,7 @@ from typing import Callable, Deque, Dict, List, Mapping, Optional, Tuple
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..donut_hub import DEFAULT_DONUT_BUTTON_COUNT, default_donut_config, sanitize_donut_state
+from ..orbital_utils import solve_tangent_radii
 
 try:
     from ..topology_registry import get_topology_library
@@ -2228,51 +2229,7 @@ class _ViewWidgetBase:
                     x2, y2 = donut_centers[next_idx]
                     distances.append(math.hypot(x2 - x1, y2 - y1))
 
-                def _solve_tangent_radii(raw: List[float], spans: List[float]) -> List[float]:
-                    radii = [max(0.0, r) for r in raw]
-                    if not radii or not spans:
-                        return radii
-                    limit_count = len(radii)
-                    # Ensure starting values do not exceed immediate neighbour distances
-                    for i in range(limit_count):
-                        prev_span = spans[i - 1] if limit_count > 1 else spans[0]
-                        next_span = spans[i] if limit_count > 1 else spans[0]
-                        max_radius = min(prev_span, next_span) * 0.5 if limit_count > 1 else spans[0] * 0.5
-                        if math.isfinite(max_radius):
-                            radii[i] = min(radii[i], max_radius)
-                    for _ in range(12):
-                        changed = False
-                        for i in range(limit_count):
-                            j = (i + 1) % limit_count
-                            span = spans[i]
-                            if not math.isfinite(span) or span <= 0.0:
-                                continue
-                            current_sum = radii[i] + radii[j]
-                            if abs(current_sum - span) <= 0.5:
-                                continue
-                            if current_sum > span:
-                                excess = (current_sum - span) / 2.0
-                                new_i = max(0.0, radii[i] - excess)
-                                new_j = max(0.0, radii[j] - excess)
-                                if abs(new_i - radii[i]) > 1e-3 or abs(new_j - radii[j]) > 1e-3:
-                                    radii[i], radii[j] = new_i, new_j
-                                    changed = True
-                            else:
-                                deficit = span - current_sum
-                                if deficit <= 1e-3:
-                                    continue
-                                head_i = max(0.0, raw[i] - radii[i])
-                                head_j = max(0.0, raw[j] - radii[j])
-                                add = min(deficit / 2.0, head_i, head_j)
-                                if add > 1e-3:
-                                    radii[i] += add
-                                    radii[j] += add
-                                    changed = True
-                        if not changed:
-                            break
-                    return radii
-
-                solved_radii = _solve_tangent_radii(raw_radii, distances)
+                solved_radii = solve_tangent_radii(raw_radii, distances)
                 pen = QtGui.QPen(QtGui.QColor(0, 255, 0, 170), 1.5)
                 pen.setCosmetic(True)
                 painter.setPen(pen)

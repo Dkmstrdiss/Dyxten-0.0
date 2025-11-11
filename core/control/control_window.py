@@ -232,6 +232,13 @@ class ControlWindow(QtWidgets.QMainWindow):
 
         self.tab_indicator.set_system_tab(self.tab_system)
 
+        hub = getattr(self.view_win, "donut_hub", None)
+        if hub is not None:
+            try:
+                hub.donutLayoutChanged.connect(self.tab_indicator.update_orbital_layout)
+            except Exception:
+                pass
+
         for tab in [
             self.tab_camera,
             self.tab_geometry,
@@ -670,6 +677,7 @@ class ControlWindow(QtWidgets.QMainWindow):
                 default_diam = orbital_defaults.get("diameters", [])
                 if not isinstance(orbital_section.get("diameters"), list):
                     orbital_section["diameters"] = list(default_diam)
+                orbital_section.setdefault("mode", orbital_defaults.get("mode", "free"))
         marker_cfg = system_state.get("markerCircles")
         if isinstance(marker_cfg, dict):
             yellow_value = marker_cfg.get("yellow")
