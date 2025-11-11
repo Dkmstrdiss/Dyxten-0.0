@@ -102,6 +102,8 @@ class IndicatorTab(QtWidgets.QWidget):
         orbital_layout.setContentsMargins(8, 8, 8, 8)
         outer.addWidget(self._orbital_group)
 
+        orbit_defaults = defaults.get("orbitalZones", {})
+
         self.chk_orbital_enabled = QtWidgets.QCheckBox("Afficher les zones orbitales")
         self.chk_orbital_enabled.setChecked(True)
         self.chk_orbital_enabled.setToolTip(TOOLTIPS.get("indicator.orbitalZones.enabled", ""))
@@ -141,7 +143,6 @@ class IndicatorTab(QtWidgets.QWidget):
         orbital_layout.addRow("Préréglage orbital", self.cb_orbit_mode)
 
         self._orbit_controls: List[_OrbitControl] = []
-        orbit_defaults = defaults.get("orbitalZones", {})
         diameters: Sequence[float] = orbit_defaults.get("diameters", []) if isinstance(orbit_defaults, dict) else []
 
         grid_widget = QtWidgets.QWidget()
@@ -194,6 +195,7 @@ class IndicatorTab(QtWidgets.QWidget):
         self._last_diameters = [control.spin.value() for control in self._orbit_controls]
 
         self._system_tab: Optional[object] = None
+        self._donut_hub: Optional[object] = None
         self.set_defaults(defaults)
 
     # ------------------------------------------------------------------ API
@@ -201,6 +203,13 @@ class IndicatorTab(QtWidgets.QWidget):
         """Allow the indicator tab to update the system configuration."""
 
         self._system_tab = system_tab
+
+    def set_donut_hub(self, hub: Optional[object]) -> None:
+        """Provide a reference to the donut hub so we can steer its layout."""
+
+        self._donut_hub = hub
+        if hub is not None and self._last_diameters:
+            self._push_orbital_layout(self._last_diameters)
 
     def collect(self) -> dict:
         return dict(
@@ -396,6 +405,7 @@ class IndicatorTab(QtWidgets.QWidget):
             adjusted = self._enforce_orbital_coverage(adjusted, baseline)
             self._update_orbit_controls(adjusted)
             self._last_diameters = list(adjusted)
+            self._push_orbital_layout(adjusted)
         finally:
             self._updating_orbits = False
         if emit:
@@ -633,6 +643,19 @@ class IndicatorTab(QtWidgets.QWidget):
                 control.spin.setValue(clamped)
             with QtCore.QSignalBlocker(control.slider):
                 control.slider.setValue(int(round(clamped)))
+
+    def _push_orbital_layout(self, diameters: Sequence[float]) -> None:
+        hub = getattr(self, "_donut_hub", None)
+        if hub is None or not hasattr(hub, "configure_orbital_layout"):
+            return
+        try:
+            hub.configure_orbital_layout(
+                diameters,
+                coverage_angle=self._coverage_angle_deg,
+                coverage_offset=self._coverage_offset_deg,
+            )
+        except Exception:
+            pass
 
     def _create_degree_controls(self, value: float):
         slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)

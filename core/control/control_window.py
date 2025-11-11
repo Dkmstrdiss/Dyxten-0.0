@@ -238,6 +238,10 @@ class ControlWindow(QtWidgets.QMainWindow):
                 hub.donutLayoutChanged.connect(self.tab_indicator.update_orbital_layout)
             except Exception:
                 pass
+            try:
+                self.tab_indicator.set_donut_hub(hub)
+            except Exception:
+                pass
 
         for tab in [
             self.tab_camera,

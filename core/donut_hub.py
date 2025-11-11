@@ -146,6 +146,9 @@ class DonutHub(QtWidgets.QWidget):
 
         # angle offset (degrees) applied when positioning buttons
         self._angle_offset_deg = 0.0
+        self._span_overrides: Optional[List[float]] = None
+        self._coverage_gap_deg = 0.0
+        self._coverage_offset_deg = 0.0
 
         # Donut geometry - use default radius ratio
         self._radius_ratio = _DEFAULT_RADIUS_RATIO  # 0.35
@@ -266,6 +269,48 @@ class DonutHub(QtWidgets.QWidget):
                 button.setProperty("buttonId", ident if isinstance(ident, int) else idx + 1)
             except Exception:
                 pass
+
+    def configure_orbital_layout(
+        self,
+        diameters: Sequence[float],
+        *,
+        coverage_angle: float = 0.0,
+        coverage_offset: float = 0.0,
+    ) -> None:
+        """Store tangency information provided by the indicator tab."""
+
+        count = len(self.buttons)
+        if count == 0:
+            return
+        try:
+            base_values = [float(value) for value in diameters]
+        except Exception:
+            base_values = []
+        fallback = base_values[-1] if base_values else float(self.icon_size)
+        values = []
+        for idx in range(count):
+            if idx < len(base_values):
+                values.append(base_values[idx])
+            else:
+                values.append(fallback)
+        if not values:
+            self._span_overrides = None
+        else:
+            spans: List[float] = []
+            for idx in range(count):
+                current = max(0.0, values[idx])
+                nxt = max(0.0, values[(idx + 1) % count])
+                spans.append((current + nxt) * 0.5)
+            self._span_overrides = spans
+        try:
+            self._coverage_gap_deg = max(0.0, min(360.0, float(coverage_angle)))
+        except Exception:
+            self._coverage_gap_deg = 0.0
+        try:
+            self._coverage_offset_deg = float(coverage_offset) % 360.0
+        except Exception:
+            self._coverage_offset_deg = 0.0
+        self._position_all()
 
     def set_angle_offset(self, degrees: float) -> None:
         """Set rotation offset (degrees) for button layout and re-position."""
@@ -390,17 +435,50 @@ class DonutHub(QtWidgets.QWidget):
         # Calculate radius based on _radius_ratio and window size
         min_dim = min(self.width(), self.height())
         if min_dim > 0:
-            radius_mid = int(min_dim * self._radius_ratio)
+            radius_mid = float(min_dim) * float(self._radius_ratio)
         else:
-            radius_mid = (self.R_outer + self.R_inner) // 2
+            radius_mid = float(self.R_outer + self.R_inner) * 0.5
 
         # position buttons along the ring
         total = len(self.buttons)
-        for index, button in enumerate(self.buttons):
-            angle = math.radians(self._angle_offset_deg - 90 + index * (360.0 / total))
-            x = int(cx + radius_mid * math.cos(angle) - self.icon_size / 2)
-            y = int(cy + radius_mid * math.sin(angle) - self.icon_size / 2)
+        spans = self._span_overrides if isinstance(self._span_overrides, list) and len(self._span_overrides) >= total else None
+        angles: Optional[List[float]] = None
+        coverage_total = 0.0
+        if spans and radius_mid > 1e-3:
+            angles = []
+            for span in spans[:total]:
+                chord = max(0.0, min(float(span), (radius_mid * 2.0) * 0.999999))
+                if chord <= 1e-3:
+                    angles.append(0.0)
+                    continue
+                ratio = max(0.0, min(1.0, chord / (2.0 * radius_mid)))
+                try:
+                    angles.append(math.degrees(2.0 * math.asin(ratio)))
+                except ValueError:
+                    angles.append(math.degrees(math.pi))
+            coverage_total = sum(angles)
+            if not any(a > 1e-3 for a in angles):
+                angles = None
+        if angles:
+            desired_gap = max(0.0, min(360.0, self._coverage_gap_deg))
+            max_gap = max(0.0, 360.0 - min(360.0, coverage_total))
+            gap = min(desired_gap, max_gap)
+        else:
+            gap = 0.0
+        start_angle = self._angle_offset_deg - 90.0
+        if angles:
+            start_angle += (self._coverage_offset_deg + gap) % 360.0
+        angle = start_angle
+        step = 360.0 / total if total else 0.0
+        for idx, button in enumerate(self.buttons):
+            angle_rad = math.radians(angle)
+            x = int(cx + radius_mid * math.cos(angle_rad) - self.icon_size / 2)
+            y = int(cy + radius_mid * math.sin(angle_rad) - self.icon_size / 2)
             button.move(x, y)
+            if angles:
+                angle += angles[idx % len(angles)]
+            else:
+                angle += step
         self.update()
 
         # Emit layout (centers and radii) so the renderer can use it.
