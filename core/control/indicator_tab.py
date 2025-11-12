@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -19,32 +18,6 @@ class _OrbitControl:
     container: QtWidgets.QWidget
     slider: QtWidgets.QSlider
     spin: QtWidgets.QDoubleSpinBox
-
-
-_ORBIT_MODE_OPTIONS: List[Tuple[str, str]] = [
-    ("free", "Mode libre"),
-    ("uniform", "Diamètre uniforme verrouillé"),
-    ("ascending", "Progressif croissant"),
-    ("descending", "Progressif décroissant"),
-    ("random", "Compensation aléatoire"),
-    ("alternating", "Alternance pair/impair"),
-    ("mirrored", "Opposés symétriques"),
-    ("wave", "Onde sinusoïdale"),
-    ("focus", "Pic localisé"),
-]
-
-
-_MODE_SUPPORTS_EQUIDISTANT = {
-    "free": False,
-    "uniform": True,
-    "ascending": False,
-    "descending": False,
-    "random": False,
-    "alternating": True,
-    "mirrored": False,
-    "wave": False,
-    "focus": False,
-}
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
@@ -197,11 +170,6 @@ class IndicatorTab(QtWidgets.QWidget):
             tab=self._TAB_LABEL,
         )
 
-        self.cb_orbit_mode = QtWidgets.QComboBox()
-        for key, label in _ORBIT_MODE_OPTIONS:
-            self.cb_orbit_mode.addItem(label, key)
-        orbital_layout.addRow("Préréglage orbital", self.cb_orbit_mode)
-
         self._orbit_controls: List[_OrbitControl] = []
         diameters: Sequence[float] = orbit_defaults.get("diameters", []) if isinstance(orbit_defaults, dict) else []
 
@@ -246,15 +214,11 @@ class IndicatorTab(QtWidgets.QWidget):
         self._coverage_offset_spin.valueChanged.connect(lambda val: self._on_coverage_offset(float(val)))
         self.chk_orbit_equidistant.stateChanged.connect(self._on_equidistant_changed)
 
-        self._random = random.Random()
         self._updating_orbits = False
-        self._orbital_spans: List[float] = []
         self._orbital_angles: List[float] = []
         self._coverage_angle_deg = 0.0
         self._coverage_offset_deg = 0.0
-        self._orbit_mode = "free"
         self._equidistant = equidistant_default
-        self.cb_orbit_mode.currentIndexChanged.connect(self._on_orbit_mode_changed)
 
         for idx, control in enumerate(self._orbit_controls):
             control.slider.valueChanged.connect(lambda val, i=idx: self._on_orbit_slider(i, float(val)))
@@ -306,7 +270,6 @@ class IndicatorTab(QtWidgets.QWidget):
             orbitalZones=dict(
                 enabled=self.chk_orbital_enabled.isChecked(),
                 diameters=[control.spin.value() for control in self._orbit_controls],
-                mode=self._orbit_mode,
                 coverageAngle=self._coverage_angle_deg,
                 coverageOffset=self._coverage_offset_deg,
                 equidistant=self._equidistant,
@@ -357,7 +320,6 @@ class IndicatorTab(QtWidgets.QWidget):
         orbital_cfg = cfg.get("orbitalZones", {}) if isinstance(cfg, dict) else {}
         enabled = True
         diameters: Sequence[float] = []
-        mode = "free"
         coverage_angle = 0.0
         coverage_offset = 0.0
         equidistant = False
@@ -366,9 +328,6 @@ class IndicatorTab(QtWidgets.QWidget):
             raw_diameters = orbital_cfg.get("diameters", [])
             if isinstance(raw_diameters, Sequence):
                 diameters = list(raw_diameters)
-            raw_mode = orbital_cfg.get("mode")
-            if isinstance(raw_mode, str):
-                mode = raw_mode
             raw_cov_angle = orbital_cfg.get("coverageAngle")
             raw_cov_offset = orbital_cfg.get("coverageOffset")
             equidistant = bool(orbital_cfg.get("equidistant", False))
@@ -382,7 +341,6 @@ class IndicatorTab(QtWidgets.QWidget):
                 coverage_offset = 0.0
         with QtCore.QSignalBlocker(self.chk_orbital_enabled):
             self.chk_orbital_enabled.setChecked(enabled)
-        self._set_orbit_mode(mode)
         self._set_coverage_angle(coverage_angle)
         self._set_coverage_offset(coverage_offset)
         self._set_equidistant(equidistant)
@@ -398,7 +356,7 @@ class IndicatorTab(QtWidgets.QWidget):
             with QtCore.QSignalBlocker(control.slider):
                 control.slider.setValue(int(round(value)))
         self._last_diameters = [control.spin.value() for control in self._orbit_controls]
-        self._apply_orbit_adjustment(None, None, emit=False)
+        self._refresh_orbital_layout(emit=False)
         self.emit_delta()
 
     def update_orbital_layout(self, centers, radii=None) -> None:  # noqa: ANN001 - Qt signal payload
@@ -406,22 +364,16 @@ class IndicatorTab(QtWidgets.QWidget):
         if not isinstance(centers, (list, tuple)):
             return
         count = min(len(centers), len(self._orbit_controls))
-        spans: List[float] = []
         points: List[Tuple[float, float]] = []
         for idx in range(count):
             try:
                 x1, y1 = centers[idx]
-                x2, y2 = centers[(idx + 1) % count]
-                dist = math.hypot(float(x2) - float(x1), float(y2) - float(y1))
             except Exception:
                 continue
-            spans.append(dist)
             try:
                 points.append((float(x1), float(y1)))
             except Exception:
                 points.append((0.0, 0.0))
-        if spans and len(spans) < count:
-            spans.extend([spans[-1]] * (count - len(spans)))
         if points and len(points) < count:
             points.extend([points[-1]] * (count - len(points)))
         if points:
@@ -438,12 +390,11 @@ class IndicatorTab(QtWidgets.QWidget):
                 self._orbital_radius = sum(radii_samples) / len(radii_samples)
         else:
             self._orbital_angles = []
-        self._orbital_spans = spans
         if self._orbital_angles:
             for idx, angle in enumerate(self._orbital_angles[: DEFAULT_DONUT_BUTTON_COUNT]):
                 self._set_button_angle(idx, angle)
         if self._orbit_controls:
-            self._apply_orbit_adjustment(None, None, emit=False)
+            self._refresh_orbital_layout(emit=False)
 
     def attach_subprofile_manager(self, manager) -> None:
         self._subprofile_panel.bind(
@@ -457,50 +408,28 @@ class IndicatorTab(QtWidgets.QWidget):
         self._subprofile_panel.sync_from_data(self.collect())
 
     # ----------------------------------------------------------------- helpers
-    def _set_orbit_mode(self, mode: str) -> None:
-        if mode not in {key for key, _ in _ORBIT_MODE_OPTIONS}:
-            mode = "free"
-        self._orbit_mode = mode
-        index = self.cb_orbit_mode.findData(mode)
-        if index >= 0:
-            with QtCore.QSignalBlocker(self.cb_orbit_mode):
-                self.cb_orbit_mode.setCurrentIndex(index)
-        self._ensure_equidistant_compatibility()
-
     def _set_equidistant(self, enabled: bool) -> None:
-        value = bool(enabled)
-        if value and not self._mode_supports_equidistant(self._orbit_mode):
-            # force a compatible mode when enabling equidistant layout
-            self._set_orbit_mode("uniform")
-            value = True
-        self._equidistant = value
+        self._equidistant = bool(enabled)
         with QtCore.QSignalBlocker(self.chk_orbit_equidistant):
-            self.chk_orbit_equidistant.setChecked(value)
-        self._ensure_equidistant_compatibility()
-
-    def _on_orbit_mode_changed(self, index: int) -> None:  # noqa: ANN001 - Qt slot signature
-        del index
-        data = self.cb_orbit_mode.currentData()
-        if not isinstance(data, str):
-            return
-        if data == self._orbit_mode:
-            return
-        self._orbit_mode = data
-        self._ensure_equidistant_compatibility()
-        self._apply_orbit_adjustment(None, None)
+            self.chk_orbit_equidistant.setChecked(self._equidistant)
 
     def _on_equidistant_changed(self, state: int) -> None:  # noqa: ANN001 - Qt slot signature
-        enabled = state == QtCore.Qt.Checked
-        if enabled and not self._mode_supports_equidistant(self._orbit_mode):
-            self._set_orbit_mode("uniform")
-        self._equidistant = bool(enabled)
-        self._apply_orbit_adjustment(None, None)
+        self._equidistant = state == QtCore.Qt.Checked
+        self._refresh_orbital_layout()
 
     def _on_orbit_slider(self, idx: int, value: float) -> None:
-        self._apply_orbit_adjustment(idx, value)
+        if 0 <= idx < len(self._orbit_controls):
+            control = self._orbit_controls[idx]
+            with QtCore.QSignalBlocker(control.spin):
+                control.spin.setValue(_clamp(value, 0.0, 400.0))
+        self._refresh_orbital_layout()
 
     def _on_orbit_spin(self, idx: int, value: float) -> None:
-        self._apply_orbit_adjustment(idx, value)
+        if 0 <= idx < len(self._orbit_controls):
+            control = self._orbit_controls[idx]
+            with QtCore.QSignalBlocker(control.slider):
+                control.slider.setValue(int(round(_clamp(value, 0.0, 400.0))))
+        self._refresh_orbital_layout()
 
     def _on_button_angle_spin(self, idx: int, value: float) -> None:
         self._set_button_angle(idx, value, from_spin=True)
@@ -515,7 +444,7 @@ class IndicatorTab(QtWidgets.QWidget):
                 self._push_orbital_layout(self._last_diameters)
             self.emit_delta()
         else:
-            self._apply_orbit_adjustment(None, None)
+            self._refresh_orbital_layout()
 
     def _on_coverage_angle(self, value: float) -> None:
         clamped = _clamp(float(value), 0.0, 360.0)
@@ -523,7 +452,7 @@ class IndicatorTab(QtWidgets.QWidget):
             self._set_coverage_angle(clamped)
             return
         self._set_coverage_angle(clamped)
-        self._apply_orbit_adjustment(None, None)
+        self._refresh_orbital_layout()
 
     def _on_coverage_offset(self, value: float) -> None:
         normalized = float(value) % 360.0
@@ -531,21 +460,11 @@ class IndicatorTab(QtWidgets.QWidget):
             self._set_coverage_offset(normalized)
             return
         self._set_coverage_offset(normalized)
-        self._apply_orbit_adjustment(None, None)
+        self._refresh_orbital_layout()
 
-    def _mode_supports_equidistant(self, mode: str) -> bool:
-        return _MODE_SUPPORTS_EQUIDISTANT.get(mode, False)
-
-    def _ensure_equidistant_compatibility(self) -> None:
-        if self._equidistant and not self._mode_supports_equidistant(self._orbit_mode):
-            self._equidistant = False
-            with QtCore.QSignalBlocker(self.chk_orbit_equidistant):
-                self.chk_orbit_equidistant.setChecked(False)
-
-    def _apply_orbit_adjustment(
+    def _refresh_orbital_layout(
         self,
-        source_index: Optional[int],
-        value: Optional[float],
+        diameters: Optional[Sequence[float]] = None,
         *,
         emit: bool = True,
     ) -> None:
@@ -553,21 +472,16 @@ class IndicatorTab(QtWidgets.QWidget):
             return
         self._updating_orbits = True
         try:
-            diameters = [control.spin.value() for control in self._orbit_controls]
-            if (
-                source_index is not None
-                and value is not None
-                and 0 <= source_index < len(diameters)
-            ):
-                diameters[source_index] = _clamp(value, 0.0, 400.0)
-            adjusted = self._apply_mode_transform(diameters, source_index, value)
-            baseline = list(adjusted)
-            adjusted = self._enforce_orbital_coverage(adjusted, baseline)
-            self._update_orbit_controls(adjusted)
-            auto_angles = self._compute_auto_angles(adjusted)
-            self._apply_auto_angles(auto_angles)
-            self._last_diameters = list(adjusted)
-            self._push_orbital_layout(adjusted)
+            if diameters is None:
+                current = [control.spin.value() for control in self._orbit_controls]
+            else:
+                current = [_clamp(float(value), 0.0, 400.0) for value in diameters]
+            self._last_diameters = list(current)
+            # Do NOT recompute or apply auto angles here: changing diameters
+            # must not reposition the donut buttons. We only push the orbital
+            # diameters so the renderer draws the green circles at the sizes
+            # specified by the user while preserving the current button angles.
+            self._push_orbital_layout(current)
         finally:
             self._updating_orbits = False
         if emit:
@@ -590,263 +504,6 @@ class IndicatorTab(QtWidgets.QWidget):
             self._coverage_offset_spin.setValue(rounded)
         with QtCore.QSignalBlocker(self._coverage_offset_slider):
             self._coverage_offset_slider.setValue(int(rounded))
-
-    def _apply_mode_transform(
-        self,
-        diameters: List[float],
-        source_index: Optional[int],
-        value: Optional[float],
-    ) -> List[float]:
-        values = [_clamp(v, 0.0, 400.0) for v in diameters]
-        count = len(values)
-        if count == 0:
-            return values
-        previous = self._last_diameters if len(self._last_diameters) == count else values
-        mode = self._orbit_mode
-        if mode == "free":
-            return values
-        if mode == "uniform":
-            if source_index is not None and value is not None:
-                target = _clamp(value, 0.0, 400.0)
-            else:
-                target = sum(values) / count if count else 0.0
-            return [target for _ in range(count)]
-        if mode == "ascending":
-            return sorted(values)
-        if mode == "descending":
-            return sorted(values, reverse=True)
-        if mode == "random":
-            if (
-                source_index is None
-                or value is None
-                or count <= 1
-                or not previous
-            ):
-                return values
-            base_previous = previous[min(source_index, len(previous) - 1)]
-            diff = _clamp(value, 0.0, 400.0) - base_previous
-            if abs(diff) > 1e-3:
-                candidates = [i for i in range(count) if i != source_index]
-                if candidates:
-                    target_idx = self._random.choice(candidates)
-                    values[target_idx] = _clamp(values[target_idx] - diff, 0.0, 400.0)
-            return values
-        if mode == "alternating":
-            high = max(values)
-            low = min(values)
-            if source_index is not None and value is not None:
-                if source_index % 2 == 0:
-                    high = _clamp(value, 0.0, 400.0)
-                else:
-                    low = _clamp(value, 0.0, 400.0)
-            if high < low:
-                high, low = low, high
-            for idx in range(count):
-                values[idx] = high if idx % 2 == 0 else low
-            return values
-        if mode == "mirrored":
-            half = count // 2 if count else 0
-            for idx in range(count):
-                pair_idx = (idx + half) % count if count else idx
-                if pair_idx == idx:
-                    continue
-                pair_avg = (values[idx] + values[pair_idx]) / 2.0
-                values[idx] = values[pair_idx] = pair_avg
-            if source_index is not None and value is not None and count:
-                pair_idx = (source_index + half) % count
-                mirrored = _clamp(value, 0.0, 400.0)
-                values[source_index] = values[pair_idx] = mirrored
-            return values
-        if mode == "wave":
-            avg = sum(values) / count
-            if source_index is not None and value is not None:
-                amplitude = _clamp(abs(value - avg), 5.0, 120.0)
-                phase_offset = (2.0 * math.pi * source_index) / count
-            else:
-                amplitude = max(20.0, (max(values) - min(values)) * 0.5 if max(values) != min(values) else 20.0)
-                phase_offset = 0.0
-            for idx in range(count):
-                phase = (2.0 * math.pi * idx) / count
-                values[idx] = _clamp(avg + amplitude * math.sin(phase - phase_offset), 0.0, 400.0)
-            if source_index is not None and value is not None:
-                values[source_index] = _clamp(value, 0.0, 400.0)
-            return values
-        if mode == "focus":
-            avg = sum(values) / count
-            if source_index is None:
-                peak_idx = max(range(count), key=lambda i: values[i]) if values else 0
-                peak_value = values[peak_idx] if values else avg
-            else:
-                peak_idx = source_index
-                peak_value = _clamp(value if value is not None else values[peak_idx], 0.0, 400.0)
-            spread = max(1.0, count / 3.0)
-            for idx in range(count):
-                forward = (idx - peak_idx) % count
-                backward = (peak_idx - idx) % count
-                dist = min(forward, backward)
-                attenuation = math.exp(-(dist ** 2) / (2.0 * spread))
-                values[idx] = _clamp(avg + (peak_value - avg) * attenuation, 0.0, 400.0)
-            return values
-        return values
-
-    def _enforce_orbital_coverage(
-        self,
-        diameters: Sequence[float],
-        baseline: Optional[Sequence[float]] = None,
-    ) -> List[float]:
-        values = [_clamp(float(v), 0.0, 400.0) for v in diameters]
-        count = len(values)
-        if count <= 1:
-            return values
-        baseline_values: List[float]
-        if baseline is None:
-            baseline_values = list(values)
-        else:
-            baseline_values = [_clamp(float(v), 0.0, 400.0) for v in baseline]
-            if len(baseline_values) < count:
-                baseline_values.extend(values[len(baseline_values) :])
-            elif len(baseline_values) > count:
-                baseline_values = baseline_values[:count]
-        spans = self._effective_spans(count, values)
-        if not spans:
-            return values
-        mask = self._active_span_mask(count)
-        if self._orbit_mode == "free":
-            mask = [False] * count
-        tolerance = 1e-3
-        for _ in range(count * 4):
-            adjusted = False
-            for idx in range(count):
-                next_idx = (idx + 1) % count
-                required = max(0.0, float(spans[idx])) * 2.0
-                if required <= tolerance:
-                    continue
-                current = values[idx] + values[next_idx]
-                error = current - required
-                if error > tolerance:
-                    share_cur, share_next = self._pair_weights(baseline_values, idx, next_idx)
-                    remaining = error
-                    take_cur = min(remaining * share_cur, max(0.0, values[idx]))
-                    values[idx] -= take_cur
-                    remaining -= take_cur
-                    take_next = min(remaining, max(0.0, values[next_idx]))
-                    values[next_idx] -= take_next
-                    remaining -= take_next
-                    if remaining > tolerance:
-                        if values[idx] > tolerance:
-                            extra = min(remaining, values[idx])
-                            values[idx] -= extra
-                            remaining -= extra
-                        if remaining > tolerance and values[next_idx] > tolerance:
-                            extra = min(remaining, values[next_idx])
-                            values[next_idx] -= extra
-                            remaining -= extra
-                    if take_cur > tolerance or take_next > tolerance:
-                        adjusted = True
-                    continue
-                if not mask[idx]:
-                    continue
-                deficit = required - current
-                if deficit <= tolerance:
-                    continue
-                share_cur, share_next = self._pair_weights(baseline_values, idx, next_idx)
-                head_cur = max(0.0, 400.0 - values[idx])
-                head_next = max(0.0, 400.0 - values[next_idx])
-                if head_cur <= tolerance and head_next <= tolerance:
-                    continue
-                remaining = deficit
-                add_cur = min(remaining * share_cur, head_cur)
-                values[idx] += add_cur
-                remaining -= add_cur
-                add_next = min(remaining, head_next)
-                values[next_idx] += add_next
-                remaining -= add_next
-                if remaining > tolerance and head_cur - add_cur > tolerance:
-                    extra = min(remaining, head_cur - add_cur)
-                    values[idx] += extra
-                    remaining -= extra
-                if remaining > tolerance and head_next - add_next > tolerance:
-                    extra = min(remaining, head_next - add_next)
-                    values[next_idx] += extra
-                    remaining -= extra
-                if add_cur > tolerance or add_next > tolerance:
-                    adjusted = True
-            if not adjusted:
-                break
-        for idx in range(count):
-            values[idx] = _clamp(values[idx], 0.0, 400.0)
-        return values
-
-    def _pair_weights(self, baseline: Sequence[float], idx: int, next_idx: int) -> Tuple[float, float]:
-        try:
-            base_cur = float(baseline[idx])
-        except Exception:
-            base_cur = 0.0
-        try:
-            base_next = float(baseline[next_idx])
-        except Exception:
-            base_next = 0.0
-        total = max(0.0, base_cur) + max(0.0, base_next)
-        if total <= 1e-6:
-            return 0.5, 0.5
-        share_cur = max(0.0, base_cur) / total
-        share_next = max(0.0, base_next) / total
-        return share_cur, share_next
-
-    def _effective_spans(self, count: int, diameters: Sequence[float]) -> List[float]:
-        spans = list(self._orbital_spans[:count])
-        if len(spans) < count:
-            avg_radius = sum(max(0.0, d * 0.5) for d in diameters) / max(1, count)
-            default_span = max(20.0, avg_radius * 2.2)
-            while len(spans) < count:
-                spans.append(default_span)
-        return spans
-
-    def _active_span_mask(self, count: int) -> List[bool]:
-        if count <= 0:
-            return []
-        if not self._orbital_angles or len(self._orbital_angles) < count:
-            return [True] * count
-        gap = _clamp(self._coverage_angle_deg, 0.0, 360.0)
-        if gap <= 1e-3:
-            return [True] * count
-        if gap >= 360.0 - 1e-3:
-            return [False] * count
-        offset = self._coverage_offset_deg % 360.0
-        mask: List[bool] = []
-        for idx in range(count):
-            a = self._orbital_angles[idx % len(self._orbital_angles)]
-            b = self._orbital_angles[(idx + 1) % len(self._orbital_angles)]
-            mid = self._mid_angle(a, b)
-            mask.append(not self._angle_in_gap(mid, offset, gap))
-        return mask
-
-    def _mid_angle(self, a_deg: float, b_deg: float) -> float:
-        a_rad = math.radians(a_deg)
-        b_rad = math.radians(b_deg)
-        x = math.cos(a_rad) + math.cos(b_rad)
-        y = math.sin(a_rad) + math.sin(b_rad)
-        if abs(x) < 1e-6 and abs(y) < 1e-6:
-            return (a_deg + b_deg) * 0.5 % 360.0
-        return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
-
-    def _angle_in_gap(self, angle: float, offset: float, gap: float) -> bool:
-        angle = angle % 360.0
-        start = offset % 360.0
-        end = (start + gap) % 360.0
-        if gap >= 360.0 - 1e-3:
-            return True
-        if start <= end:
-            return start <= angle <= end
-        return angle >= start or angle <= end
-
-    def _update_orbit_controls(self, diameters: Sequence[float]) -> None:
-        for control, value in zip(self._orbit_controls, diameters):
-            clamped = _clamp(float(value), 0.0, 400.0)
-            with QtCore.QSignalBlocker(control.spin):
-                control.spin.setValue(clamped)
-            with QtCore.QSignalBlocker(control.slider):
-                control.slider.setValue(int(round(clamped)))
 
     def _set_button_angle(self, idx: int, value: float, *, from_spin: bool = False) -> None:
         if idx < 0:

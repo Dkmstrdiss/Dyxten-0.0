@@ -234,10 +234,12 @@ class ControlWindow(QtWidgets.QMainWindow):
 
         hub = getattr(self.view_win, "donut_hub", None)
         if hub is not None:
-            try:
-                hub.donutLayoutChanged.connect(self.tab_indicator.update_orbital_layout)
-            except Exception:
-                pass
+            # Do not connect DonutHub layout updates to the IndicatorTab.
+            # When the user edits button angles we don't want an automatic
+            # layout emission from the hub to overwrite those manual edits
+            # (this previously caused other buttons to move). Keep a direct
+            # reference to the hub so the tab can still push layouts when
+            # needed.
             try:
                 self.tab_indicator.set_donut_hub(hub)
             except Exception:
@@ -681,7 +683,6 @@ class ControlWindow(QtWidgets.QMainWindow):
                 default_diam = orbital_defaults.get("diameters", [])
                 if not isinstance(orbital_section.get("diameters"), list):
                     orbital_section["diameters"] = list(default_diam)
-                orbital_section.setdefault("mode", orbital_defaults.get("mode", "free"))
                 orbital_section.setdefault(
                     "coverageAngle",
                     float(orbital_defaults.get("coverageAngle", 0.0)),

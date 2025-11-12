@@ -25,53 +25,11 @@ def solve_tangent_radii(raw: Iterable[float], spans: Sequence[float]) -> List[fl
     view can stay in sync when enforcing tangency constraints.
     """
 
+    # Previously this function adjusted radii to enforce tangency between
+    # neighbouring orbital zones. The tangency solver has been intentionally
+    # disabled: we now accept the raw values provided by the UI and return
+    # them (after clamping to non-negative floats). This lets the widgets
+    # drive the visual sizes directly without automatic redistribution.
+
     raw_list = [max(0.0, float(r)) for r in raw]
-    radii = list(raw_list)
-    if not radii:
-        return radii
-    span_list = [float(s) for s in spans]
-    if not span_list:
-        span_list = [0.0]
-    if len(span_list) < len(radii):
-        span_list.extend([span_list[-1]] * (len(radii) - len(span_list)))
-
-    limit_count = len(radii)
-
-    for i in range(limit_count):
-        prev_span = span_list[i - 1] if limit_count > 1 else span_list[0]
-        next_span = span_list[i] if limit_count > 1 else span_list[0]
-        max_radius = min(prev_span, next_span) * 0.5 if limit_count > 1 else span_list[0] * 0.5
-        if math.isfinite(max_radius):
-            radii[i] = min(radii[i], max_radius)
-
-    for _ in range(12):
-        changed = False
-        for i in range(limit_count):
-            j = (i + 1) % limit_count
-            span = span_list[i]
-            if not math.isfinite(span) or span <= 0.0:
-                continue
-            current_sum = radii[i] + radii[j]
-            if abs(current_sum - span) <= 0.5:
-                continue
-            if current_sum > span:
-                excess = (current_sum - span) / 2.0
-                new_i = max(0.0, radii[i] - excess)
-                new_j = max(0.0, radii[j] - excess)
-                if abs(new_i - radii[i]) > 1e-3 or abs(new_j - radii[j]) > 1e-3:
-                    radii[i], radii[j] = new_i, new_j
-                    changed = True
-            else:
-                deficit = span - current_sum
-                if deficit <= 1e-3:
-                    continue
-                head_i = max(0.0, raw_list[i] - radii[i])
-                head_j = max(0.0, raw_list[j] - radii[j])
-                add = min(deficit / 2.0, head_i, head_j)
-                if add > 1e-3:
-                    radii[i] += add
-                    radii[j] += add
-                    changed = True
-        if not changed:
-            break
-    return radii
+    return list(raw_list)

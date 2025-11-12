@@ -148,7 +148,6 @@ DEFAULTS = dict(
         orbitalZones=dict(
             enabled=True,
             diameters=[120.0 for _ in range(DEFAULT_DONUT_BUTTON_COUNT)],
-            mode="free",
             coverageAngle=0.0,
             coverageOffset=0.0,
             equidistant=False,
