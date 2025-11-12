@@ -149,6 +149,8 @@ class DonutHub(QtWidgets.QWidget):
         self._span_overrides: Optional[List[float]] = None
         self._coverage_gap_deg = 0.0
         self._coverage_offset_deg = 0.0
+        self._equidistant = False
+        self._manual_angles: Optional[List[float]] = None
 
         # Donut geometry - use default radius ratio
         self._radius_ratio = _DEFAULT_RADIUS_RATIO  # 0.35
@@ -276,12 +278,15 @@ class DonutHub(QtWidgets.QWidget):
         *,
         coverage_angle: float = 0.0,
         coverage_offset: float = 0.0,
+        equidistant: bool = False,
+        angles: Optional[Sequence[float]] = None,
     ) -> None:
         """Store tangency information provided by the indicator tab."""
 
         count = len(self.buttons)
         if count == 0:
             return
+        self._equidistant = bool(equidistant)
         try:
             base_values = [float(value) for value in diameters]
         except Exception:
@@ -293,15 +298,37 @@ class DonutHub(QtWidgets.QWidget):
                 values.append(base_values[idx])
             else:
                 values.append(fallback)
-        if not values:
+        manual_angles: Optional[List[float]] = None
+        if angles is not None:
+            manual_angles = []
+            for idx in range(count):
+                if idx < len(angles):
+                    try:
+                        manual_angles.append(float(angles[idx]) % 360.0)
+                    except Exception:
+                        manual_angles.append(0.0)
+                elif manual_angles:
+                    manual_angles.append(manual_angles[-1])
+                else:
+                    manual_angles.append(0.0)
+            if manual_angles and not any(not math.isfinite(val) for val in manual_angles):
+                self._manual_angles = manual_angles
+            else:
+                self._manual_angles = None
+        else:
+            self._manual_angles = None
+        if not values or self._manual_angles is not None:
             self._span_overrides = None
         else:
-            spans: List[float] = []
-            for idx in range(count):
-                current = max(0.0, values[idx])
-                nxt = max(0.0, values[(idx + 1) % count])
-                spans.append((current + nxt) * 0.5)
-            self._span_overrides = spans
+            if self._equidistant:
+                self._span_overrides = None
+            else:
+                spans: List[float] = []
+                for idx in range(count):
+                    current = max(0.0, values[idx])
+                    nxt = max(0.0, values[(idx + 1) % count])
+                    spans.append((current + nxt) * 0.5)
+                self._span_overrides = spans
         try:
             self._coverage_gap_deg = max(0.0, min(360.0, float(coverage_angle)))
         except Exception:
@@ -441,42 +468,67 @@ class DonutHub(QtWidgets.QWidget):
 
         # position buttons along the ring
         total = len(self.buttons)
-        spans = self._span_overrides if isinstance(self._span_overrides, list) and len(self._span_overrides) >= total else None
-        angles: Optional[List[float]] = None
-        coverage_total = 0.0
-        if spans and radius_mid > 1e-3:
-            angles = []
-            for span in spans[:total]:
-                chord = max(0.0, min(float(span), (radius_mid * 2.0) * 0.999999))
-                if chord <= 1e-3:
-                    angles.append(0.0)
-                    continue
-                ratio = max(0.0, min(1.0, chord / (2.0 * radius_mid)))
-                try:
-                    angles.append(math.degrees(2.0 * math.asin(ratio)))
-                except ValueError:
-                    angles.append(math.degrees(math.pi))
-            coverage_total = sum(angles)
-            if not any(a > 1e-3 for a in angles):
-                angles = None
-        if angles:
-            desired_gap = max(0.0, min(360.0, self._coverage_gap_deg))
-            max_gap = max(0.0, 360.0 - min(360.0, coverage_total))
-            gap = min(desired_gap, max_gap)
+        manual_angles = None
+        if isinstance(self._manual_angles, list) and len(self._manual_angles) >= total:
+            manual_angles = [float(self._manual_angles[idx % len(self._manual_angles)]) % 360.0 for idx in range(total)]
+        spans = None
+        if manual_angles is None and (not self._equidistant):
+            if isinstance(self._span_overrides, list) and len(self._span_overrides) >= total:
+                spans = self._span_overrides
+        angle_steps: Optional[List[float]] = None
+        angle_list: List[float] = []
+        gap = 0.0
+        if manual_angles is not None:
+            angle_list = [((angle + self._angle_offset_deg) % 360.0) for angle in manual_angles]
         else:
-            gap = 0.0
-        start_angle = self._angle_offset_deg - 90.0
-        if angles:
-            start_angle += (self._coverage_offset_deg + gap) % 360.0
-        angle = start_angle
-        step = 360.0 / total if total else 0.0
+            coverage_total = 0.0
+            if spans and radius_mid > 1e-3:
+                angle_steps = []
+                for span in spans[:total]:
+                    chord = max(0.0, min(float(span), (radius_mid * 2.0) * 0.999999))
+                    if chord <= 1e-3:
+                        angle_steps.append(0.0)
+                        continue
+                    ratio = max(0.0, min(1.0, chord / (2.0 * radius_mid)))
+                    try:
+                        angle_steps.append(math.degrees(2.0 * math.asin(ratio)))
+                    except ValueError:
+                        angle_steps.append(math.degrees(math.pi))
+                coverage_total = sum(angle_steps)
+                if not any(a > 1e-3 for a in angle_steps):
+                    angle_steps = None
+            if angle_steps:
+                desired_gap = max(0.0, min(360.0, self._coverage_gap_deg))
+                max_gap = max(0.0, 360.0 - min(360.0, coverage_total))
+                gap = min(desired_gap, max_gap)
+                start_angle = -90.0
+                start_angle += (self._coverage_offset_deg + gap) % 360.0
+                current = start_angle
+                for idx in range(total):
+                    angle_list.append((current + self._angle_offset_deg) % 360.0)
+                    current += angle_steps[idx % len(angle_steps)]
+            else:
+                gap = max(0.0, min(360.0, self._coverage_gap_deg)) if self._equidistant else 0.0
+                if gap >= 360.0:
+                    gap = 0.0
+                start_angle = -90.0
+                if self._equidistant:
+                    start_angle += (self._coverage_offset_deg + gap) % 360.0
+                step = 360.0 / total if total else 0.0
+                if self._equidistant and total:
+                    step = (360.0 - gap) / total if total else 0.0
+                current = start_angle
+                for _ in range(total):
+                    angle_list.append((current + self._angle_offset_deg) % 360.0)
+                    current += step
         for idx, button in enumerate(self.buttons):
+            angle = angle_list[idx] if idx < len(angle_list) else 0.0
             angle_rad = math.radians(angle)
             x = int(cx + radius_mid * math.cos(angle_rad) - self.icon_size / 2)
             y = int(cy + radius_mid * math.sin(angle_rad) - self.icon_size / 2)
             button.move(x, y)
-            if angles:
-                angle += angles[idx % len(angles)]
+            if manual_angles:
+                angle += manual_angles[idx % len(manual_angles)]
             else:
                 angle += step
         self.update()

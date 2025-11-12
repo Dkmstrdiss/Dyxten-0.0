@@ -34,6 +34,19 @@ _ORBIT_MODE_OPTIONS: List[Tuple[str, str]] = [
 ]
 
 
+_MODE_SUPPORTS_EQUIDISTANT = {
+    "free": False,
+    "uniform": True,
+    "ascending": False,
+    "descending": False,
+    "random": False,
+    "alternating": True,
+    "mirrored": False,
+    "wave": False,
+    "focus": False,
+}
+
+
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(maximum, value))
 
@@ -72,14 +85,50 @@ class IndicatorTab(QtWidgets.QWidget):
         buttons_layout.setHorizontalSpacing(6)
         buttons_layout.setVerticalSpacing(4)
         self._line_checks: Dict[int, QtWidgets.QCheckBox] = {}
+        self._angle_spins: Dict[int, QtWidgets.QDoubleSpinBox] = {}
+        self._angle_fixed_checks: Dict[int, QtWidgets.QCheckBox] = {}
         for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
             checkbox = QtWidgets.QCheckBox(f"Bouton {idx + 1}")
             checkbox.setToolTip(TOOLTIPS.get("indicator.centerLines.buttons", ""))
+            angle_spin = QtWidgets.QDoubleSpinBox()
+            angle_spin.setRange(0.0, 360.0)
+            angle_spin.setDecimals(0)
+            angle_spin.setSingleStep(1.0)
+            angle_spin.setSuffix(" °")
+            angle_spin.setWrapping(True)
+            base_angle = (360.0 / DEFAULT_DONUT_BUTTON_COUNT) * idx
+            angle_spin.setValue(base_angle % 360.0)
+            fix_checkbox = QtWidgets.QCheckBox("Fixe")
             self._line_checks[idx] = checkbox
+            self._angle_spins[idx] = angle_spin
+            self._angle_fixed_checks[idx] = fix_checkbox
+            widget = QtWidgets.QWidget()
+            widget_layout = QtWidgets.QHBoxLayout(widget)
+            widget_layout.setContentsMargins(0, 0, 0, 0)
+            widget_layout.setSpacing(4)
+            widget_layout.addWidget(checkbox)
+            widget_layout.addWidget(angle_spin)
+            widget_layout.addWidget(fix_checkbox)
+            widget_layout.addStretch(1)
             row = idx // 5
             col = idx % 5
-            buttons_layout.addWidget(checkbox, row, col)
+            buttons_layout.addWidget(widget, row, col)
         center_layout.addRow(buttons_row)
+
+        for idx, spin in self._angle_spins.items():
+            register_linkable_widget(
+                spin,
+                section="indicator",
+                key=f"centerLines.angles[{idx}]",
+                tab=self._TAB_LABEL,
+            )
+        for idx, checkbox in self._angle_fixed_checks.items():
+            register_linkable_widget(
+                checkbox,
+                section="indicator",
+                key=f"centerLines.fixed[{idx}]",
+                tab=self._TAB_LABEL,
+            )
 
         yellow_defaults = defaults.get("yellowCircleRatio", 0.19)
         (
@@ -137,6 +186,17 @@ class IndicatorTab(QtWidgets.QWidget):
             tab=self._TAB_LABEL,
         )
 
+        equidistant_default = bool(orbit_defaults.get("equidistant", False)) if isinstance(orbit_defaults, dict) else False
+        self.chk_orbit_equidistant = QtWidgets.QCheckBox("Répartition équidistante")
+        self.chk_orbit_equidistant.setChecked(equidistant_default)
+        orbital_layout.addRow(self.chk_orbit_equidistant)
+        register_linkable_widget(
+            self.chk_orbit_equidistant,
+            section="indicator",
+            key="orbitalZones.equidistant",
+            tab=self._TAB_LABEL,
+        )
+
         self.cb_orbit_mode = QtWidgets.QComboBox()
         for key, label in _ORBIT_MODE_OPTIONS:
             self.cb_orbit_mode.addItem(label, key)
@@ -170,6 +230,12 @@ class IndicatorTab(QtWidgets.QWidget):
         self.chk_all_lines.stateChanged.connect(self.emit_delta)
         for checkbox in self._line_checks.values():
             checkbox.stateChanged.connect(self.emit_delta)
+        for idx, spin in self._angle_spins.items():
+            spin.valueChanged.connect(lambda val, i=idx: self._on_button_angle_spin(i, float(val)))
+        for idx, checkbox in self._angle_fixed_checks.items():
+            checkbox.stateChanged.connect(
+                lambda state, i=idx: self._on_button_fixed_changed(i, state == QtCore.Qt.Checked)
+            )
         self._yellow_slider.valueChanged.connect(self._on_yellow_slider)
         self._yellow_spin.valueChanged.connect(self._on_yellow_spin)
         self.chk_orbital_enabled.stateChanged.connect(self.emit_delta)
@@ -178,6 +244,7 @@ class IndicatorTab(QtWidgets.QWidget):
         self._coverage_angle_spin.valueChanged.connect(lambda val: self._on_coverage_angle(float(val)))
         self._coverage_offset_slider.valueChanged.connect(lambda val: self._on_coverage_offset(float(val)))
         self._coverage_offset_spin.valueChanged.connect(lambda val: self._on_coverage_offset(float(val)))
+        self.chk_orbit_equidistant.stateChanged.connect(self._on_equidistant_changed)
 
         self._random = random.Random()
         self._updating_orbits = False
@@ -186,6 +253,7 @@ class IndicatorTab(QtWidgets.QWidget):
         self._coverage_angle_deg = 0.0
         self._coverage_offset_deg = 0.0
         self._orbit_mode = "free"
+        self._equidistant = equidistant_default
         self.cb_orbit_mode.currentIndexChanged.connect(self._on_orbit_mode_changed)
 
         for idx, control in enumerate(self._orbit_controls):
@@ -193,6 +261,15 @@ class IndicatorTab(QtWidgets.QWidget):
             control.spin.valueChanged.connect(lambda val, i=idx: self._on_orbit_spin(i, float(val)))
 
         self._last_diameters = [control.spin.value() for control in self._orbit_controls]
+        self._button_angles = [
+            self._angle_spins[idx].value() if idx in self._angle_spins else 0.0
+            for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+        ]
+        self._button_fixed = [
+            self._angle_fixed_checks[idx].isChecked() if idx in self._angle_fixed_checks else False
+            for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+        ]
+        self._orbital_radius = 0.0
 
         self._system_tab: Optional[object] = None
         self._donut_hub: Optional[object] = None
@@ -216,6 +293,14 @@ class IndicatorTab(QtWidgets.QWidget):
             centerLines=dict(
                 all=self.chk_all_lines.isChecked(),
                 buttons={str(idx + 1): checkbox.isChecked() for idx, checkbox in self._line_checks.items()},
+                angles={
+                    str(idx + 1): self._button_angles[idx] if idx < len(self._button_angles) else 0.0
+                    for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+                },
+                fixed={
+                    str(idx + 1): self._button_fixed[idx] if idx < len(self._button_fixed) else False
+                    for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+                },
             ),
             yellowCircleRatio=self._yellow_spin.value() / 200.0,
             orbitalZones=dict(
@@ -224,6 +309,7 @@ class IndicatorTab(QtWidgets.QWidget):
                 mode=self._orbit_mode,
                 coverageAngle=self._coverage_angle_deg,
                 coverageOffset=self._coverage_offset_deg,
+                equidistant=self._equidistant,
             ),
         )
 
@@ -239,6 +325,26 @@ class IndicatorTab(QtWidgets.QWidget):
                     raw = buttons_cfg.get(str(idx + 1), buttons_cfg.get(idx + 1))
                     with QtCore.QSignalBlocker(checkbox):
                         checkbox.setChecked(bool(raw))
+            angles_cfg = center_cfg.get("angles", {})
+            if isinstance(angles_cfg, dict):
+                for idx, spin in self._angle_spins.items():
+                    raw = angles_cfg.get(str(idx + 1), angles_cfg.get(idx + 1))
+                    try:
+                        value = float(raw)
+                    except (TypeError, ValueError):
+                        value = spin.value()
+                    self._set_button_angle(idx, value)
+            else:
+                for idx, spin in self._angle_spins.items():
+                    self._set_button_angle(idx, spin.value())
+            fixed_cfg = center_cfg.get("fixed", {})
+            if isinstance(fixed_cfg, dict):
+                for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
+                    raw = fixed_cfg.get(str(idx + 1), fixed_cfg.get(idx + 1))
+                    self._set_button_fixed(idx, bool(raw))
+            else:
+                for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
+                    self._set_button_fixed(idx, False)
         yellow_ratio = cfg.get("yellowCircleRatio") if isinstance(cfg, dict) else None
         if yellow_ratio is None:
             yellow_ratio = DEFAULTS.get("indicator", {}).get("yellowCircleRatio", 0.19)
@@ -254,6 +360,7 @@ class IndicatorTab(QtWidgets.QWidget):
         mode = "free"
         coverage_angle = 0.0
         coverage_offset = 0.0
+        equidistant = False
         if isinstance(orbital_cfg, dict):
             enabled = bool(orbital_cfg.get("enabled", True))
             raw_diameters = orbital_cfg.get("diameters", [])
@@ -264,6 +371,7 @@ class IndicatorTab(QtWidgets.QWidget):
                 mode = raw_mode
             raw_cov_angle = orbital_cfg.get("coverageAngle")
             raw_cov_offset = orbital_cfg.get("coverageOffset")
+            equidistant = bool(orbital_cfg.get("equidistant", False))
             try:
                 coverage_angle = float(raw_cov_angle)
             except (TypeError, ValueError):
@@ -277,6 +385,7 @@ class IndicatorTab(QtWidgets.QWidget):
         self._set_orbit_mode(mode)
         self._set_coverage_angle(coverage_angle)
         self._set_coverage_offset(coverage_offset)
+        self._set_equidistant(equidistant)
         for idx, control in enumerate(self._orbit_controls):
             value = diameters[idx] if idx < len(diameters) else control.spin.value()
             try:
@@ -319,13 +428,20 @@ class IndicatorTab(QtWidgets.QWidget):
             avg_x = sum(x for x, _ in points) / len(points)
             avg_y = sum(y for _, y in points) / len(points)
             angles: List[float] = []
+            radii_samples: List[float] = []
             for px, py in points:
                 ang = math.degrees(math.atan2(py - avg_y, px - avg_x)) % 360.0
                 angles.append(ang)
+                radii_samples.append(math.hypot(px - avg_x, py - avg_y))
             self._orbital_angles = angles
+            if radii_samples:
+                self._orbital_radius = sum(radii_samples) / len(radii_samples)
         else:
             self._orbital_angles = []
         self._orbital_spans = spans
+        if self._orbital_angles:
+            for idx, angle in enumerate(self._orbital_angles[: DEFAULT_DONUT_BUTTON_COUNT]):
+                self._set_button_angle(idx, angle)
         if self._orbit_controls:
             self._apply_orbit_adjustment(None, None, emit=False)
 
@@ -349,6 +465,18 @@ class IndicatorTab(QtWidgets.QWidget):
         if index >= 0:
             with QtCore.QSignalBlocker(self.cb_orbit_mode):
                 self.cb_orbit_mode.setCurrentIndex(index)
+        self._ensure_equidistant_compatibility()
+
+    def _set_equidistant(self, enabled: bool) -> None:
+        value = bool(enabled)
+        if value and not self._mode_supports_equidistant(self._orbit_mode):
+            # force a compatible mode when enabling equidistant layout
+            self._set_orbit_mode("uniform")
+            value = True
+        self._equidistant = value
+        with QtCore.QSignalBlocker(self.chk_orbit_equidistant):
+            self.chk_orbit_equidistant.setChecked(value)
+        self._ensure_equidistant_compatibility()
 
     def _on_orbit_mode_changed(self, index: int) -> None:  # noqa: ANN001 - Qt slot signature
         del index
@@ -358,6 +486,14 @@ class IndicatorTab(QtWidgets.QWidget):
         if data == self._orbit_mode:
             return
         self._orbit_mode = data
+        self._ensure_equidistant_compatibility()
+        self._apply_orbit_adjustment(None, None)
+
+    def _on_equidistant_changed(self, state: int) -> None:  # noqa: ANN001 - Qt slot signature
+        enabled = state == QtCore.Qt.Checked
+        if enabled and not self._mode_supports_equidistant(self._orbit_mode):
+            self._set_orbit_mode("uniform")
+        self._equidistant = bool(enabled)
         self._apply_orbit_adjustment(None, None)
 
     def _on_orbit_slider(self, idx: int, value: float) -> None:
@@ -365,6 +501,21 @@ class IndicatorTab(QtWidgets.QWidget):
 
     def _on_orbit_spin(self, idx: int, value: float) -> None:
         self._apply_orbit_adjustment(idx, value)
+
+    def _on_button_angle_spin(self, idx: int, value: float) -> None:
+        self._set_button_angle(idx, value, from_spin=True)
+        if self._last_diameters:
+            self._push_orbital_layout(self._last_diameters)
+        self.emit_delta()
+
+    def _on_button_fixed_changed(self, idx: int, checked: bool) -> None:
+        self._set_button_fixed(idx, checked, from_ui=True)
+        if checked:
+            if self._last_diameters:
+                self._push_orbital_layout(self._last_diameters)
+            self.emit_delta()
+        else:
+            self._apply_orbit_adjustment(None, None)
 
     def _on_coverage_angle(self, value: float) -> None:
         clamped = _clamp(float(value), 0.0, 360.0)
@@ -381,6 +532,15 @@ class IndicatorTab(QtWidgets.QWidget):
             return
         self._set_coverage_offset(normalized)
         self._apply_orbit_adjustment(None, None)
+
+    def _mode_supports_equidistant(self, mode: str) -> bool:
+        return _MODE_SUPPORTS_EQUIDISTANT.get(mode, False)
+
+    def _ensure_equidistant_compatibility(self) -> None:
+        if self._equidistant and not self._mode_supports_equidistant(self._orbit_mode):
+            self._equidistant = False
+            with QtCore.QSignalBlocker(self.chk_orbit_equidistant):
+                self.chk_orbit_equidistant.setChecked(False)
 
     def _apply_orbit_adjustment(
         self,
@@ -404,6 +564,8 @@ class IndicatorTab(QtWidgets.QWidget):
             baseline = list(adjusted)
             adjusted = self._enforce_orbital_coverage(adjusted, baseline)
             self._update_orbit_controls(adjusted)
+            auto_angles = self._compute_auto_angles(adjusted)
+            self._apply_auto_angles(auto_angles)
             self._last_diameters = list(adjusted)
             self._push_orbital_layout(adjusted)
         finally:
@@ -532,8 +694,6 @@ class IndicatorTab(QtWidgets.QWidget):
         diameters: Sequence[float],
         baseline: Optional[Sequence[float]] = None,
     ) -> List[float]:
-        if self._orbit_mode == "free":
-            return list(diameters)
         values = [_clamp(float(v), 0.0, 400.0) for v in diameters]
         count = len(values)
         if count <= 1:
@@ -551,43 +711,87 @@ class IndicatorTab(QtWidgets.QWidget):
         if not spans:
             return values
         mask = self._active_span_mask(count)
-        if not any(mask):
-            return values
-        # Iteratively push neighbouring circles outwards until every span is
-        # covered or all controls have reached their maximum range.
-        for _ in range(count * 3):
+        if self._orbit_mode == "free":
+            mask = [False] * count
+        tolerance = 1e-3
+        for _ in range(count * 4):
             adjusted = False
             for idx in range(count):
+                next_idx = (idx + 1) % count
+                required = max(0.0, float(spans[idx])) * 2.0
+                if required <= tolerance:
+                    continue
+                current = values[idx] + values[next_idx]
+                error = current - required
+                if error > tolerance:
+                    share_cur, share_next = self._pair_weights(baseline_values, idx, next_idx)
+                    remaining = error
+                    take_cur = min(remaining * share_cur, max(0.0, values[idx]))
+                    values[idx] -= take_cur
+                    remaining -= take_cur
+                    take_next = min(remaining, max(0.0, values[next_idx]))
+                    values[next_idx] -= take_next
+                    remaining -= take_next
+                    if remaining > tolerance:
+                        if values[idx] > tolerance:
+                            extra = min(remaining, values[idx])
+                            values[idx] -= extra
+                            remaining -= extra
+                        if remaining > tolerance and values[next_idx] > tolerance:
+                            extra = min(remaining, values[next_idx])
+                            values[next_idx] -= extra
+                            remaining -= extra
+                    if take_cur > tolerance or take_next > tolerance:
+                        adjusted = True
+                    continue
                 if not mask[idx]:
                     continue
-                next_idx = (idx + 1) % count
-                span = max(0.0, float(spans[idx])) * 2.0
-                current = values[idx] + values[next_idx]
-                if current + 1e-3 >= span:
+                deficit = required - current
+                if deficit <= tolerance:
                     continue
-                deficit = span - current
-                head_current = 400.0 - values[idx]
-                head_next = 400.0 - values[next_idx]
-                if head_current <= 1e-3 and head_next <= 1e-3:
+                share_cur, share_next = self._pair_weights(baseline_values, idx, next_idx)
+                head_cur = max(0.0, 400.0 - values[idx])
+                head_next = max(0.0, 400.0 - values[next_idx])
+                if head_cur <= tolerance and head_next <= tolerance:
                     continue
-                order = [
-                    (baseline_values[idx], head_current, idx),
-                    (baseline_values[next_idx], head_next, next_idx),
-                ]
-                order.sort(key=lambda item: (item[0], item[1]))
                 remaining = deficit
-                for _base, headroom, target_idx in reversed(order):
-                    if remaining <= 1e-3:
-                        break
-                    if headroom <= 1e-3:
-                        continue
-                    delta = min(headroom, remaining)
-                    values[target_idx] += delta
-                    remaining -= delta
+                add_cur = min(remaining * share_cur, head_cur)
+                values[idx] += add_cur
+                remaining -= add_cur
+                add_next = min(remaining, head_next)
+                values[next_idx] += add_next
+                remaining -= add_next
+                if remaining > tolerance and head_cur - add_cur > tolerance:
+                    extra = min(remaining, head_cur - add_cur)
+                    values[idx] += extra
+                    remaining -= extra
+                if remaining > tolerance and head_next - add_next > tolerance:
+                    extra = min(remaining, head_next - add_next)
+                    values[next_idx] += extra
+                    remaining -= extra
+                if add_cur > tolerance or add_next > tolerance:
                     adjusted = True
             if not adjusted:
                 break
+        for idx in range(count):
+            values[idx] = _clamp(values[idx], 0.0, 400.0)
         return values
+
+    def _pair_weights(self, baseline: Sequence[float], idx: int, next_idx: int) -> Tuple[float, float]:
+        try:
+            base_cur = float(baseline[idx])
+        except Exception:
+            base_cur = 0.0
+        try:
+            base_next = float(baseline[next_idx])
+        except Exception:
+            base_next = 0.0
+        total = max(0.0, base_cur) + max(0.0, base_next)
+        if total <= 1e-6:
+            return 0.5, 0.5
+        share_cur = max(0.0, base_cur) / total
+        share_next = max(0.0, base_next) / total
+        return share_cur, share_next
 
     def _effective_spans(self, count: int, diameters: Sequence[float]) -> List[float]:
         spans = list(self._orbital_spans[:count])
@@ -644,15 +848,121 @@ class IndicatorTab(QtWidgets.QWidget):
             with QtCore.QSignalBlocker(control.slider):
                 control.slider.setValue(int(round(clamped)))
 
+    def _set_button_angle(self, idx: int, value: float, *, from_spin: bool = False) -> None:
+        if idx < 0:
+            return
+        while len(self._button_angles) <= idx:
+            self._button_angles.append(0.0)
+        normalized = float(value) % 360.0
+        self._button_angles[idx] = normalized
+        spin = self._angle_spins.get(idx)
+        if spin is not None and not from_spin:
+            with QtCore.QSignalBlocker(spin):
+                spin.setValue(normalized)
+
+    def _set_button_fixed(self, idx: int, value: bool, *, from_ui: bool = False) -> None:
+        if idx < 0:
+            return
+        while len(self._button_fixed) <= idx:
+            self._button_fixed.append(False)
+        flag = bool(value)
+        self._button_fixed[idx] = flag
+        checkbox = self._angle_fixed_checks.get(idx)
+        if checkbox is not None and not from_ui:
+            with QtCore.QSignalBlocker(checkbox):
+                checkbox.setChecked(flag)
+
+    def _infer_radius(self, diameters: Sequence[float]) -> float:
+        if not diameters:
+            return 120.0
+        total = 0.0
+        count = 0
+        for value in diameters:
+            try:
+                total += max(0.0, float(value))
+                count += 1
+            except (TypeError, ValueError):
+                continue
+        avg = total / count if count else 120.0
+        return max(60.0, avg)
+
+    def _compute_auto_angles(self, diameters: Sequence[float]) -> List[float]:
+        count = len(diameters)
+        if count <= 0:
+            return []
+        radius = float(getattr(self, "_orbital_radius", 0.0) or 0.0)
+        if radius <= 1e-3:
+            radius = self._infer_radius(diameters)
+        radius = max(1.0, radius)
+        gap = _clamp(self._coverage_angle_deg, 0.0, 360.0)
+        available = max(0.0, 360.0 - gap)
+        central: List[float] = []
+        for idx in range(count):
+            try:
+                current = max(0.0, float(diameters[idx]))
+            except (TypeError, ValueError):
+                current = 0.0
+            try:
+                nxt = max(0.0, float(diameters[(idx + 1) % count]))
+            except (TypeError, ValueError):
+                nxt = 0.0
+            chord = (current + nxt) * 0.5
+            if chord <= 1e-6:
+                central.append(0.0)
+                continue
+            ratio = chord / (2.0 * radius)
+            ratio = max(0.0, min(0.999999, ratio))
+            try:
+                angle = math.degrees(2.0 * math.asin(ratio))
+            except ValueError:
+                angle = 180.0
+            central.append(angle)
+        total = sum(central)
+        if total <= 1e-6:
+            step = available / count if count else 0.0
+            central = [step for _ in range(count)]
+        else:
+            scale = available / total if total > 1e-6 else 0.0
+            central = [angle * scale for angle in central]
+        start = (-90.0 + self._coverage_offset_deg + gap) % 360.0
+        angles: List[float] = []
+        current_angle = start
+        for idx in range(count):
+            angles.append(current_angle % 360.0)
+            current_angle += central[idx % count]
+        return angles
+
+    def _apply_auto_angles(self, auto_angles: Sequence[float]) -> None:
+        if not auto_angles:
+            return
+        count = min(len(auto_angles), DEFAULT_DONUT_BUTTON_COUNT)
+        for idx in range(count):
+            if idx < len(self._button_fixed) and self._button_fixed[idx]:
+                # keep user-defined angle for fixed buttons
+                spin = self._angle_spins.get(idx)
+                value = spin.value() if spin is not None else self._button_angles[idx]
+                self._set_button_angle(idx, value)
+            else:
+                self._set_button_angle(idx, float(auto_angles[idx]))
+
     def _push_orbital_layout(self, diameters: Sequence[float]) -> None:
         hub = getattr(self, "_donut_hub", None)
         if hub is None or not hasattr(hub, "configure_orbital_layout"):
             return
         try:
+            count = len(diameters)
+            angles_payload = []
+            for idx in range(count):
+                if idx < len(self._button_angles):
+                    angles_payload.append(float(self._button_angles[idx]) % 360.0)
+                else:
+                    angles_payload.append(0.0)
             hub.configure_orbital_layout(
                 diameters,
                 coverage_angle=self._coverage_angle_deg,
                 coverage_offset=self._coverage_offset_deg,
+                equidistant=self._equidistant,
+                angles=angles_payload,
             )
         except Exception:
             pass

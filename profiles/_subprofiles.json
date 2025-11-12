@@ -264,6 +264,30 @@
           "8": false,
           "9": false,
           "10": false
+        },
+        "angles": {
+          "1": 0.0,
+          "2": 36.0,
+          "3": 72.0,
+          "4": 108.0,
+          "5": 144.0,
+          "6": 180.0,
+          "7": 216.0,
+          "8": 252.0,
+          "9": 288.0,
+          "10": 324.0
+        },
+        "fixed": {
+          "1": false,
+          "2": false,
+          "3": false,
+          "4": false,
+          "5": false,
+          "6": false,
+          "7": false,
+          "8": false,
+          "9": false,
+          "10": false
         }
       },
       "yellowCircleRatio": 0.19,
@@ -283,7 +307,8 @@
         ],
         "mode": "free",
         "coverageAngle": 0.0,
-        "coverageOffset": 0.0
+        "coverageOffset": 0.0,
+        "equidistant": false
       }
     }
   }

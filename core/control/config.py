@@ -138,6 +138,11 @@ DEFAULTS = dict(
         centerLines=dict(
             all=False,
             buttons={str(idx + 1): False for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
+            angles={
+                str(idx + 1): float(idx * (360.0 / DEFAULT_DONUT_BUTTON_COUNT))
+                for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+            },
+            fixed={str(idx + 1): False for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
         ),
         yellowCircleRatio=0.19,
         orbitalZones=dict(
@@ -146,6 +151,7 @@ DEFAULTS = dict(
             mode="free",
             coverageAngle=0.0,
             coverageOffset=0.0,
+            equidistant=False,
         ),
     ),
     donut=default_donut_config(),
