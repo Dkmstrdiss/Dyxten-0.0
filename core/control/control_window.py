@@ -63,6 +63,13 @@ class ControlWindow(QtWidgets.QMainWindow):
         self._view_ready = True
         self.state = {"donut": default_donut_config()}
         self.current_profile = ProfileManager.DEFAULT_PROFILE
+        
+        # Debouncing pour éviter les mises à jour trop fréquentes
+        self._push_params_timer = QtCore.QTimer(self)
+        self._push_params_timer.setSingleShot(True)
+        self._push_params_timer.setInterval(50)  # 50ms de debounce
+        self._push_params_timer.timeout.connect(self._do_push_params)
+        self._pending_push = False
 
         self._apply_theme()
 
@@ -573,13 +580,20 @@ class ControlWindow(QtWidgets.QMainWindow):
             self.set_dirty(
                 not self.profile_mgr.profile_equals(self.current_profile, self.state)
             )
-        self.push_params()
+        # Utiliser le debouncing pour éviter les appels excessifs
+        self._pending_push = True
+        self._push_params_timer.start()
 
     def on_topology_changed(self, topo: str):  # pragma: no cover - extension future
         if topo in FLAT_TOPOLOGIES:
             self.tab_camera.set_tilt_to_max()
 
-    def push_params(self):
+    def _do_push_params(self):
+        """Effectue la mise à jour réelle après le debounce."""
+        if not self._pending_push:
+            return
+        self._pending_push = False
+        
         view = getattr(self.view_win, "view", None)
         if view is None:
             return
@@ -617,6 +631,12 @@ class ControlWindow(QtWidgets.QMainWindow):
                     pass
         except Exception:
             pass
+    
+    def push_params(self):
+        """Appel immédiat sans debouncing (pour le chargement de profil)."""
+        self._pending_push = True
+        self._push_params_timer.stop()
+        self._do_push_params()
 
     def _on_view_ready(self, ok: bool):
         # Legacy method kept for compatibility with existing profiles. The view

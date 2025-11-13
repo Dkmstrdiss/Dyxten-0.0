@@ -159,6 +159,10 @@ class DonutHub(QtWidgets.QWidget):
         self.core_diam = 360
         # Double the diameter of the buttons as requested
         self.icon_size = 80
+        self._button_size_overrides: Optional[List[float]] = None
+        self._button_radius_ratios: Optional[List[float]] = None
+        self._last_radius_mid: float = 0.0
+        self._last_baseline_diameter: float = 120.0
 
         # Core widget that will host the Java window
         self.core = QtWidgets.QWidget(self)
@@ -291,13 +295,38 @@ class DonutHub(QtWidgets.QWidget):
             base_values = [float(value) for value in diameters]
         except Exception:
             base_values = []
-        fallback = base_values[-1] if base_values else float(self.icon_size)
-        values = []
+        fallback_value = base_values[-1] if base_values else float(self.icon_size)
+        values: List[float] = []
         for idx in range(count):
             if idx < len(base_values):
-                values.append(base_values[idx])
+                raw = base_values[idx]
             else:
-                values.append(fallback)
+                raw = fallback_value
+            try:
+                numeric = float(raw)
+            except Exception:
+                numeric = float(fallback_value)
+            clamped = max(0.0, numeric)
+            values.append(clamped)
+        # Button size now follows the system configuration; reset overrides so
+        # the orbital controls define radial offsets instead of diameters.
+        self._button_size_overrides = None
+        ratios: List[float] = []
+        positive_values = [value for value in values if value > 1e-3]
+        baseline = self._last_baseline_diameter if self._last_baseline_diameter > 1e-3 else 120.0
+        if positive_values:
+            average = sum(positive_values) / len(positive_values)
+            spread = max(positive_values) - min(positive_values)
+            if not self._button_radius_ratios or spread <= 1e-3:
+                baseline = average
+                self._last_baseline_diameter = baseline
+        if baseline <= 1e-3:
+            ratios = [1.0 for _ in values]
+        else:
+            for value in values:
+                ratio = float(value) / baseline
+                ratios.append(max(0.0, min(5.0, ratio)))
+        self._button_radius_ratios = ratios if ratios else None
         manual_angles: Optional[List[float]] = None
         if angles is not None:
             manual_angles = []
@@ -369,20 +398,6 @@ class DonutHub(QtWidgets.QWidget):
             new_size = max(20, min(200, new_size))
             if new_size != self.icon_size:
                 self.icon_size = new_size
-                # Update existing buttons
-                for button in self.buttons:
-                    button.setFixedSize(self.icon_size, self.icon_size)
-                    button.setIconSize(QtCore.QSize(self.icon_size - 8, self.icon_size - 8))
-                    button.setStyleSheet(
-                        f"""
-                        QToolButton {{
-                            background: transparent;
-                            border: none;
-                            border-radius: {self.icon_size // 2}px;
-                        }}
-                        QToolButton:hover {{ background: rgba(255,255,255,0.04); }}
-                        """
-                    )
             
             # Update radius ratio
             new_ratio = float(system_cfg.get("donutRadiusRatio", _DEFAULT_RADIUS_RATIO))
@@ -412,8 +427,7 @@ class DonutHub(QtWidgets.QWidget):
         for key, _color in self.segments:
             button = QtWidgets.QToolButton(self)
             button.setCursor(QtCore.Qt.PointingHandCursor)
-            button.setFixedSize(self.icon_size, self.icon_size)
-            button.setIconSize(QtCore.QSize(self.icon_size - 8, self.icon_size - 8))
+            self._apply_button_geometry(button, float(self.icon_size))
             icon_path = self.icon_map.get(key)
             if icon_path:
                 button.setIcon(QtGui.QIcon(str(icon_path)))
@@ -430,19 +444,25 @@ class DonutHub(QtWidgets.QWidget):
             except Exception:
                 disp_tip = str(key)
             button.setToolTip(disp_tip)
-            button.setStyleSheet(
-                f"""
-                QToolButton {{
-                                    background: transparent;
-                                    border: none;
-                                    border-radius: {self.icon_size // 2}px;
-                }}
-                                QToolButton:hover {{ background: rgba(255,255,255,0.04); }}
-                """
-            )
             button.clicked.connect(lambda _checked=False, k=key: self.on_action(k))
             self.buttons.append(button)
         self._position_all()
+
+    def _apply_button_geometry(self, button: QtWidgets.QToolButton, diameter: float) -> None:
+        size = max(1, int(round(max(0.0, min(400.0, float(diameter))))))
+        button.setFixedSize(size, size)
+        icon_edge = max(1, size - 8)
+        button.setIconSize(QtCore.QSize(icon_edge, icon_edge))
+        button.setStyleSheet(
+            f"""
+            QToolButton {{
+                background: transparent;
+                border: none;
+                border-radius: {size // 2}px;
+            }}
+            QToolButton:hover {{ background: rgba(255,255,255,0.04); }}
+            """
+        )
 
     def _compute_button_color(
         self, button: QtWidgets.QToolButton, fallback: QtGui.QColor
@@ -521,6 +541,7 @@ class DonutHub(QtWidgets.QWidget):
             radius_mid = float(min_dim) * float(self._radius_ratio)
         else:
             radius_mid = float(self.R_outer + self.R_inner) * 0.5
+        self._last_radius_mid = radius_mid
 
         # position buttons along the ring
         total = len(self.buttons)
@@ -534,6 +555,7 @@ class DonutHub(QtWidgets.QWidget):
         angle_steps: Optional[List[float]] = None
         angle_list: List[float] = []
         gap = 0.0
+        step = 0.0
         if manual_angles is not None:
             angle_list = [((angle + self._angle_offset_deg) % 360.0) for angle in manual_angles]
         else:
@@ -577,15 +599,26 @@ class DonutHub(QtWidgets.QWidget):
                 for _ in range(total):
                     angle_list.append((current + self._angle_offset_deg) % 360.0)
                     current += step
+        size_overrides = self._button_size_overrides if isinstance(self._button_size_overrides, list) else None
+        radius_ratios = self._button_radius_ratios if isinstance(self._button_radius_ratios, list) else None
         for idx, button in enumerate(self.buttons):
             angle = angle_list[idx] if idx < len(angle_list) else 0.0
+            effective_size = float(self.icon_size)
+            if size_overrides and idx < len(size_overrides):
+                effective_size = size_overrides[idx]
+            self._apply_button_geometry(button, effective_size)
             angle_rad = math.radians(angle)
-            x = int(cx + radius_mid * math.cos(angle_rad) - self.icon_size / 2)
-            y = int(cy + radius_mid * math.sin(angle_rad) - self.icon_size / 2)
+            orbit_radius = radius_mid
+            if radius_ratios and idx < len(radius_ratios):
+                ratio = radius_ratios[idx]
+                if ratio > 1e-6:
+                    orbit_radius = radius_mid * ratio
+                else:
+                    orbit_radius = 0.0
+            x = int(cx + orbit_radius * math.cos(angle_rad) - effective_size / 2.0)
+            y = int(cy + orbit_radius * math.sin(angle_rad) - effective_size / 2.0)
             button.move(x, y)
-            if manual_angles:
-                angle += manual_angles[idx % len(manual_angles)]
-            else:
+            if manual_angles is None:
                 angle += step
         self.update()
 

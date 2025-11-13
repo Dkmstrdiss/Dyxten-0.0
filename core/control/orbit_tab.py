@@ -19,6 +19,7 @@ class OrbitTab(QtWidgets.QWidget):
     def __init__(self) -> None:
         super().__init__()
         defaults = DEFAULTS.get("orbit", {})
+        self._destination_mode_value = str(defaults.get("orbiterDestinationMode", ""))
 
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -100,6 +101,12 @@ class OrbitTab(QtWidgets.QWidget):
             "line",
         )
 
+        self.combo_destination = QtWidgets.QComboBox()
+        self.combo_destination.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.combo_destination.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.combo_destination.setMinimumContentsLength(1)
+        self.combo_destination.currentIndexChanged.connect(self._on_destination_mode_changed)
+
         self.spin_transition_duration = QtWidgets.QSpinBox()
         self.spin_transition_duration.setRange(50, 10000)
         self.spin_transition_duration.setSingleStep(25)
@@ -170,6 +177,13 @@ class OrbitTab(QtWidgets.QWidget):
                 defaults.get("orbiterTrajectory", defaults.get("orbiterApproachTrajectory", "line")),
                 "line",
             ),
+        )
+        row(
+            transition_layout,
+            "Sélection destination",
+            self.combo_destination,
+            TOOLTIPS["orbit.orbiterDestinationMode"],
+            lambda value=defaults.get("orbiterDestinationMode", ""): self._reset_destination_mode(value),
         )
         row(
             transition_layout,
@@ -402,6 +416,7 @@ class OrbitTab(QtWidgets.QWidget):
             self.combo_transition_mode,
             self.combo_trajectory,
             self.combo_arc_direction,
+            self.combo_destination,
         ]:
             combo.currentIndexChanged.connect(self.emit_delta)
 
@@ -452,6 +467,12 @@ class OrbitTab(QtWidgets.QWidget):
             self.spin_transition_duration,
             section="orbit",
             key="orbiterTransitionDuration",
+            tab=self._TAB_LABEL,
+        )
+        register_linkable_widget(
+            self.combo_destination,
+            section="orbit",
+            key="orbiterDestinationMode",
             tab=self._TAB_LABEL,
         )
         register_linkable_widget(
@@ -580,6 +601,23 @@ class OrbitTab(QtWidgets.QWidget):
         with QtCore.QSignalBlocker(self._ring_offset_slider):
             self._ring_offset_slider.setValue(int(round(value)))
 
+    def _reset_destination_mode(self, value: object) -> None:
+        self._destination_mode_value = str(value or "")
+        if self.combo_destination.count() > 0:
+            self._set_combo_value(
+                self.combo_destination,
+                self._destination_mode_value,
+                "",
+            )
+        self.emit_delta()
+
+    def _on_destination_mode_changed(self, index: int) -> None:  # noqa: ANN001 - Qt slot signature
+        del index
+        data = self.combo_destination.currentData()
+        if data is None:
+            data = self.combo_destination.currentText()
+        self._destination_mode_value = str(data or "")
+
     def _set_bezier_bend(self, value: float) -> None:
         value = max(-2.0, min(2.0, float(value)))
         with QtCore.QSignalBlocker(self.spin_bezier_bend):
@@ -624,6 +662,7 @@ class OrbitTab(QtWidgets.QWidget):
     def collect(self) -> Dict[str, object]:
         transition_mode = str(self.combo_transition_mode.currentData())
         trajectory_mode = str(self.combo_trajectory.currentData())
+        destination_mode = str(self._destination_mode_value)
         transition_duration = int(self.spin_transition_duration.value())
         bezier_bend = float(self.spin_bezier_bend.value())
         arc_direction = str(self.combo_arc_direction.currentData())
@@ -638,6 +677,7 @@ class OrbitTab(QtWidgets.QWidget):
             orbiterTrajectory=trajectory_mode,
             orbiterApproachTrajectory=trajectory_mode,
             orbiterReturnTrajectory=trajectory_mode,
+            orbiterDestinationMode=destination_mode,
             orbiterTransitionDuration=transition_duration,
             orbiterApproachDuration=transition_duration,
             orbiterReturnDuration=transition_duration,
@@ -718,6 +758,14 @@ class OrbitTab(QtWidgets.QWidget):
             trajectory_mode,
             "line",
         )
+        destination_mode = _get_value("orbiterDestinationMode", "")
+        self._destination_mode_value = str(destination_mode)
+        if self.combo_destination.count() > 0:
+            self._set_combo_value(
+                self.combo_destination,
+                self._destination_mode_value,
+                "",
+            )
         self._set_combo_value(
             self.combo_arc_direction,
             _get_value("orbiterTrajectoryArcDirection", "auto"),

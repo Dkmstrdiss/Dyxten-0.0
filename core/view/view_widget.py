@@ -33,7 +33,7 @@ import time
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Callable, Deque, Dict, List, Mapping, Optional, Tuple
+from typing import Callable, Deque, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -666,6 +666,8 @@ class DyxtenEngine:
         self._mod_orient_y = 0.0
         self._mod_orient_z = 0.0
         self._modifiers_active = False
+        # Cache pour éviter les recalculs inutiles de géométrie
+        self._last_geometry_params: Optional[Tuple[str, ...]] = None
         self._update_modifier_flags()
         self.rebuild_geometry()
 
@@ -750,8 +752,40 @@ class DyxtenEngine:
     def set_params(self, payload: Mapping[str, object]) -> None:
         if not isinstance(payload, Mapping):
             return
-        self.merge_state(payload)
+        
+        # Vérifier si on doit recalculer la géométrie
+        needs_rebuild = False
         if any(key in payload for key in ("geometry", "distribution", "system")):
+            # Construire une clé de cache pour les paramètres de géométrie
+            geo = payload.get("geometry", self.state.get("geometry", {}))
+            dist = payload.get("distribution", self.state.get("distribution", {}))
+            system = payload.get("system", self.state.get("system", {}))
+            
+            if not isinstance(geo, Mapping):
+                geo = {}
+            if not isinstance(dist, Mapping):
+                dist = {}
+            if not isinstance(system, Mapping):
+                system = {}
+            
+            # Clés qui affectent la géométrie
+            geo_key = (
+                str(geo.get("topology", "")),
+                str(geo.get("N", "")),
+                str(geo.get("R", "")),
+                str(geo.get("lat", "")),
+                str(geo.get("lon", "")),
+                str(dist.get("dmin", "")),
+                str(system.get("Nmax", "")),
+            )
+            
+            if geo_key != self._last_geometry_params:
+                needs_rebuild = True
+                self._last_geometry_params = geo_key
+        
+        self.merge_state(payload)
+        
+        if needs_rebuild:
             self.rebuild_geometry()
 
     # ---------------------------------------------------------------- geometry
@@ -2415,26 +2449,31 @@ class _ViewWidgetBase:
             radius_red, radius_yellow, radius_blue = self.engine.marker_radii(width, height)
             if radius_red > 0 and bool(system_cfg.get("redCircleHalo", False)):
                 painter.save()
-                halo_radius = radius_red * 1.4
-                gradient = QtGui.QRadialGradient(center_x, center_y, halo_radius)
+                inner_radius = max(0.0, radius_red - 10.0)
+                outer_radius = max(radius_red + 20.0, inner_radius + 1.0)
+                gradient = QtGui.QRadialGradient(center_x, center_y, outer_radius)
                 base_color = self._primary_model_color()
-                inner = QtGui.QColor(base_color)
-                inner.setAlpha(180)
-                mid = QtGui.QColor(base_color.lighter(135))
-                mid.setAlpha(100)
-                outer = QtGui.QColor(base_color)
-                outer.setAlpha(0)
-                gradient.setColorAt(0.0, inner)
-                gradient.setColorAt(0.6, mid)
-                gradient.setColorAt(1.0, outer)
+                transparent = QtGui.QColor(base_color)
+                transparent.setAlpha(0)
+                rim_color = QtGui.QColor(base_color)
+                rim_color.setAlpha(170)
+                mid_color = QtGui.QColor(base_color.lighter(140))
+                mid_color.setAlpha(60)
+                start_ratio = inner_radius / outer_radius if outer_radius > 1e-6 else 0.0
+                fade_ratio = min(1.0, (radius_red + 10.0) / outer_radius)
+                gradient.setColorAt(0.0, transparent)
+                gradient.setColorAt(max(0.0, start_ratio - 0.05), transparent)
+                gradient.setColorAt(start_ratio, rim_color)
+                gradient.setColorAt(max(start_ratio, fade_ratio), mid_color)
+                gradient.setColorAt(1.0, transparent)
                 painter.setPen(QtCore.Qt.NoPen)
                 painter.setBrush(QtGui.QBrush(gradient))
                 painter.drawEllipse(
                     QtCore.QRectF(
-                        center_x - halo_radius,
-                        center_y - halo_radius,
-                        halo_radius * 2.0,
-                        halo_radius * 2.0,
+                        center_x - outer_radius,
+                        center_y - outer_radius,
+                        outer_radius * 2.0,
+                        outer_radius * 2.0,
                     )
                 )
                 painter.restore()
