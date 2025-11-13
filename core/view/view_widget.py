@@ -1175,6 +1175,16 @@ class DyxtenEngine:
         fov = float(cam.get("fov", 600) or 600)
         fov = clamp(float(fov), 1.0, 5000.0)
         system = self.state.get("system", {})
+        if not isinstance(system, Mapping):
+            system = {}
+        raw_opacity_cfg = _coerce_float(system.get("orbiterOpacity"), 0.9)
+        if raw_opacity_cfg > 1.0:
+            orbiter_opacity_cfg = clamp01(raw_opacity_cfg / 100.0)
+        else:
+            orbiter_opacity_cfg = clamp01(raw_opacity_cfg)
+        raw_size_cfg = _coerce_float(system.get("orbiterSizePx"), 2.5)
+        orbiter_size_px_cfg = clamp(raw_size_cfg, 0.5, 20.0)
+        orbiter_size_same_cfg = bool(system.get("orbiterSizeSameAsModel", True))
 
         cos_theta = math.cos(cam_theta)
         sin_theta = math.sin(cam_theta)
@@ -1524,11 +1534,17 @@ class DyxtenEngine:
                                     if len(trace_snapshot) > self._trail_max_points:
                                         trace_snapshot = trace_snapshot[-self._trail_max_points :]
                                     button_color = self._button_color_for_index(bx_idx)
+                                    source_radius = max(0.5, float(item.r))
+                                    if orbiter_size_same_cfg:
+                                        orbit_particle_radius = source_radius
+                                    else:
+                                        orbit_particle_radius = max(0.5, orbiter_size_px_cfg)
                                     self._orbiters.append({
                                         "imprint": (collision_x, collision_y),
                                         "imprint_time": float(now),
                                         "color": imprint_color,
-                                        "r": max(1.0, item.r * 0.85),
+                                        "r": float(orbit_particle_radius),
+                                        "source_r": float(source_radius),
                                         "phase": "out",
                                         "t": 0.0,
                                         "duration_out": float(approach_duration_cfg),
@@ -1765,7 +1781,21 @@ class DyxtenEngine:
                     if not isinstance(pos_orbit, tuple) or len(pos_orbit) != 2:
                         pos_orbit = (bx + math.cos(angle) * orbit_r, by + math.sin(angle) * orbit_r)
                     px, py = float(pos_orbit[0]), float(pos_orbit[1])
-                    r_draw = float(ob.get("r", 2.0))
+                    stored_r = ob.get("r", 2.0)
+                    try:
+                        r_draw = float(stored_r)
+                    except (TypeError, ValueError):
+                        r_draw = 2.0
+                    source_r = ob.get("source_r", r_draw)
+                    try:
+                        source_r_float = float(source_r)
+                    except (TypeError, ValueError):
+                        source_r_float = r_draw
+                    if orbiter_size_same_cfg:
+                        r_draw = max(0.5, source_r_float)
+                    else:
+                        r_draw = max(0.5, orbiter_size_px_cfg)
+                    ob["r"] = r_draw
                     base_color = ob.get("color", QtGui.QColor("#FFFFFF"))  # type: ignore[assignment]
                     if not isinstance(base_color, QtGui.QColor):
                         base_color = QtGui.QColor(str(base_color))
@@ -1868,7 +1898,9 @@ class DyxtenEngine:
                         required_turns = max(0.0, float(ob.get("required_turns", required_turns_cfg)))
                         target = required_turns * (2.0 * math.pi)
                         max_ms = float(ob.get("max_orbit_ms", max_orbit_ms_cfg))
-                        if target <= 0.0 or accum >= target or elapsed >= max_ms:
+                        has_required_turns = target <= 0.0 or accum >= target
+                        timed_out = elapsed >= max_ms
+                        if has_required_turns or (timed_out and target <= 0.0):
                             phase = "back"
                             t_phase = 0.0
                     else:
@@ -1929,6 +1961,7 @@ class DyxtenEngine:
                             alpha_o = 0.5 + 0.45 * t_phase
                         else:
                             alpha_o = 0.95 - 0.10 * t_phase
+                        alpha_o = clamp01(alpha_o * orbiter_opacity_cfg)
                         orbiters_draw.append((sx, sy, qcolor, r_draw, alpha_o))
                         survivors.append(ob)
                 except Exception:
@@ -2085,6 +2118,27 @@ class _ViewWidgetBase:
 
         return radius_red, radius_yellow, radius_blue
 
+    def _primary_model_color(self) -> QtGui.QColor:
+        gradient = getattr(self.engine, "gradient", None)
+        candidate: Optional[str] = None
+        if isinstance(gradient, Sequence) and gradient:
+            first_stop = gradient[0]
+            if isinstance(first_stop, Sequence) and first_stop:
+                color_entry = first_stop[0]
+            else:
+                color_entry = None
+            if isinstance(color_entry, str) and color_entry:
+                candidate = color_entry
+        appearance_cfg = self.engine.state.get("appearance")
+        if not candidate and isinstance(appearance_cfg, Mapping):
+            raw_color = appearance_cfg.get("color")
+            if isinstance(raw_color, str) and raw_color:
+                candidate = raw_color
+        color = QtGui.QColor(candidate) if candidate else QtGui.QColor("#FF5050")
+        if not color.isValid():
+            color = QtGui.QColor("#FF5050")
+        return color
+
     def update_donut_layout(
         self,
         centers: Sequence[Tuple[float, float]],
@@ -2177,13 +2231,18 @@ class _ViewWidgetBase:
         width = max(1, self.width())
         height = max(1, self.height())
         radius_red, radius_yellow, radius_blue = self._compute_marker_radii(width, height)
-        
+
         # Apply circular mask based on red circle
         center_x = width / 2.0
         center_y = height / 2.0
-        
+
+        system_cfg = self.engine.state.get("system", {})
+        if not isinstance(system_cfg, Mapping):
+            system_cfg = {}
+        show_imprints = bool(system_cfg.get("showImprints", True))
+
         # Draw imprints first (under everything)
-        if self.engine._imprints:
+        if show_imprints and self.engine._imprints:
             painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
             painter.setPen(QtCore.Qt.NoPen)
             current_time = self.engine.now_ms
@@ -2354,14 +2413,17 @@ class _ViewWidgetBase:
                 painter.drawEllipse(QtCore.QRectF(center_x - radius, center_y - radius, diameter, diameter))
 
             radius_red, radius_yellow, radius_blue = self.engine.marker_radii(width, height)
-            system_cfg = self.engine.state.get("system", {})
             if radius_red > 0 and bool(system_cfg.get("redCircleHalo", False)):
                 painter.save()
                 halo_radius = radius_red * 1.4
                 gradient = QtGui.QRadialGradient(center_x, center_y, halo_radius)
-                inner = QtGui.QColor(255, 80, 80, 180)
-                mid = QtGui.QColor(255, 80, 80, 90)
-                outer = QtGui.QColor(255, 80, 80, 0)
+                base_color = self._primary_model_color()
+                inner = QtGui.QColor(base_color)
+                inner.setAlpha(180)
+                mid = QtGui.QColor(base_color.lighter(135))
+                mid.setAlpha(100)
+                outer = QtGui.QColor(base_color)
+                outer.setAlpha(0)
                 gradient.setColorAt(0.0, inner)
                 gradient.setColorAt(0.6, mid)
                 gradient.setColorAt(1.0, outer)
