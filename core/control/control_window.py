@@ -674,6 +674,13 @@ class ControlWindow(QtWidgets.QMainWindow):
                 else:
                     for idx, flag in buttons_default.items():
                         center_section["buttons"].setdefault(idx, flag)
+                distances_default = center_defaults.get("distances", {})
+                distances_state = center_section.get("distances")
+                if not isinstance(distances_state, dict):
+                    center_section["distances"] = copy.deepcopy(distances_default)
+                else:
+                    for key, value in distances_default.items():
+                        distances_state.setdefault(key, value)
             if "yellowCircleRatio" not in indicator_state:
                 indicator_state["yellowCircleRatio"] = indicator_defaults.get("yellowCircleRatio", 0.19)
             orbital_defaults = indicator_defaults.get("orbitalZones", {})

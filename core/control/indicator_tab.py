@@ -45,20 +45,25 @@ class IndicatorTab(QtWidgets.QWidget):
         self._center_group = QtWidgets.QGroupBox("Lignes centre → bouton")
         self._center_group.setStyleSheet("QGroupBox { color: white; }")
         center_layout = QtWidgets.QFormLayout(self._center_group)
-        center_layout.setContentsMargins(8, 8, 8, 8)
+        center_layout.setContentsMargins(8, 4, 8, 4)
         outer.addWidget(self._center_group)
 
+        # Conserver la checkbox principale mais la masquer
         self.chk_all_lines = QtWidgets.QCheckBox("Activer pour tous les boutons")
         self.chk_all_lines.setToolTip(TOOLTIPS.get("indicator.centerLines.all", ""))
+        self.chk_all_lines.setVisible(False)  # Masquer
         center_layout.addRow(self.chk_all_lines)
 
+        # Conserver les widgets de contrôle individuels mais les masquer
         buttons_row = QtWidgets.QWidget()
+        buttons_row.setVisible(False)  # Masquer tout le widget
         buttons_layout = QtWidgets.QGridLayout(buttons_row)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setHorizontalSpacing(6)
         buttons_layout.setVerticalSpacing(4)
         self._line_checks: Dict[int, QtWidgets.QCheckBox] = {}
         self._angle_spins: Dict[int, QtWidgets.QDoubleSpinBox] = {}
+        self._distance_spins: Dict[int, QtWidgets.QDoubleSpinBox] = {}
         self._angle_fixed_checks: Dict[int, QtWidgets.QCheckBox] = {}
         for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
             checkbox = QtWidgets.QCheckBox(f"Bouton {idx + 1}")
@@ -71,9 +76,17 @@ class IndicatorTab(QtWidgets.QWidget):
             angle_spin.setWrapping(True)
             base_angle = (360.0 / DEFAULT_DONUT_BUTTON_COUNT) * idx
             angle_spin.setValue(base_angle % 360.0)
+            distance_spin = QtWidgets.QDoubleSpinBox()
+            distance_spin.setRange(0.0, 200.0)
+            distance_spin.setDecimals(0)
+            distance_spin.setSingleStep(1.0)
+            distance_spin.setSuffix(" %")
+            distance_spin.setToolTip(TOOLTIPS.get("indicator.centerLines.distance", ""))
+            distance_spin.setValue(100.0)
             fix_checkbox = QtWidgets.QCheckBox("Fixe")
             self._line_checks[idx] = checkbox
             self._angle_spins[idx] = angle_spin
+            self._distance_spins[idx] = distance_spin
             self._angle_fixed_checks[idx] = fix_checkbox
             widget = QtWidgets.QWidget()
             widget_layout = QtWidgets.QHBoxLayout(widget)
@@ -81,6 +94,7 @@ class IndicatorTab(QtWidgets.QWidget):
             widget_layout.setSpacing(4)
             widget_layout.addWidget(checkbox)
             widget_layout.addWidget(angle_spin)
+            widget_layout.addWidget(distance_spin)
             widget_layout.addWidget(fix_checkbox)
             widget_layout.addStretch(1)
             row = idx // 5
@@ -95,6 +109,13 @@ class IndicatorTab(QtWidgets.QWidget):
                 key=f"centerLines.angles[{idx}]",
                 tab=self._TAB_LABEL,
             )
+        for idx, spin in self._distance_spins.items():
+            register_linkable_widget(
+                spin,
+                section="indicator",
+                key=f"centerLines.distances[{idx}]",
+                tab=self._TAB_LABEL,
+            )
         for idx, checkbox in self._angle_fixed_checks.items():
             register_linkable_widget(
                 checkbox,
@@ -103,6 +124,101 @@ class IndicatorTab(QtWidgets.QWidget):
                 tab=self._TAB_LABEL,
             )
 
+        # Récupérer les valeurs par défaut
+        orbit_defaults = defaults.get("orbitalZones", {})
+        
+        # Créer un widget d'onglets pour la sélection des boutons
+        self._compact_tab_widget = QtWidgets.QTabWidget()
+        self._compact_tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
+        # Style pour un fond légèrement plus clair que la fenêtre
+        self._compact_tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                background-color: #404040;
+                border: 1px solid #606060;
+            }
+            QTabBar::tab {
+                background-color: #353535;
+                color: white;
+                padding: 6px 12px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #404040;
+                border-bottom: 2px solid #0078d4;
+            }
+            QTabBar::tab:hover {
+                background-color: #454545;
+            }
+        """)
+        center_layout.addRow(self._compact_tab_widget)
+        
+        # Créer les onglets et les contrôles pour chaque bouton
+        self._compact_tabs = {}
+        self._compact_line_checks = {}
+        self._compact_angle_spins = {}
+        self._compact_distance_spins = {}
+        self._compact_fixed_checks = {}
+        self._orbit_controls: List[_OrbitControl] = []
+        
+        # Récupérer les diamètres par défaut pour les contrôles orbitaux
+        diameters: Sequence[float] = orbit_defaults.get("diameters", []) if isinstance(orbit_defaults, dict) else []
+        
+        for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
+            # Créer l'onglet
+            tab_widget = QtWidgets.QWidget()
+            tab_layout = QtWidgets.QFormLayout(tab_widget)
+            tab_layout.setContentsMargins(8, 8, 8, 8)
+            
+            # Créer les contrôles pour cet onglet
+            line_check = QtWidgets.QCheckBox("Afficher la ligne")
+            angle_spin = QtWidgets.QDoubleSpinBox()
+            angle_spin.setRange(0.0, 360.0)
+            angle_spin.setDecimals(0)
+            angle_spin.setSingleStep(1.0)
+            angle_spin.setSuffix(" °")
+            distance_spin = QtWidgets.QDoubleSpinBox()
+            distance_spin.setRange(0.0, 200.0)
+            distance_spin.setDecimals(0)
+            distance_spin.setSingleStep(1.0)
+            distance_spin.setSuffix(" %")
+            fixed_check = QtWidgets.QCheckBox("Angle fixé")
+            
+            # Créer le contrôle orbital pour cet onglet
+            raw_value: float
+            if idx < len(diameters):
+                try:
+                    raw_value = float(diameters[idx])
+                except (TypeError, ValueError):
+                    raw_value = 120.0
+            else:
+                raw_value = 120.0
+            orbit_control = self._create_orbit_control(idx, raw_value)
+            self._orbit_controls.append(orbit_control)
+            
+            # Ajouter les contrôles au layout de l'onglet
+            tab_layout.addRow(line_check)
+            tab_layout.addRow("Angle", angle_spin)
+            tab_layout.addRow("Distance", distance_spin)
+            tab_layout.addRow(fixed_check)
+            tab_layout.addRow("Diamètre orbital", orbit_control.container)
+            
+            # Stocker les références
+            self._compact_tabs[idx] = tab_widget
+            self._compact_line_checks[idx] = line_check
+            self._compact_angle_spins[idx] = angle_spin
+            self._compact_distance_spins[idx] = distance_spin
+            self._compact_fixed_checks[idx] = fixed_check
+            
+            # Ajouter l'onglet au widget d'onglets
+            self._compact_tab_widget.addTab(tab_widget, f"B{idx + 1}")
+            
+            # Connecter les signaux
+            line_check.stateChanged.connect(lambda state, i=idx: self._on_compact_line_toggled_tab(i, state))
+            angle_spin.valueChanged.connect(lambda val, i=idx: self._on_compact_angle_changed_tab(i, val))
+            distance_spin.valueChanged.connect(lambda val, i=idx: self._on_compact_distance_changed_tab(i, val))
+            fixed_check.stateChanged.connect(lambda state, i=idx: self._on_compact_fixed_toggled_tab(i, state))
+
+        # Remettre le contrôle du cercle jaune visible
         yellow_defaults = defaults.get("yellowCircleRatio", 0.19)
         (
             self._yellow_container,
@@ -123,8 +239,6 @@ class IndicatorTab(QtWidgets.QWidget):
         orbital_layout = QtWidgets.QFormLayout(self._orbital_group)
         orbital_layout.setContentsMargins(8, 8, 8, 8)
         outer.addWidget(self._orbital_group)
-
-        orbit_defaults = defaults.get("orbitalZones", {})
 
         self.chk_orbital_enabled = QtWidgets.QCheckBox("Afficher les zones orbitales")
         self.chk_orbital_enabled.setChecked(True)
@@ -170,36 +284,13 @@ class IndicatorTab(QtWidgets.QWidget):
             tab=self._TAB_LABEL,
         )
 
-        self._orbit_controls: List[_OrbitControl] = []
-        diameters: Sequence[float] = orbit_defaults.get("diameters", []) if isinstance(orbit_defaults, dict) else []
-
-        grid_widget = QtWidgets.QWidget()
-        grid_layout = QtWidgets.QGridLayout(grid_widget)
-        grid_layout.setContentsMargins(0, 0, 0, 0)
-        grid_layout.setHorizontalSpacing(8)
-        grid_layout.setVerticalSpacing(6)
-
-        for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
-            raw_value: float
-            if idx < len(diameters):
-                try:
-                    raw_value = float(diameters[idx])
-                except (TypeError, ValueError):
-                    raw_value = 120.0
-            else:
-                raw_value = 120.0
-            control = self._create_orbit_control(idx, raw_value)
-            self._orbit_controls.append(control)
-            grid_layout.addWidget(QtWidgets.QLabel(f"Bouton {idx + 1}"), idx, 0)
-            grid_layout.addWidget(control.container, idx, 1)
-
-        orbital_layout.addRow(grid_widget)
-
         self.chk_all_lines.stateChanged.connect(self.emit_delta)
-        for checkbox in self._line_checks.values():
-            checkbox.stateChanged.connect(self.emit_delta)
+        for idx, checkbox in self._line_checks.items():
+            checkbox.stateChanged.connect(lambda state, i=idx: self._on_line_checkbox_changed(i, state))
         for idx, spin in self._angle_spins.items():
             spin.valueChanged.connect(lambda val, i=idx: self._on_button_angle_spin(i, float(val)))
+        for idx, spin in self._distance_spins.items():
+            spin.valueChanged.connect(lambda val, i=idx: self._on_button_distance_spin(i, float(val)))
         for idx, checkbox in self._angle_fixed_checks.items():
             checkbox.stateChanged.connect(
                 lambda state, i=idx: self._on_button_fixed_changed(i, state == QtCore.Qt.Checked)
@@ -233,11 +324,18 @@ class IndicatorTab(QtWidgets.QWidget):
             self._angle_fixed_checks[idx].isChecked() if idx in self._angle_fixed_checks else False
             for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
         ]
+        self._button_distances = [
+            (self._distance_spins[idx].value() / 100.0) if idx in self._distance_spins else 1.0
+            for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+        ]
         self._orbital_radius = 0.0
 
         self._system_tab: Optional[object] = None
         self._donut_hub: Optional[object] = None
         self.set_defaults(defaults)
+
+        # Synchroniser les onglets avec les données existantes
+        self._sync_all_tabs()
 
     # ------------------------------------------------------------------ API
     def set_system_tab(self, system_tab: object) -> None:
@@ -259,6 +357,12 @@ class IndicatorTab(QtWidgets.QWidget):
                 buttons={str(idx + 1): checkbox.isChecked() for idx, checkbox in self._line_checks.items()},
                 angles={
                     str(idx + 1): self._button_angles[idx] if idx < len(self._button_angles) else 0.0
+                    for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
+                },
+                distances={
+                    str(idx + 1): self._button_distances[idx]
+                    if idx < len(self._button_distances)
+                    else 1.0
                     for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
                 },
                 fixed={
@@ -300,6 +404,18 @@ class IndicatorTab(QtWidgets.QWidget):
             else:
                 for idx, spin in self._angle_spins.items():
                     self._set_button_angle(idx, spin.value())
+            distance_cfg = center_cfg.get("distances", {})
+            if isinstance(distance_cfg, dict):
+                for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
+                    raw = distance_cfg.get(str(idx + 1), distance_cfg.get(idx + 1))
+                    try:
+                        value = float(raw)
+                    except (TypeError, ValueError):
+                        value = 1.0
+                    self._set_button_distance(idx, value)
+            else:
+                for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
+                    self._set_button_distance(idx, 1.0)
             fixed_cfg = center_cfg.get("fixed", {})
             if isinstance(fixed_cfg, dict):
                 for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
@@ -358,6 +474,7 @@ class IndicatorTab(QtWidgets.QWidget):
         self._last_diameters = [control.spin.value() for control in self._orbit_controls]
         self._refresh_orbital_layout(emit=False)
         self.emit_delta()
+        self._sync_all_tabs()  # Synchroniser tous les onglets
 
     def update_orbital_layout(self, centers, radii=None) -> None:  # noqa: ANN001 - Qt signal payload
         del radii
@@ -408,6 +525,75 @@ class IndicatorTab(QtWidgets.QWidget):
         self._subprofile_panel.sync_from_data(self.collect())
 
     # ----------------------------------------------------------------- helpers
+    def _on_compact_line_toggled_tab(self, idx: int, state: int) -> None:
+        """Gérer le changement de state de la checkbox ligne pour un onglet spécifique."""
+        checkbox = self._line_checks.get(idx)
+        if checkbox is not None:
+            checkbox.setChecked(state == QtCore.Qt.Checked)
+
+    def _on_compact_angle_changed_tab(self, idx: int, value: float) -> None:
+        """Gérer le changement d'angle pour un onglet spécifique."""
+        spin = self._angle_spins.get(idx)
+        if spin is not None:
+            spin.setValue(float(value))
+
+    def _on_compact_distance_changed_tab(self, idx: int, value: float) -> None:
+        """Gérer le changement de distance pour un onglet spécifique."""
+        spin = self._distance_spins.get(idx)
+        if spin is not None:
+            spin.setValue(float(value))
+
+    def _on_compact_fixed_toggled_tab(self, idx: int, state: int) -> None:
+        """Gérer le changement de state de la checkbox angle fixé pour un onglet spécifique."""
+        checkbox = self._angle_fixed_checks.get(idx)
+        if checkbox is not None:
+            checkbox.setChecked(state == QtCore.Qt.Checked)
+
+    def _sync_all_tabs(self) -> None:
+        """Synchroniser tous les onglets avec les données des contrôles principaux."""
+        for idx in range(DEFAULT_DONUT_BUTTON_COUNT):
+            self._sync_tab_with_data(idx)
+
+    def _sync_tab_with_data(self, idx: int) -> None:
+        """Synchroniser un onglet spécifique avec les données."""
+        # Synchroniser checkbox ligne
+        main_checkbox = self._line_checks.get(idx)
+        tab_checkbox = self._compact_line_checks.get(idx)
+        if main_checkbox is not None and tab_checkbox is not None:
+            with QtCore.QSignalBlocker(tab_checkbox):
+                tab_checkbox.setChecked(main_checkbox.isChecked())
+        
+        # Synchroniser angle
+        main_angle = self._angle_spins.get(idx)
+        tab_angle = self._compact_angle_spins.get(idx)
+        if main_angle is not None and tab_angle is not None:
+            with QtCore.QSignalBlocker(tab_angle):
+                tab_angle.setValue(main_angle.value())
+        
+        # Synchroniser distance
+        main_distance = self._distance_spins.get(idx)
+        tab_distance = self._compact_distance_spins.get(idx)
+        if main_distance is not None and tab_distance is not None:
+            with QtCore.QSignalBlocker(tab_distance):
+                tab_distance.setValue(main_distance.value())
+        
+        # Synchroniser checkbox fixé
+        main_fixed = self._angle_fixed_checks.get(idx)
+        tab_fixed = self._compact_fixed_checks.get(idx)
+        if main_fixed is not None and tab_fixed is not None:
+            with QtCore.QSignalBlocker(tab_fixed):
+                tab_fixed.setChecked(main_fixed.isChecked())
+
+    def _on_line_checkbox_changed(self, idx: int, state: int) -> None:  # noqa: ANN001 - Qt slot signature
+        del state
+        self.emit_delta()
+        self._sync_tab_with_data(idx)
+
+    def _on_button_distance_spin(self, idx: int, value: float) -> None:
+        self._set_button_distance(idx, float(value) / 100.0, from_spin=True)
+        self.emit_delta()
+        self._sync_tab_with_data(idx)
+
     def _set_equidistant(self, enabled: bool) -> None:
         self._equidistant = bool(enabled)
         with QtCore.QSignalBlocker(self.chk_orbit_equidistant):
@@ -436,6 +622,7 @@ class IndicatorTab(QtWidgets.QWidget):
         if self._last_diameters:
             self._push_orbital_layout(self._last_diameters)
         self.emit_delta()
+        self._sync_tab_with_data(idx)
 
     def _on_button_fixed_changed(self, idx: int, checked: bool) -> None:
         self._set_button_fixed(idx, checked, from_ui=True)
@@ -445,6 +632,7 @@ class IndicatorTab(QtWidgets.QWidget):
             self.emit_delta()
         else:
             self._refresh_orbital_layout()
+        self._sync_tab_with_data(idx)
 
     def _on_coverage_angle(self, value: float) -> None:
         clamped = _clamp(float(value), 0.0, 360.0)
@@ -516,6 +704,8 @@ class IndicatorTab(QtWidgets.QWidget):
         if spin is not None and not from_spin:
             with QtCore.QSignalBlocker(spin):
                 spin.setValue(normalized)
+        if not from_spin:
+            self._sync_tab_with_data(idx)
 
     def _set_button_fixed(self, idx: int, value: bool, *, from_ui: bool = False) -> None:
         if idx < 0:
@@ -528,6 +718,22 @@ class IndicatorTab(QtWidgets.QWidget):
         if checkbox is not None and not from_ui:
             with QtCore.QSignalBlocker(checkbox):
                 checkbox.setChecked(flag)
+        if not from_ui:
+            self._sync_tab_with_data(idx)
+
+    def _set_button_distance(self, idx: int, value: float, *, from_spin: bool = False) -> None:
+        if idx < 0:
+            return
+        while len(self._button_distances) <= idx:
+            self._button_distances.append(1.0)
+        ratio = max(0.0, min(2.0, float(value)))
+        self._button_distances[idx] = ratio
+        spin = self._distance_spins.get(idx)
+        if spin is not None and not from_spin:
+            with QtCore.QSignalBlocker(spin):
+                spin.setValue(ratio * 100.0)
+        if not from_spin:
+            self._sync_tab_with_data(idx)
 
     def _infer_radius(self, diameters: Sequence[float]) -> float:
         if not diameters:

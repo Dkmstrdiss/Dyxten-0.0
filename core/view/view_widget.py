@@ -440,6 +440,7 @@ def _default_state() -> Dict[str, dict]:
             "centerLines": {
                 "all": False,
                 "buttons": {str(idx + 1): False for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
+                "distances": {str(idx + 1): 1.0 for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
             },
             "yellowCircleRatio": 0.19,
             "orbitalZones": {
@@ -2201,9 +2202,20 @@ class _ViewWidgetBase:
                 pen.setCosmetic(True)
                 painter.setPen(pen)
                 painter.setBrush(QtCore.Qt.NoBrush)
+                distance_cfg = center_cfg.get("distances", {})
                 for idx in selected_indices:
                     bx, by = donut_centers[idx]
-                    painter.drawLine(QtCore.QLineF(center_x, center_y, bx, by))
+                    ratio = 1.0
+                    if isinstance(distance_cfg, Mapping):
+                        raw_ratio = distance_cfg.get(str(idx + 1), distance_cfg.get(idx + 1))
+                        try:
+                            ratio = float(raw_ratio)
+                        except (TypeError, ValueError):
+                            ratio = 1.0
+                    ratio = max(0.0, min(2.0, ratio))
+                    ex = center_x + (bx - center_x) * ratio
+                    ey = center_y + (by - center_y) * ratio
+                    painter.drawLine(QtCore.QLineF(center_x, center_y, ex, ey))
 
             orbital_cfg = indicator_cfg.get("orbitalZones", {})
             if isinstance(orbital_cfg, Mapping) and orbital_cfg.get("enabled", True):

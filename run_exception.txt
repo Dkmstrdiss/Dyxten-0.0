@@ -1,7 +1,14 @@
 Traceback (most recent call last):
-  File "D:\Dyxten-0.0\core\donut_hub.py", line 425, in resizeEvent
-    self._position_all()
-  File "D:\Dyxten-0.0\core\donut_hub.py", line 404, in _position_all
-    if angles:
-       ^^^^^^
-NameError: name 'angles' is not defined
+  File "d:\Dyxten-0.0\core\main.py", line 416, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "d:\Dyxten-0.0\core\main.py", line 379, in main
+    control_win = ControlWindow(app, second, view_win)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\control\control_window.py", line 230, in __init__
+    self.tab_indicator = IndicatorTab()
+                         ^^^^^^^^^^^^^^
+  File "D:\Dyxten-0.0\core\control\indicator_tab.py", line 161, in __init__
+    diameters: Sequence[float] = orbit_defaults.get("diameters", []) if isinstance(orbit_defaults, dict) else []
+                                                                                   ^^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'orbit_defaults' where it is not associated with a value

@@ -142,6 +142,7 @@ DEFAULTS = dict(
                 str(idx + 1): float(idx * (360.0 / DEFAULT_DONUT_BUTTON_COUNT))
                 for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
             },
+            distances={str(idx + 1): 1.0 for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
             fixed={str(idx + 1): False for idx in range(DEFAULT_DONUT_BUTTON_COUNT)},
         ),
         yellowCircleRatio=0.19,
@@ -1332,6 +1333,7 @@ TOOLTIPS = {
     "orbit.orbiterMaxOrbitMs":"Durée maximale passée en orbite avant retour forcé (en millisecondes).",
     "indicator.centerLines.all":"Affiche des lignes reliant le centre du modèle à l’ensemble des boutons du donut.",
     "indicator.centerLines.buttons":"Affiche une ligne reliant le centre du modèle au bouton sélectionné.",
+    "indicator.centerLines.distance":"Ajuste la longueur relative entre le centre et le bouton (0 % = centre, 100 % = bouton).",
     "indicator.yellowCircleRatio":"Ajuste le diamètre du cercle de repère jaune (fraction de la dimension minimale de la fenêtre).",
     "indicator.orbitalZones.enabled":"Affiche les zones orbitales vertes autour des boutons du donut.",
     "indicator.orbitalZones.diameters":"Diamètre en pixels de chaque zone orbitale verte (les cercles restent tangents entre voisins).",
