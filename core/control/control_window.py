@@ -602,23 +602,8 @@ class ControlWindow(QtWidgets.QMainWindow):
         except Exception:
             return
         
-        # Plus besoin de mettre à jour DonutHub - le rendu est fait dans ViewWidget
-        # DonutHub ne gère maintenant que les clics
-        try:
-            donut = view.current_donut()
-        except Exception:
-            donut = default_donut_config()
-        try:
-            hub = getattr(self.view_win, "donut_hub", None)
-            if hub is not None:
-                try:
-                    # Mettre à jour seulement les métadonnées des boutons (labels, ids)
-                    # sans déclencher de repositionnement
-                    hub.update_donut_buttons(donut)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # DonutHub est désormais instancié uniquement lorsqu'une action est nécessaire
+        # depuis la ViewWindow. Plus besoin de synchroniser les boutons ici.
     
     def push_params(self):
         """Appel immédiat sans debouncing (pour le chargement de profil)."""
