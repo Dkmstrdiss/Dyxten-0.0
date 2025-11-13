@@ -3,7 +3,7 @@ import io
 import math
 import sys
 from pathlib import Path
-from typing import Mapping, NoReturn, Optional, cast
+from typing import NoReturn, cast
 
 
 def _handle_qt_import_error(exc: ImportError) -> NoReturn:
@@ -118,8 +118,6 @@ def _fail_fast_verify():
 
 
 class ViewWindow(QtWidgets.QMainWindow):
-    donutButtonTriggered = QtCore.pyqtSignal(int, dict)
-
     def __init__(self, screen: QtGui.QScreen):
         super().__init__(None)
         self._target_screen = screen
@@ -134,11 +132,40 @@ class ViewWindow(QtWidgets.QMainWindow):
         lay.addWidget(self.view)
         self.setCentralWidget(w)
 
-        # DonutHub is now created lazily only when we need to trigger an action
-        self.donut_hub: Optional[DonutHub] = None
-        self._donut_config = default_donut_config()
+        # Overlay: use DonutHub as the host for donut buttons. DonutHub will
+        # emit layouts that we forward to the view's renderer.
+        try:
+            self.donut_hub = DonutHub(parent=self.view)
+            self.donut_hub.setAttribute(Qt.WA_NoSystemBackground, True)
+            self.donut_hub.setAttribute(Qt.WA_TranslucentBackground, True)
+            self.donut_hub.setAutoFillBackground(False)
+            self.donut_hub.setGeometry(self.view.rect())
+            self.donut_hub.raise_()
+        except Exception:
+            self.donut_hub = None
+
         self._donut_angle_offset = 0.0
         self._scroll_step_radians = math.radians(12.0)
+
+        # Connect layout updates from DonutHub to the renderer
+        if self.donut_hub is not None:
+            try:
+                self.donut_hub.donutLayoutChanged.connect(
+                    lambda centers, radii: self.view.update_donut_layout(
+                        centers,
+                        width=int(self.view.width()),
+                        height=int(self.view.height()),
+                        radii=radii,
+                        colors=self.donut_hub.button_colors(),
+                    )
+                )
+                # initialize buttons from default config
+                try:
+                    self.donut_hub.update_donut_buttons(default_donut_config())
+                except Exception:
+                    pass
+            except Exception:
+                pass
 
         # Keep listening to view resize/wheel events
         self.view.installEventFilter(self)
@@ -216,12 +243,18 @@ class ViewWindow(QtWidgets.QMainWindow):
         self._sync_button_overlay()
 
     def update_donut_buttons(self, donut: dict) -> None:
-        # DonutHub is no longer responsible for layout; we keep a sanitized
-        # copy locally so button metadata is available for click actions.
-        try:
-            self._donut_config = sanitize_donut_state(donut)
-        except Exception:
-            self._donut_config = default_donut_config()
+        # Delegate to DonutHub when available; otherwise keep the state.
+        if getattr(self, "donut_hub", None) is not None:
+            try:
+                self.donut_hub.update_donut_buttons(donut)
+            except Exception:
+                pass
+        else:
+            # fallback: store sanitized config
+            try:
+                self._donut_config = sanitize_donut_state(donut)
+            except Exception:
+                self._donut_config = default_donut_config()
 
     def _marker_radii_for_view(self) -> tuple[float, float, float]:
         rect = self.view.rect()
@@ -241,11 +274,38 @@ class ViewWindow(QtWidgets.QMainWindow):
         return radius_red, radius_yellow, radius_blue
 
     def _layout_buttons(self) -> None:
-        # Layout is handled directly by DyxtenViewWidget now.
-        return
+        # Delegate layout to DonutHub (if present). Otherwise no-op.
+        if getattr(self, "donut_hub", None) is None:
+            return
+        try:
+            # ensure hub geometry matches the view and let it position buttons
+            self.donut_hub.setGeometry(self.view.rect())
+            # request a layout update from the DonutHub (public API)
+            try:
+                self.donut_hub.request_layout_update()
+            except Exception:
+                try:
+                    # fallback to private in case older hub doesn't expose the public method
+                    self.donut_hub._position_all()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _sync_button_overlay(self) -> None:
-        return
+        if getattr(self, "donut_hub", None) is None:
+            return
+        try:
+            self.donut_hub.setGeometry(self.view.rect())
+            try:
+                self.donut_hub.request_layout_update()
+            except Exception:
+                try:
+                    self.donut_hub._position_all()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def _handle_donut_wheel(self, event: QtGui.QWheelEvent) -> bool:
         if getattr(self, "donut_hub", None) is None:
@@ -275,101 +335,9 @@ class ViewWindow(QtWidgets.QMainWindow):
             if watched is self.view or watched is getattr(self, "donut_hub", None):
                 if self._handle_donut_wheel(wheel_event):
                     return True
-        if watched is self.view and event.type() == QtCore.QEvent.MouseButtonPress:
-            mouse_event = cast(QtGui.QMouseEvent, event)
-            if mouse_event.button() == QtCore.Qt.LeftButton:
-                if self._handle_donut_click(mouse_event):
-                    return True
         if watched is self.view and event.type() == QtCore.QEvent.Resize:
             self._sync_button_overlay()
         return super().eventFilter(watched, event)
-
-    def _ensure_donut_hub(self) -> Optional[DonutHub]:
-        if self.donut_hub is not None:
-            return self.donut_hub
-        try:
-            hub = DonutHub(parent=self)
-            hub.setAttribute(Qt.WA_DontShowOnScreen, True)
-            hub.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-            hub.hide()
-            self.donut_hub = hub
-        except Exception:
-            self.donut_hub = None
-        return self.donut_hub
-
-    def _handle_donut_click(self, event: QtGui.QMouseEvent) -> bool:
-        view = getattr(self, "view", None)
-        if view is None:
-            return False
-        width = view.width()
-        height = view.height()
-        if width <= 0 or height <= 0:
-            return False
-
-        try:
-            centers, _radii, _fallback = view.engine._compute_donut_orbits(width, height)
-        except Exception:
-            return False
-        if not centers:
-            return False
-
-        state = getattr(view.engine, "state", {})
-        system_cfg = state.get("system", {}) if isinstance(state, Mapping) else {}
-        button_size = 80.0
-        if isinstance(system_cfg, Mapping):
-            raw_size = system_cfg.get("donutButtonSize", 80)
-            try:
-                button_size = float(raw_size)
-            except (TypeError, ValueError):
-                button_size = 80.0
-        button_size = max(20.0, min(200.0, button_size))
-        button_radius = button_size / 2.0
-
-        pos = event.pos()
-        x = float(pos.x())
-        y = float(pos.y())
-        for idx, (cx, cy) in enumerate(centers):
-            dx = x - float(cx)
-            dy = y - float(cy)
-            if (dx * dx + dy * dy) <= (button_radius * button_radius):
-                self._trigger_donut_action(idx)
-                event.accept()
-                return True
-        return False
-
-    def _trigger_donut_action(self, index: int) -> None:
-        try:
-            sanitized = sanitize_donut_state(self.view.engine.state.get("donut"))
-        except Exception:
-            sanitized = default_donut_config()
-        self._donut_config = sanitized
-        buttons = sanitized.get("buttons", [])
-        if not isinstance(buttons, list) or not (0 <= index < len(buttons)):
-            return
-        descriptor = buttons[index]
-        if not isinstance(descriptor, dict):
-            return
-        button_id = descriptor.get("id", index + 1)
-        try:
-            button_id_int = int(button_id)
-        except (TypeError, ValueError):
-            button_id_int = index + 1
-        label = descriptor.get("label") or f"Bouton {index + 1}"
-        payload = {"index": index, "id": button_id_int, "label": str(label)}
-        self.donutButtonTriggered.emit(index, payload)
-
-        hub = self._ensure_donut_hub()
-        if hub is not None:
-            try:
-                hub.update_donut_buttons(sanitized)
-            except Exception:
-                pass
-            try:
-                hub.on_action(str(button_id_int))
-            except Exception:
-                pass
-        else:
-            print(f"[Dyxten] Donut button {button_id_int} déclenché ({payload['label']})")
 
 
 def main(headless: bool = False) -> int:
