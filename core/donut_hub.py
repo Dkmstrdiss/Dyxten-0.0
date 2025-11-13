@@ -161,6 +161,7 @@ class DonutHub(QtWidgets.QWidget):
         self.icon_size = 80
         self._button_size_overrides: Optional[List[float]] = None
         self._button_radius_ratios: Optional[List[float]] = None
+        self._button_distance_ratios: Optional[List[float]] = None
         self._last_radius_mid: float = 0.0
         self._last_baseline_diameter: float = 120.0
 
@@ -237,6 +238,13 @@ class DonutHub(QtWidgets.QWidget):
         self.buttons: List[QtWidgets.QToolButton] = []
         self._build_buttons()
 
+        # Debouncing pour éviter les mises à jour excessives de layout
+        self._layout_update_timer = QtCore.QTimer(self)
+        self._layout_update_timer.setSingleShot(True)
+        self._layout_update_timer.setInterval(30)  # 30ms de debounce
+        self._layout_update_timer.timeout.connect(self._do_position_all)
+        self._pending_layout_update = False
+
         # Java embedding
         self.jar_path = Path(jar_path) if jar_path else None
         self.proc: Optional[subprocess.Popen[str]] = None
@@ -284,8 +292,13 @@ class DonutHub(QtWidgets.QWidget):
         coverage_offset: float = 0.0,
         equidistant: bool = False,
         angles: Optional[Sequence[float]] = None,
+        distances: Optional[Sequence[float]] = None,
     ) -> None:
         """Store tangency information provided by the indicator tab."""
+
+        # ``distances`` originates from ``distance_cfg`` in the indicator tab
+        # and expresses how far each button should sit from the donut center
+        # relative to the system ``donutRadiusRatio``.
 
         count = len(self.buttons)
         if count == 0:
@@ -327,6 +340,25 @@ class DonutHub(QtWidgets.QWidget):
                 ratio = float(value) / baseline
                 ratios.append(max(0.0, min(5.0, ratio)))
         self._button_radius_ratios = ratios if ratios else None
+        distance_ratios: Optional[List[float]] = None
+        if distances is not None:
+            parsed: List[float] = []
+            source = list(distances)
+            for idx in range(count):
+                if idx < len(source):
+                    raw = source[idx]
+                elif source:
+                    raw = source[-1]
+                else:
+                    raw = 1.0
+                try:
+                    ratio = float(raw)
+                except Exception:
+                    ratio = 1.0
+                parsed.append(max(0.0, min(2.0, ratio)))
+            if parsed:
+                distance_ratios = parsed
+        self._button_distance_ratios = distance_ratios
         manual_angles: Optional[List[float]] = None
         if angles is not None:
             manual_angles = []
@@ -366,7 +398,7 @@ class DonutHub(QtWidgets.QWidget):
             self._coverage_offset_deg = float(coverage_offset) % 360.0
         except Exception:
             self._coverage_offset_deg = 0.0
-        self._position_all()
+        self.request_layout_update()
 
     def set_angle_offset(self, degrees: float) -> None:
         """Set rotation offset (degrees) for button layout and re-position."""
@@ -374,14 +406,18 @@ class DonutHub(QtWidgets.QWidget):
             self._angle_offset_deg = float(degrees) % 360.0
         except Exception:
             self._angle_offset_deg = 0.0
-        self._position_all()
+        self.request_layout_update()
 
     def request_layout_update(self) -> None:
-        """Public hook to request recomputing button positions and emit layout.
+        """Public hook to request recomputing button positions and emit layout with debouncing."""
+        self._pending_layout_update = True
+        self._layout_update_timer.start()
 
-        Prefer calling this over directly invoking :pymeth:`_position_all` so
-        external code does not reach into private methods.
-        """
+    def _do_position_all(self) -> None:
+        """Execute the actual layout update after debouncing."""
+        if not self._pending_layout_update:
+            return
+        self._pending_layout_update = False
         self._position_all()
 
     def update_geometry_from_system(self, system_cfg: dict) -> None:
@@ -601,6 +637,9 @@ class DonutHub(QtWidgets.QWidget):
                     current += step
         size_overrides = self._button_size_overrides if isinstance(self._button_size_overrides, list) else None
         radius_ratios = self._button_radius_ratios if isinstance(self._button_radius_ratios, list) else None
+        distance_ratios = (
+            self._button_distance_ratios if isinstance(self._button_distance_ratios, list) else None
+        )
         for idx, button in enumerate(self.buttons):
             angle = angle_list[idx] if idx < len(angle_list) else 0.0
             effective_size = float(self.icon_size)
@@ -609,10 +648,12 @@ class DonutHub(QtWidgets.QWidget):
             self._apply_button_geometry(button, effective_size)
             angle_rad = math.radians(angle)
             orbit_radius = radius_mid
+            if distance_ratios and idx < len(distance_ratios):
+                orbit_radius *= max(0.0, distance_ratios[idx])
             if radius_ratios and idx < len(radius_ratios):
                 ratio = radius_ratios[idx]
                 if ratio > 1e-6:
-                    orbit_radius = radius_mid * ratio
+                    orbit_radius *= ratio
                 else:
                     orbit_radius = 0.0
             x = int(cx + orbit_radius * math.cos(angle_rad) - effective_size / 2.0)
@@ -637,7 +678,7 @@ class DonutHub(QtWidgets.QWidget):
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        self._position_all()
+        self.request_layout_update()
 
     # ------------------------------------------------------------------
     # Painting

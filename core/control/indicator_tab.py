@@ -329,6 +329,7 @@ class IndicatorTab(QtWidgets.QWidget):
             for idx in range(DEFAULT_DONUT_BUTTON_COUNT)
         ]
         self._orbital_radius = 0.0
+        self._updating_from_tab = False
 
         self._system_tab: Optional[object] = None
         self._donut_hub: Optional[object] = None
@@ -527,27 +528,71 @@ class IndicatorTab(QtWidgets.QWidget):
     # ----------------------------------------------------------------- helpers
     def _on_compact_line_toggled_tab(self, idx: int, state: int) -> None:
         """Gérer le changement de state de la checkbox ligne pour un onglet spécifique."""
-        checkbox = self._line_checks.get(idx)
-        if checkbox is not None:
-            checkbox.setChecked(state == QtCore.Qt.Checked)
+        if self._updating_from_tab:
+            return
+        self._updating_from_tab = True
+        try:
+            checkbox = self._line_checks.get(idx)
+            if checkbox is not None:
+                with QtCore.QSignalBlocker(checkbox):
+                    checkbox.setChecked(state == QtCore.Qt.Checked)
+                self.emit_delta()
+        finally:
+            self._updating_from_tab = False
 
     def _on_compact_angle_changed_tab(self, idx: int, value: float) -> None:
         """Gérer le changement d'angle pour un onglet spécifique."""
-        spin = self._angle_spins.get(idx)
-        if spin is not None:
-            spin.setValue(float(value))
+        if self._updating_from_tab:
+            return
+        self._updating_from_tab = True
+        try:
+            spin = self._angle_spins.get(idx)
+            if spin is not None:
+                with QtCore.QSignalBlocker(spin):
+                    spin.setValue(float(value))
+                self._set_button_angle(idx, float(value), from_spin=True)
+                if self._last_diameters:
+                    self._push_orbital_layout(self._last_diameters)
+                self.emit_delta()
+        finally:
+            self._updating_from_tab = False
 
     def _on_compact_distance_changed_tab(self, idx: int, value: float) -> None:
         """Gérer le changement de distance pour un onglet spécifique."""
-        spin = self._distance_spins.get(idx)
-        if spin is not None:
-            spin.setValue(float(value))
+        if self._updating_from_tab:
+            return
+        self._updating_from_tab = True
+        try:
+            spin = self._distance_spins.get(idx)
+            if spin is not None:
+                with QtCore.QSignalBlocker(spin):
+                    spin.setValue(float(value))
+                self._set_button_distance(idx, float(value) / 100.0, from_spin=True)
+                if self._last_diameters:
+                    self._push_orbital_layout(self._last_diameters)
+                self.emit_delta()
+        finally:
+            self._updating_from_tab = False
 
     def _on_compact_fixed_toggled_tab(self, idx: int, state: int) -> None:
         """Gérer le changement de state de la checkbox angle fixé pour un onglet spécifique."""
-        checkbox = self._angle_fixed_checks.get(idx)
-        if checkbox is not None:
-            checkbox.setChecked(state == QtCore.Qt.Checked)
+        if self._updating_from_tab:
+            return
+        self._updating_from_tab = True
+        try:
+            checkbox = self._angle_fixed_checks.get(idx)
+            if checkbox is not None:
+                with QtCore.QSignalBlocker(checkbox):
+                    checkbox.setChecked(state == QtCore.Qt.Checked)
+                self._set_button_fixed(idx, state == QtCore.Qt.Checked, from_ui=True)
+                if state == QtCore.Qt.Checked:
+                    if self._last_diameters:
+                        self._push_orbital_layout(self._last_diameters)
+                    self.emit_delta()
+                else:
+                    self._refresh_orbital_layout()
+        finally:
+            self._updating_from_tab = False
 
     def _sync_all_tabs(self) -> None:
         """Synchroniser tous les onglets avec les données des contrôles principaux."""
@@ -556,6 +601,8 @@ class IndicatorTab(QtWidgets.QWidget):
 
     def _sync_tab_with_data(self, idx: int) -> None:
         """Synchroniser un onglet spécifique avec les données."""
+        if self._updating_from_tab:
+            return
         # Synchroniser checkbox ligne
         main_checkbox = self._line_checks.get(idx)
         tab_checkbox = self._compact_line_checks.get(idx)
@@ -586,13 +633,17 @@ class IndicatorTab(QtWidgets.QWidget):
 
     def _on_line_checkbox_changed(self, idx: int, state: int) -> None:  # noqa: ANN001 - Qt slot signature
         del state
-        self.emit_delta()
-        self._sync_tab_with_data(idx)
+        if not self._updating_from_tab:
+            self.emit_delta()
+            self._sync_tab_with_data(idx)
 
     def _on_button_distance_spin(self, idx: int, value: float) -> None:
         self._set_button_distance(idx, float(value) / 100.0, from_spin=True)
-        self.emit_delta()
-        self._sync_tab_with_data(idx)
+        if not self._updating_from_tab:
+            if self._last_diameters:
+                self._push_orbital_layout(self._last_diameters)
+            self.emit_delta()
+            self._sync_tab_with_data(idx)
 
     def _set_equidistant(self, enabled: bool) -> None:
         self._equidistant = bool(enabled)
@@ -619,20 +670,22 @@ class IndicatorTab(QtWidgets.QWidget):
 
     def _on_button_angle_spin(self, idx: int, value: float) -> None:
         self._set_button_angle(idx, value, from_spin=True)
-        if self._last_diameters:
-            self._push_orbital_layout(self._last_diameters)
-        self.emit_delta()
-        self._sync_tab_with_data(idx)
-
-    def _on_button_fixed_changed(self, idx: int, checked: bool) -> None:
-        self._set_button_fixed(idx, checked, from_ui=True)
-        if checked:
+        if not self._updating_from_tab:
             if self._last_diameters:
                 self._push_orbital_layout(self._last_diameters)
             self.emit_delta()
-        else:
-            self._refresh_orbital_layout()
-        self._sync_tab_with_data(idx)
+            self._sync_tab_with_data(idx)
+
+    def _on_button_fixed_changed(self, idx: int, checked: bool) -> None:
+        self._set_button_fixed(idx, checked, from_ui=True)
+        if not self._updating_from_tab:
+            if checked:
+                if self._last_diameters:
+                    self._push_orbital_layout(self._last_diameters)
+                self.emit_delta()
+            else:
+                self._refresh_orbital_layout()
+            self._sync_tab_with_data(idx)
 
     def _on_coverage_angle(self, value: float) -> None:
         clamped = _clamp(float(value), 0.0, 360.0)
@@ -809,26 +862,15 @@ class IndicatorTab(QtWidgets.QWidget):
                 self._set_button_angle(idx, float(auto_angles[idx]))
 
     def _push_orbital_layout(self, diameters: Sequence[float]) -> None:
-        hub = getattr(self, "_donut_hub", None)
-        if hub is None or not hasattr(hub, "configure_orbital_layout"):
-            return
-        try:
-            count = len(diameters)
-            angles_payload = []
-            for idx in range(count):
-                if idx < len(self._button_angles):
-                    angles_payload.append(float(self._button_angles[idx]) % 360.0)
-                else:
-                    angles_payload.append(0.0)
-            hub.configure_orbital_layout(
-                diameters,
-                coverage_angle=self._coverage_angle_deg,
-                coverage_offset=self._coverage_offset_deg,
-                equidistant=self._equidistant,
-                angles=angles_payload,
-            )
-        except Exception:
-            pass
+        """Store orbital configuration for emission via emit_delta.
+        
+        Note: With buttons now rendered directly in ViewWidget, we don't need
+        to update DonutHub layout anymore. This method just keeps track of the
+        configuration for the state collection.
+        """
+        # Pas besoin d'appeler DonutHub - le rendu est fait dans ViewWidget
+        # On conserve juste la méthode pour la compatibilité
+        pass
 
     def _create_degree_controls(self, value: float):
         slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)

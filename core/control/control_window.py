@@ -601,7 +601,9 @@ class ControlWindow(QtWidgets.QMainWindow):
             view.set_params(self.state)
         except Exception:
             return
-        # Prefer controlling the DonutHub directly when available.
+        
+        # Plus besoin de mettre à jour DonutHub - le rendu est fait dans ViewWidget
+        # DonutHub ne gère maintenant que les clics
         try:
             donut = view.current_donut()
         except Exception:
@@ -610,23 +612,9 @@ class ControlWindow(QtWidgets.QMainWindow):
             hub = getattr(self.view_win, "donut_hub", None)
             if hub is not None:
                 try:
+                    # Mettre à jour seulement les métadonnées des boutons (labels, ids)
+                    # sans déclencher de repositionnement
                     hub.update_donut_buttons(donut)
-                    # Update DonutHub geometry from system settings
-                    try:
-                        system_cfg = self.state.get("system", {})
-                        hub.update_geometry_from_system(system_cfg)
-                    except Exception:
-                        pass
-                    hub.request_layout_update()
-                except Exception:
-                    # fallback to view_win helper
-                    try:
-                        self.view_win.update_donut_buttons(donut)
-                    except Exception:
-                        pass
-            else:
-                try:
-                    self.view_win.update_donut_buttons(donut)
                 except Exception:
                     pass
         except Exception:

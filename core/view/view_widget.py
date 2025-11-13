@@ -2182,8 +2182,11 @@ class _ViewWidgetBase:
         radii: Optional[Sequence[float]] = None,
         colors: Optional[Sequence[object]] = None,
     ) -> None:
-        """Forward the donut button layout from the host window to the engine."""
-
+        """Forward the donut button layout from the host window to the engine.
+        
+        Note: With buttons now rendered directly in ViewWidget, this only
+        updates the engine's internal state. No DonutHub layout update needed.
+        """
         if width is None:
             width = int(self.width())
         if height is None:
@@ -2433,6 +2436,71 @@ class _ViewWidgetBase:
                         ex = hub_x + math.cos(rad) * line_length
                         ey = hub_y + math.sin(rad) * line_length
                         painter.drawLine(QtCore.QLineF(hub_x, hub_y, ex, ey))
+
+        # Dessiner les boutons donut directement dans le view widget
+        donut_cfg = self.engine.state.get("donut", {})
+        if isinstance(donut_cfg, Mapping) and donut_centers:
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+            
+            # Récupérer la configuration des boutons
+            buttons_cfg = donut_cfg.get("buttons", [])
+            if not isinstance(buttons_cfg, Sequence):
+                buttons_cfg = []
+            
+            # Taille des boutons depuis system config
+            button_size = float(system_cfg.get("donutButtonSize", 80))
+            button_size = max(20.0, min(200.0, button_size))
+            button_radius = button_size / 2.0
+            
+            # Dessiner chaque bouton
+            for idx, (bx, by) in enumerate(donut_centers):
+                # Couleur du bouton
+                if idx < len(self.engine._donut_button_colors):
+                    btn_color = self.engine._donut_button_colors[idx]
+                    if not isinstance(btn_color, QtGui.QColor) or not btn_color.isValid():
+                        # Générer une couleur par défaut basée sur l'index
+                        hue = int((360.0 * idx) / max(1, len(donut_centers)))
+                        btn_color = QtGui.QColor()
+                        btn_color.setHsl(hue, 180, 140)
+                else:
+                    # Générer une couleur par défaut
+                    hue = int((360.0 * idx) / max(1, len(donut_centers)))
+                    btn_color = QtGui.QColor()
+                    btn_color.setHsl(hue, 180, 140)
+                
+                # Dessiner le cercle du bouton
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 100), 2.0))
+                painter.setBrush(btn_color)
+                painter.drawEllipse(
+                    QtCore.QRectF(
+                        bx - button_radius,
+                        by - button_radius,
+                        button_size,
+                        button_size
+                    )
+                )
+                
+                # Dessiner le label du bouton (optionnel)
+                if idx < len(buttons_cfg) and isinstance(buttons_cfg[idx], Mapping):
+                    label = buttons_cfg[idx].get("label", "")
+                    if label:
+                        painter.setPen(QtGui.QColor(255, 255, 255))
+                        font = painter.font()
+                        font.setPointSize(10)
+                        font.setBold(True)
+                        painter.setFont(font)
+                        # Centrer le texte
+                        text_rect = QtCore.QRectF(
+                            bx - button_radius,
+                            by - button_radius,
+                            button_size,
+                            button_size
+                        )
+                        painter.drawText(
+                            text_rect,
+                            QtCore.Qt.AlignCenter,
+                            label[:3]  # Limite à 3 caractères
+                        )
 
         # Draw permanent concentric marker circles centred on the viewport
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
