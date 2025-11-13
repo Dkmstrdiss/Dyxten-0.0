@@ -432,6 +432,8 @@ def _default_state() -> Dict[str, dict]:
             "dprClamp": 2.0,
             "depthSort": True,
             "transparent": True,
+            "orbiterColorFromButton": False,
+            "redCircleHalo": False,
             "markerCircles": {"red": 0.16, "yellow": 0.19, "blue": 0.22},
             "donutButtonSize": 100,
             "donutRadiusRatio": 0.35,
@@ -637,6 +639,7 @@ class DyxtenEngine:
         self._last_step_note = ""
         self._marker_radii: Tuple[float, float, float] = (0.0, 0.0, 0.0)
         self._donut_layout: List[Tuple[float, float, float]] = []
+        self._donut_button_colors: List[QtGui.QColor] = []
         # Empreintes persistantes déposées par les particules lorsqu'elles
         # franchissent le bord du cercle rouge. Chaque entrée :
         # (x, y, QColor, rayon, timestamp_ms, identifiant)
@@ -889,16 +892,20 @@ class DyxtenEngine:
         height: int,
         centers: Sequence[Tuple[float, float]],
         radii: Optional[Sequence[float]] = None,
+        *,
+        colors: Optional[Sequence[object]] = None,
     ) -> None:
         """Store the button centres provided by the overlay layer."""
 
         if width <= 0 or height <= 0:
             self._donut_layout = []
+            self._donut_button_colors = []
             return
 
         center_list = list(centers)
         if not center_list:
             self._donut_layout = []
+            self._donut_button_colors = []
             return
 
         radius_list: List[Optional[float]] = []
@@ -923,6 +930,43 @@ class DyxtenEngine:
             normalized.append((clamped_x / w, clamped_y / h, radius_px))
 
         self._donut_layout = normalized
+
+        color_entries = list(colors) if colors is not None else []
+
+        def _coerce_color(value: object) -> Optional[QtGui.QColor]:
+            if isinstance(value, QtGui.QColor):
+                return QtGui.QColor(value)
+            if isinstance(value, Sequence) and len(value) >= 3:
+                try:
+                    r = int(value[0])
+                    g = int(value[1])
+                    b = int(value[2])
+                    a = int(value[3]) if len(value) >= 4 else 255
+                    return QtGui.QColor(r, g, b, a)
+                except Exception:
+                    return None
+            try:
+                color = QtGui.QColor(value)  # type: ignore[arg-type]
+            except Exception:
+                return None
+            return color if color.isValid() else None
+
+        sanitized_colors: List[QtGui.QColor] = []
+        for idx in range(len(normalized)):
+            qc: Optional[QtGui.QColor] = None
+            if idx < len(color_entries):
+                qc = _coerce_color(color_entries[idx])
+            if qc is None:
+                qc = QtGui.QColor()
+            sanitized_colors.append(qc)
+        self._donut_button_colors = sanitized_colors
+
+    def _button_color_for_index(self, index: int) -> Optional[QtGui.QColor]:
+        if 0 <= index < len(self._donut_button_colors):
+            color = self._donut_button_colors[index]
+            if isinstance(color, QtGui.QColor) and color.isValid():
+                return QtGui.QColor(color)
+        return None
 
     def _compute_donut_orbits(
         self, width: int, height: int
@@ -1479,6 +1523,7 @@ class DyxtenEngine:
                                         trace_snapshot.append((collision_x, collision_y))
                                     if len(trace_snapshot) > self._trail_max_points:
                                         trace_snapshot = trace_snapshot[-self._trail_max_points :]
+                                    button_color = self._button_color_for_index(bx_idx)
                                     self._orbiters.append({
                                         "imprint": (collision_x, collision_y),
                                         "imprint_time": float(now),
@@ -1514,6 +1559,8 @@ class DyxtenEngine:
                                         "imprint_id": imprint_id,
                                         "imprint_cleared": False,
                                         "imprint_radius": float(imprint_radius),
+                                        "button_index": int(bx_idx),
+                                        "button_color": button_color,
                                     })
                             except Exception:
                                 pass
@@ -1719,9 +1766,32 @@ class DyxtenEngine:
                         pos_orbit = (bx + math.cos(angle) * orbit_r, by + math.sin(angle) * orbit_r)
                     px, py = float(pos_orbit[0]), float(pos_orbit[1])
                     r_draw = float(ob.get("r", 2.0))
-                    qcolor = ob.get("color", QtGui.QColor("#FFFFFF"))  # type: ignore[assignment]
-                    if not isinstance(qcolor, QtGui.QColor):
-                        qcolor = QtGui.QColor(str(qcolor))
+                    base_color = ob.get("color", QtGui.QColor("#FFFFFF"))  # type: ignore[assignment]
+                    if not isinstance(base_color, QtGui.QColor):
+                        base_color = QtGui.QColor(str(base_color))
+                    if not base_color.isValid():
+                        base_color = QtGui.QColor("#FFFFFF")
+
+                    qcolor = base_color
+                    if bool(system.get("orbiterColorFromButton", False)):
+                        button_index_val = ob.get("button_index")
+                        idx_int: Optional[int]
+                        if isinstance(button_index_val, int):
+                            idx_int = button_index_val
+                        else:
+                            try:
+                                idx_int = int(button_index_val)
+                            except Exception:
+                                idx_int = None
+                        override_color: Optional[QtGui.QColor] = None
+                        if idx_int is not None:
+                            override_color = self._button_color_for_index(idx_int)
+                        if override_color is None:
+                            stored_color = ob.get("button_color")
+                            if isinstance(stored_color, QtGui.QColor) and stored_color.isValid():
+                                override_color = QtGui.QColor(stored_color)
+                        if override_color is not None and override_color.isValid():
+                            qcolor = override_color
 
                     spiral_turns = float(ob.get("spiral_turns", spiral_turns_cfg))
                     spiral_tightness = float(ob.get("spiral_tightness", spiral_tightness_cfg))
@@ -2022,6 +2092,7 @@ class _ViewWidgetBase:
         width: Optional[int] = None,
         height: Optional[int] = None,
         radii: Optional[Sequence[float]] = None,
+        colors: Optional[Sequence[object]] = None,
     ) -> None:
         """Forward the donut button layout from the host window to the engine."""
 
@@ -2030,7 +2101,7 @@ class _ViewWidgetBase:
         if height is None:
             height = int(self.height())
         try:
-            self.engine.update_donut_layout(int(width), int(height), centers, radii=radii)
+            self.engine.update_donut_layout(int(width), int(height), centers, radii=radii, colors=colors)
         except Exception:
             pass
 
@@ -2283,6 +2354,28 @@ class _ViewWidgetBase:
                 painter.drawEllipse(QtCore.QRectF(center_x - radius, center_y - radius, diameter, diameter))
 
             radius_red, radius_yellow, radius_blue = self.engine.marker_radii(width, height)
+            system_cfg = self.engine.state.get("system", {})
+            if radius_red > 0 and bool(system_cfg.get("redCircleHalo", False)):
+                painter.save()
+                halo_radius = radius_red * 1.4
+                gradient = QtGui.QRadialGradient(center_x, center_y, halo_radius)
+                inner = QtGui.QColor(255, 80, 80, 180)
+                mid = QtGui.QColor(255, 80, 80, 90)
+                outer = QtGui.QColor(255, 80, 80, 0)
+                gradient.setColorAt(0.0, inner)
+                gradient.setColorAt(0.6, mid)
+                gradient.setColorAt(1.0, outer)
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.setBrush(QtGui.QBrush(gradient))
+                painter.drawEllipse(
+                    QtCore.QRectF(
+                        center_x - halo_radius,
+                        center_y - halo_radius,
+                        halo_radius * 2.0,
+                        halo_radius * 2.0,
+                    )
+                )
+                painter.restore()
             if radius_red > 0:
                 _draw_marker_circle(QtGui.QColor("red"), radius_red)
             if radius_yellow > 0:

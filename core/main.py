@@ -151,7 +151,13 @@ class ViewWindow(QtWidgets.QMainWindow):
         if self.donut_hub is not None:
             try:
                 self.donut_hub.donutLayoutChanged.connect(
-                    lambda centers, radii: self.view.update_donut_layout(centers, width=int(self.view.width()), height=int(self.view.height()), radii=radii)
+                    lambda centers, radii: self.view.update_donut_layout(
+                        centers,
+                        width=int(self.view.width()),
+                        height=int(self.view.height()),
+                        radii=radii,
+                        colors=self.donut_hub.button_colors(),
+                    )
                 )
                 # initialize buttons from default config
                 try:

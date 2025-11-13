@@ -25,11 +25,15 @@ class SystemTab(QtWidgets.QWidget):
         self.sp_dpr  = QtWidgets.QDoubleSpinBox(); self.sp_dpr.setRange(1.0,2.0); self.sp_dpr.setSingleStep(0.1); self.sp_dpr.setValue(d["dprClamp"])
         self.chk_depthSort = QtWidgets.QCheckBox(); self.chk_depthSort.setChecked(d["depthSort"])
         self.chk_transparent = QtWidgets.QCheckBox(); self.chk_transparent.setChecked(d["transparent"])
+        self.chk_orbiter_color = QtWidgets.QCheckBox(); self.chk_orbiter_color.setChecked(d.get("orbiterColorFromButton", False))
+        self.chk_red_halo = QtWidgets.QCheckBox(); self.chk_red_halo.setChecked(d.get("redCircleHalo", False))
         
         row(fl, "Particules max", self.sp_Nmax, TOOLTIPS["system.Nmax"], lambda: self.sp_Nmax.setValue(d["Nmax"]))
         row(fl, "Limite haute résolution", self.sp_dpr, TOOLTIPS["system.dprClamp"], lambda: self.sp_dpr.setValue(d["dprClamp"]))
         row(fl, "Tri par profondeur", self.chk_depthSort, TOOLTIPS["system.depthSort"], lambda: self.chk_depthSort.setChecked(d["depthSort"]))
         row(fl, "Fenêtre transparente", self.chk_transparent, TOOLTIPS["system.transparent"], lambda: self.chk_transparent.setChecked(d["transparent"]))
+        row(fl, "Couleur orbiters = bouton", self.chk_orbiter_color, TOOLTIPS["system.orbiterColorFromButton"], lambda: self.chk_orbiter_color.setChecked(d.get("orbiterColorFromButton", False)))
+        row(fl, "Halo cercle rouge", self.chk_red_halo, TOOLTIPS["system.redCircleHalo"], lambda: self.chk_red_halo.setChecked(d.get("redCircleHalo", False)))
 
         # Encadré pour les contrôles du donut hub
         groupbox = QtWidgets.QGroupBox("Paramètres du donut hub")
@@ -54,6 +58,8 @@ class SystemTab(QtWidgets.QWidget):
             self._radius_ratio_spin,
             self.chk_depthSort,
             self.chk_transparent,
+            self.chk_orbiter_color,
+            self.chk_red_halo,
         ]:
             if isinstance(w, QtWidgets.QCheckBox): w.stateChanged.connect(self.emit_delta)
             elif isinstance(w, QtWidgets.QComboBox): w.currentTextChanged.connect(self.emit_delta)
@@ -68,6 +74,8 @@ class SystemTab(QtWidgets.QWidget):
         register_linkable_widget(self.sp_dpr, section="system", key="dprClamp", tab="Système")
         register_linkable_widget(self._button_size_spin, section="system", key="donutButtonSize", tab="Système")
         register_linkable_widget(self._radius_ratio_spin, section="system", key="donutRadiusRatio", tab="Système")
+        register_linkable_widget(self.chk_orbiter_color, section="system", key="orbiterColorFromButton", tab="Système")
+        register_linkable_widget(self.chk_red_halo, section="system", key="redCircleHalo", tab="Système")
         self._sync_subprofile_state()
     def collect(self):
         return dict(
@@ -81,6 +89,8 @@ class SystemTab(QtWidgets.QWidget):
             },
             depthSort=self.chk_depthSort.isChecked(),
             transparent=self.chk_transparent.isChecked(),
+            orbiterColorFromButton=self.chk_orbiter_color.isChecked(),
+            redCircleHalo=self.chk_red_halo.isChecked(),
         )
     def set_defaults(self, cfg):
         cfg = cfg or {}
@@ -121,6 +131,10 @@ class SystemTab(QtWidgets.QWidget):
             self.chk_depthSort.setChecked(bool(cfg.get("depthSort", d["depthSort"])))
         with QtCore.QSignalBlocker(self.chk_transparent):
             self.chk_transparent.setChecked(bool(cfg.get("transparent", d["transparent"])))
+        with QtCore.QSignalBlocker(self.chk_orbiter_color):
+            self.chk_orbiter_color.setChecked(bool(cfg.get("orbiterColorFromButton", d.get("orbiterColorFromButton", False))))
+        with QtCore.QSignalBlocker(self.chk_red_halo):
+            self.chk_red_halo.setChecked(bool(cfg.get("redCircleHalo", d.get("redCircleHalo", False))))
         self._sync_subprofile_state()
     def set_enabled(self, context: dict): pass
     def emit_delta(self, *a):

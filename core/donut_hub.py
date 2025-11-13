@@ -444,6 +444,62 @@ class DonutHub(QtWidgets.QWidget):
             self.buttons.append(button)
         self._position_all()
 
+    def _compute_button_color(
+        self, button: QtWidgets.QToolButton, fallback: QtGui.QColor
+    ) -> QtGui.QColor:
+        try:
+            icon = button.icon()
+        except Exception:
+            return QtGui.QColor(fallback)
+        if icon.isNull():
+            return QtGui.QColor(fallback)
+        try:
+            size = button.iconSize()
+            width = int(size.width()) or self.icon_size
+            height = int(size.height()) or self.icon_size
+        except Exception:
+            width = self.icon_size
+            height = self.icon_size
+        width = max(1, width)
+        height = max(1, height)
+        pixmap = icon.pixmap(width, height)
+        if pixmap.isNull():
+            return QtGui.QColor(fallback)
+        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_ARGB32)
+        total_r = total_g = total_b = 0
+        total_a = 0
+        for y in range(image.height()):
+            for x in range(image.width()):
+                qcol = QtGui.QColor(image.pixel(x, y))
+                alpha = qcol.alpha()
+                if alpha == 0:
+                    continue
+                total_r += qcol.red() * alpha
+                total_g += qcol.green() * alpha
+                total_b += qcol.blue() * alpha
+                total_a += alpha
+        if total_a == 0:
+            return QtGui.QColor(fallback)
+        return QtGui.QColor(
+            int(total_r / total_a),
+            int(total_g / total_a),
+            int(total_b / total_a),
+        )
+
+    def button_colors(self) -> List[QtGui.QColor]:
+        colors: List[QtGui.QColor] = []
+        for idx, button in enumerate(self.buttons):
+            if idx < len(self.segments):
+                _, seg_color = self.segments[idx]
+                fallback = QtGui.QColor(seg_color)
+            else:
+                fallback = QtGui.QColor(255, 255, 255)
+            color = self._compute_button_color(button, fallback)
+            if not color.isValid():
+                color = QtGui.QColor(fallback)
+            colors.append(color)
+        return colors
+
     def on_action(self, key: str) -> None:
         """Default callback for segment actions.
 
